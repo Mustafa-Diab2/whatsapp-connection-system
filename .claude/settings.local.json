@@ -21,7 +21,8 @@
       "Bash(railway:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(npm audit fix:*)"
+      "Bash(npm audit fix:*)",
+      "Bash(cat:*)"
     ]
   }
 }

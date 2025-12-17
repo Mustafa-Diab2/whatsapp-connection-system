@@ -219,6 +219,24 @@ export class WhatsAppManager {
     let client = this.clients.get(clientId);
 
     if (!client) {
+      // تحديد مسار Chromium تلقائياً
+      const chromiumPaths = [
+        process.env.PUPPETEER_EXECUTABLE_PATH,
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+      ].filter(Boolean);
+
+      let executablePath: string | undefined;
+      for (const p of chromiumPaths) {
+        if (p && fs.existsSync(p)) {
+          executablePath = p;
+          console.log(`[${clientId}] Using Chromium at: ${p}`);
+          break;
+        }
+      }
+
       const puppeteerOptions: any = {
         headless: true,
         args: [
@@ -230,12 +248,21 @@ export class WhatsAppManager {
           "--no-zygote",
           "--single-process",
           "--disable-gpu",
+          "--disable-software-rasterizer",
+          "--disable-extensions",
+          "--disable-background-networking",
+          "--disable-default-apps",
+          "--disable-sync",
+          "--disable-translate",
+          "--metrics-recording-only",
+          "--mute-audio",
+          "--no-default-browser-check",
+          "--safebrowsing-disable-auto-update",
         ],
       };
 
-      // استخدام Chromium من النظام إذا كان متاحاً
-      if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-        puppeteerOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+      if (executablePath) {
+        puppeteerOptions.executablePath = executablePath;
       }
 
       client = new Client({
