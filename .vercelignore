@@ -1,0 +1,29 @@
+# Vercel Ignore File
+# الملفات التي لن يتم رفعها على Vercel
+
+# Node modules
+node_modules
+
+# Build outputs
+.next
+dist
+.turbo
+
+# WhatsApp sessions (لن تعمل على Vercel)
+.wwebjs_auth
+.wwebjs_cache
+
+# Environment files
+.env
+.env.local
+
+# Backend API (لن يتم رفعه على Vercel)
+apps/api
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
