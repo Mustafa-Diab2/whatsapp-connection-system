@@ -7,7 +7,18 @@
       "Bash(vercel --version:*)",
       "Bash(vercel:*)",
       "Bash(git rev-parse:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nInitial commit: WhatsApp Connection System\n\n- Next.js 14 Frontend with RTL Arabic UI\n- Express + Socket.io + WhatsApp-Web.js Backend\n- Full deployment setup for Vercel + Railway\n- Comprehensive documentation in Arabic\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(gh auth status:*)",
+      "Bash(git branch:*)",
+      "Bash(winget install:*)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" auth status)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" auth login --web --git-protocol https)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" repo create whatsapp-connection-system --public --source=. --remote=origin --push)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" extension install railwayapp/cli)",
+      "Bash(npm install:*)",
+      "Bash(railway version:*)",
+      "Bash(railway:*)"
     ]
   }
 }
