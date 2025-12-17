@@ -18,7 +18,10 @@
       "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" extension install railwayapp/cli)",
       "Bash(npm install:*)",
       "Bash(railway version:*)",
-      "Bash(railway:*)"
+      "Bash(railway:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(npm audit fix:*)"
     ]
   }
 }

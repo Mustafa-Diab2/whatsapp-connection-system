@@ -1,11 +1,13 @@
 {
-  "name": "@repo/api",
+  "name": "whatsapp-api",
   "version": "1.0.0",
   "main": "dist/server.js",
   "license": "MIT",
   "type": "commonjs",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts"
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "start": "ts-node src/server.ts",
+    "build": "echo 'No build needed'"
   },
   "dependencies": {
     "cors": "^2.8.5",
