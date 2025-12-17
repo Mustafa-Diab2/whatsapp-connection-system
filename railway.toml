@@ -5,19 +5,20 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "cd apps/api && npm install && npm run dev"
+startCommand = "cd apps/api && npm run dev"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
 [nixpacks]
-# تثبيت Chromium للـ WhatsApp Web
+aptPkgs = ["chromium", "chromium-sandbox", "ca-certificates", "fonts-liberation", "libgbm1", "libnss3", "libatk-bridge2.0-0", "libdrm2", "libxkbcommon0", "libxcomposite1", "libxdamage1", "libxfixes3", "libxrandr2", "libcups2", "libasound2"]
+
 [nixpacks.phases.setup]
-aptPkgs = ["chromium", "chromium-sandbox", "ca-certificates", "fonts-liberation"]
+nixPkgs = ["chromium"]
 
 [nixpacks.phases.install]
-cmds = ["npm install"]
+cmds = ["cd apps/api && npm install"]
 
 [nixpacks.phases.build]
 cmds = ["echo 'Build complete'"]

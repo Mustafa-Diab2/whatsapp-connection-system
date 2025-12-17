@@ -219,11 +219,28 @@ export class WhatsAppManager {
     let client = this.clients.get(clientId);
 
     if (!client) {
+      const puppeteerOptions: any = {
+        headless: true,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-accelerated-2d-canvas",
+          "--no-first-run",
+          "--no-zygote",
+          "--single-process",
+          "--disable-gpu",
+        ],
+      };
+
+      // استخدام Chromium من النظام إذا كان متاحاً
+      if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+        puppeteerOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+      }
+
       client = new Client({
         authStrategy: new LocalAuth({ clientId }),
-        puppeteer: {
-          args: ["--no-sandbox", "--disable-setuid-sandbox"],
-        },
+        puppeteer: puppeteerOptions,
       });
       this.attachClientEvents(clientId, client);
       this.clients.set(clientId, client);
