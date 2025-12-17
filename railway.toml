@@ -11,10 +11,6 @@ healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
-[[deploy.env]]
-PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
-PUPPETEER_EXECUTABLE_PATH = "/usr/bin/chromium"
-
 [nixpacks]
 aptPkgs = ["chromium", "chromium-sandbox", "ca-certificates", "fonts-liberation", "libgbm1", "libnss3", "libatk-bridge2.0-0", "libdrm2", "libxkbcommon0", "libxcomposite1", "libxdamage1", "libxfixes3", "libxrandr2", "libcups2", "libasound2", "libx11-xcb1", "libxcb1"]
 
@@ -25,4 +21,4 @@ nixPkgs = ["chromium"]
 cmds = ["cd apps/api && npm install"]
 
 [nixpacks.phases.build]
-cmds = ["which chromium || which chromium-browser || echo 'Chromium not found in PATH'"]
+cmds = ["cd apps/api && npm run build"]
