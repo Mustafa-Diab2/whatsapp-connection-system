@@ -8,45 +8,19 @@ import WhatsAppManager from "./wa/WhatsAppManager";
 dotenv.config();
 
 const PORT = Number(process.env.PORT) || 3001;
-const WEB_ORIGIN = process.env.WEB_ORIGIN || "http://localhost:3000";
-
-// قائمة المواقع المسموح بها
-const allowedOrigins = [
-  WEB_ORIGIN,
-  "http://localhost:3000",
-  "https://web-pdbuuik4q-mustafadiab2942000-7606s-projects.vercel.app",
-  "https://web-one-nu-37.vercel.app",
-  /\.vercel\.app$/,
-];
 
 const app = express();
 
-// إعدادات CORS المحسنة
+// السماح لجميع المواقع مؤقتاً لحل مشكلة CORS
 app.use(cors({
-  origin: (origin, callback) => {
-    // السماح بالطلبات بدون origin (مثل Postman أو curl)
-    if (!origin) return callback(null, true);
-
-    // التحقق من القائمة المسموح بها
-    const isAllowed = allowedOrigins.some((allowed) => {
-      if (allowed instanceof RegExp) return allowed.test(origin);
-      return allowed === origin;
-    });
-
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      console.log(`CORS blocked origin: ${origin}`);
-      callback(null, true); // السماح مؤقتاً للتصحيح
-    }
-  },
+  origin: true,
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
 }));
 
 // معالجة preflight requests
-app.options("*", cors());
+app.options("*", cors({ origin: true, credentials: true }));
 
 app.use(express.json());
 
@@ -180,6 +154,5 @@ app.post("/whatsapp/send", async (req, res) => {
 
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`API server listening on http://0.0.0.0:${PORT}`);
-  console.log(`CORS enabled for ${WEB_ORIGIN}`);
-  console.log(`Allowed origins: ${allowedOrigins.map(o => o instanceof RegExp ? o.toString() : o).join(", ")}`);
+  console.log(`CORS enabled for all origins`);
 });
