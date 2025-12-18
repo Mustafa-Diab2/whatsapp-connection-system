@@ -15,6 +15,7 @@ const allowedOrigins = [
   WEB_ORIGIN,
   "http://localhost:3000",
   "https://web-pdbuuik4q-mustafadiab2942000-7606s-projects.vercel.app",
+  "https://web-one-nu-37.vercel.app",
   /\.vercel\.app$/,
 ];
 
