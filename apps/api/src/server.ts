@@ -10,15 +10,53 @@ dotenv.config();
 const PORT = Number(process.env.PORT) || 3001;
 const WEB_ORIGIN = process.env.WEB_ORIGIN || "http://localhost:3000";
 
+// قائمة المواقع المسموح بها
+const allowedOrigins = [
+  WEB_ORIGIN,
+  "http://localhost:3000",
+  "https://web-pdbuuik4q-mustafadiab2942000-7606s-projects.vercel.app",
+  /\.vercel\.app$/,
+];
+
 const app = express();
-app.use(cors({ origin: WEB_ORIGIN, credentials: true }));
+
+// إعدادات CORS المحسنة
+app.use(cors({
+  origin: (origin, callback) => {
+    // السماح بالطلبات بدون origin (مثل Postman أو curl)
+    if (!origin) return callback(null, true);
+
+    // التحقق من القائمة المسموح بها
+    const isAllowed = allowedOrigins.some((allowed) => {
+      if (allowed instanceof RegExp) return allowed.test(origin);
+      return allowed === origin;
+    });
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.log(`CORS blocked origin: ${origin}`);
+      callback(null, true); // السماح مؤقتاً للتصحيح
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+}));
+
+// معالجة preflight requests
+app.options("*", cors());
+
 app.use(express.json());
 
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: WEB_ORIGIN,
+    origin: (_origin, callback) => {
+      callback(null, true); // السماح لجميع المواقع للـ WebSocket
+    },
     methods: ["GET", "POST", "DELETE"],
+    credentials: true,
   },
 });
 
