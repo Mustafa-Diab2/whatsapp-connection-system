@@ -152,7 +152,18 @@ app.post("/whatsapp/send", async (req, res) => {
   }
 });
 
+// معالجة الأخطاء غير المتوقعة لمنع crash
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
+
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`API server listening on http://0.0.0.0:${PORT}`);
   console.log(`CORS enabled for all origins`);
+  console.log(`Node version: ${process.version}`);
+  console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
 });
