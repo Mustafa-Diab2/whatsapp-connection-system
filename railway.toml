@@ -3,6 +3,7 @@
 
 [build]
 builder = "NIXPACKS"
+buildCommand = "cd apps/api && npm install --include=dev && npm run build"
 
 [deploy]
 startCommand = "cd apps/api && npm start"
@@ -16,9 +17,3 @@ aptPkgs = ["chromium", "chromium-sandbox", "ca-certificates", "fonts-liberation"
 
 [nixpacks.phases.setup]
 nixPkgs = ["chromium"]
-
-[nixpacks.phases.install]
-cmds = ["cd apps/api && npm install"]
-
-[nixpacks.phases.build]
-cmds = ["cd apps/api && npm run build"]
