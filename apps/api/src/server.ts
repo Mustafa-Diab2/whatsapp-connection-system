@@ -177,7 +177,8 @@ app.post("/whatsapp/send", async (req, res) => {
   }
 });
 
-httpServer.listen(PORT, () => {
-  console.log(`API server listening on http://localhost:${PORT}`);
+httpServer.listen(PORT, "0.0.0.0", () => {
+  console.log(`API server listening on http://0.0.0.0:${PORT}`);
   console.log(`CORS enabled for ${WEB_ORIGIN}`);
+  console.log(`Allowed origins: ${allowedOrigins.map(o => o instanceof RegExp ? o.toString() : o).join(", ")}`);
 });
