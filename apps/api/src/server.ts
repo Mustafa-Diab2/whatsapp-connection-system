@@ -11,16 +11,27 @@ const PORT = Number(process.env.PORT) || 3001;
 
 const app = express();
 
-// السماح لجميع المواقع مؤقتاً لحل مشكلة CORS
+// إضافة CORS headers يدوياً قبل أي middleware آخر
+app.use((req, res, next) => {
+  const origin = req.headers.origin || "*";
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin");
+
+  // معالجة preflight requests
+  if (req.method === "OPTIONS") {
+    res.status(200).end();
+    return;
+  }
+  next();
+});
+
+// cors middleware كـ backup
 app.use(cors({
   origin: true,
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
 }));
-
-// معالجة preflight requests
-app.options("*", cors({ origin: true, credentials: true }));
 
 app.use(express.json());
 
