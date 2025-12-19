@@ -46,7 +46,16 @@ const io = new Server(httpServer, {
   },
 });
 
-const manager = new WhatsAppManager(io);
+// تأخير تهيئة WhatsAppManager لمنع crash عند البدء
+let manager: WhatsAppManager;
+try {
+  manager = new WhatsAppManager(io);
+  console.log("WhatsAppManager initialized successfully");
+} catch (err) {
+  console.error("Failed to initialize WhatsAppManager:", err);
+  // إنشاء manager فارغ للسماح للسيرفر بالعمل
+  manager = new WhatsAppManager(io);
+}
 
 io.on("connection", (socket) => {
   console.log(`Socket connected: ${socket.id}`);
@@ -64,7 +73,18 @@ io.on("connection", (socket) => {
 });
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, timestamp: new Date().toISOString(), commit: "b16545d" });
+});
+
+// endpoint تشخيصي
+app.get("/debug", (_req, res) => {
+  res.json({
+    status: "running",
+    node: process.version,
+    env: process.env.NODE_ENV || "development",
+    port: PORT,
+    uptime: process.uptime(),
+  });
 });
 
 app.post("/whatsapp/connect", async (req, res) => {
