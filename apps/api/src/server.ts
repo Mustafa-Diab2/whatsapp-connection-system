@@ -4,59 +4,95 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { Server } from "socket.io";
 import WhatsAppManager from "./wa/WhatsAppManager";
+import {
+  generalLimiter,
+  whatsappConnectLimiter,
+  messageLimiter,
+  strictLimiter,
+  errorHandler,
+  notFoundHandler,
+  asyncHandler,
+} from "./middleware";
+import {
+  validateRequest,
+  connectRequestSchema,
+  sendMessageSchema,
+  sendMessageByPhoneSchema,
+  clientIdSchema,
+} from "./validation";
 
 dotenv.config();
 
 const PORT = Number(process.env.PORT) || 3001;
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000,http://localhost";
+const NODE_ENV = process.env.NODE_ENV || "development";
 
 const app = express();
 
-// إضافة CORS headers يدوياً قبل أي middleware آخر
-app.use((req, res, next) => {
-  const origin = req.headers.origin || "*";
-  res.setHeader("Access-Control-Allow-Origin", origin);
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin");
+// CORS configuration - improved security
+const allowedOrigins = CORS_ORIGIN.split(",").map((o) => o.trim());
 
-  // معالجة preflight requests
-  if (req.method === "OPTIONS") {
-    res.status(200).end();
-    return;
-  }
-  next();
-});
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl)
+      if (!origin) return callback(null, true);
 
-// cors middleware كـ backup
-app.use(cors({
-  origin: true,
-  credentials: true,
-}));
+      // In development, allow all origins
+      if (NODE_ENV === "development") {
+        return callback(null, true);
+      }
 
-app.use(express.json());
+      // In production, check whitelist
+      if (allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+// Apply general rate limiter to all routes
+app.use(generalLimiter);
 
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: (_origin, callback) => {
-      callback(null, true); // السماح لجميع المواقع للـ WebSocket
+    origin: (origin, callback) => {
+      // In development, allow all
+      if (NODE_ENV === "development") {
+        return callback(null, true);
+      }
+      // In production, check whitelist
+      if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
     },
     methods: ["GET", "POST", "DELETE"],
     credentials: true,
   },
 });
 
-// تأخير تهيئة WhatsAppManager لمنع crash عند البدء
+// Initialize WhatsAppManager
 let manager: WhatsAppManager;
 try {
   manager = new WhatsAppManager(io);
   console.log("WhatsAppManager initialized successfully");
 } catch (err) {
   console.error("Failed to initialize WhatsAppManager:", err);
-  // إنشاء manager فارغ للسماح للسيرفر بالعمل
   manager = new WhatsAppManager(io);
 }
 
+// Socket.io connection handling
 io.on("connection", (socket) => {
   console.log(`Socket connected: ${socket.id}`);
 
@@ -65,6 +101,7 @@ io.on("connection", (socket) => {
     socket.join(clientId);
     const state = manager.getState(clientId);
     socket.emit("wa:state", { clientId, status: state.status, updatedAt: state.updatedAt, lastError: state.lastError });
+    console.log(`[${clientId}] Socket ${socket.id} subscribed`);
   });
 
   socket.on("disconnect", () => {
@@ -72,11 +109,14 @@ io.on("connection", (socket) => {
   });
 });
 
+// ==================== ROUTES ====================
+
+// Health check
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, timestamp: new Date().toISOString(), commit: "b16545d" });
+  res.json({ ok: true, timestamp: new Date().toISOString() });
 });
 
-// endpoint تشخيصي
+// Debug endpoint
 app.get("/debug", (_req, res) => {
   res.json({
     status: "running",
@@ -87,40 +127,59 @@ app.get("/debug", (_req, res) => {
   });
 });
 
-app.post("/whatsapp/connect", async (req, res) => {
-  const clientId = req.body?.clientId || "default";
-  try {
+// ==================== WhatsApp Routes ====================
+
+// Connect to WhatsApp
+app.post(
+  "/whatsapp/connect",
+  whatsappConnectLimiter,
+  asyncHandler(async (req, res) => {
+    // Validate request
+    const validation = validateRequest(connectRequestSchema, req.body);
+    if (!validation.success) {
+      return res.status(400).json({ status: "error", message: validation.error });
+    }
+
+    const { clientId } = validation.data as { clientId: string };
+
     const state = await manager.connect(clientId);
     res.json(state);
-  } catch (err) {
-    console.error(`[${clientId}] /whatsapp/connect error`, err);
-    res.status(500).json({ status: "error", message: "فشل إنشاء الاتصال" });
-  }
-});
+  })
+);
 
+// Get WhatsApp status
 app.get("/whatsapp/status/:clientId", (req, res) => {
   const clientId = req.params.clientId || "default";
   const state = manager.getState(clientId);
   res.json({ status: state.status, lastError: state.lastError, updatedAt: state.updatedAt });
 });
 
+// Get QR code (fallback for HTTP polling)
 app.get("/whatsapp/qr/:clientId", (req, res) => {
   const clientId = req.params.clientId || "default";
   const state = manager.getState(clientId);
   res.json({ qrDataUrl: state.qrDataUrl });
 });
 
-app.delete("/whatsapp/session/:clientId", async (req, res) => {
-  const clientId = req.params.clientId || "default";
-  try {
+// Reset/Delete session
+app.delete(
+  "/whatsapp/session/:clientId",
+  strictLimiter,
+  asyncHandler(async (req, res) => {
+    const clientId = req.params.clientId || "default";
+
+    // Validate clientId
+    const validation = validateRequest(clientIdSchema, clientId);
+    if (!validation.success) {
+      return res.status(400).json({ status: "error", message: validation.error });
+    }
+
     const state = await manager.resetSession(clientId);
     res.json(state);
-  } catch (err) {
-    console.error(`[${clientId}] reset error`, err);
-    res.status(500).json({ status: "error", message: "تعذر إعادة التعيين" });
-  }
-});
+  })
+);
 
+// Get chats list
 app.get("/whatsapp/chats/:clientId", async (req, res) => {
   const clientId = req.params.clientId || "default";
   try {
@@ -139,12 +198,15 @@ app.get("/whatsapp/chats/:clientId", async (req, res) => {
   }
 });
 
+// Get messages for a specific chat
 app.get("/whatsapp/messages/:clientId/:chatId", async (req, res) => {
   const clientId = req.params.clientId || "default";
   const chatId = req.params.chatId;
+
   if (!chatId) {
     return res.status(400).json({ message: "chatId مفقود" });
   }
+
   try {
     const client = manager.ensureReadyClient(clientId);
     const chat = await client.getChatById(chatId);
@@ -158,7 +220,7 @@ app.get("/whatsapp/messages/:clientId/:chatId", async (req, res) => {
         type: m.type,
         author: (m as any).author || undefined,
       }))
-      .reverse(); // أحدث في النهاية
+      .reverse();
     res.json({ messages: simplified });
   } catch (err: any) {
     console.error(`[${clientId}] list messages error`, err);
@@ -166,35 +228,98 @@ app.get("/whatsapp/messages/:clientId/:chatId", async (req, res) => {
   }
 });
 
-app.post("/whatsapp/send", async (req, res) => {
-  const clientId = req.body?.clientId || "default";
-  const chatId = req.body?.chatId;
-  const message = req.body?.message;
-  if (!chatId || !message) {
-    return res.status(400).json({ message: "chatId أو message مفقود" });
-  }
-  try {
+// Send message to a chat (using chatId)
+app.post(
+  "/whatsapp/send",
+  messageLimiter,
+  asyncHandler(async (req, res) => {
+    // Validate request
+    const validation = validateRequest(sendMessageSchema, req.body);
+    if (!validation.success) {
+      return res.status(400).json({ message: validation.error });
+    }
+
+    const { clientId, chatId, message } = validation.data as {
+      clientId: string;
+      chatId: string;
+      message: string;
+    };
+
     const client = manager.ensureReadyClient(clientId);
     await client.sendMessage(chatId, message);
     res.json({ ok: true });
-  } catch (err: any) {
-    console.error(`[${clientId}] send message error`, err);
-    res.status(400).json({ message: err?.message || "تعذر إرسال الرسالة" });
-  }
-});
+  })
+);
 
-// معالجة الأخطاء غير المتوقعة لمنع crash
+// ==================== Messaging API (REST) ====================
+
+// Send message using phone number (REST API style)
+app.post(
+  "/messages/send",
+  messageLimiter,
+  asyncHandler(async (req, res) => {
+    // Validate request
+    const validation = validateRequest(sendMessageByPhoneSchema, req.body);
+    if (!validation.success) {
+      return res.status(400).json({ ok: false, message: validation.error });
+    }
+
+    const { clientId, to, text } = validation.data as {
+      clientId: string;
+      to: string;
+      text: string;
+    };
+
+    // Check if client is ready
+    const state = manager.getState(clientId);
+    if (state.status !== "ready") {
+      return res.status(400).json({
+        ok: false,
+        message: "العميل غير متصل، يرجى الاتصال أولاً",
+        status: state.status,
+      });
+    }
+
+    const result = await manager.sendMessage(clientId, to, text);
+    res.json(result);
+  })
+);
+
+// ==================== Error Handling ====================
+
+// 404 handler - must be before error handler
+app.use(notFoundHandler);
+
+// Global error handler - must be last
+app.use(errorHandler);
+
+// Handle uncaught exceptions
 process.on("uncaughtException", (err) => {
   console.error("Uncaught Exception:", err);
+  // في الإنتاج، يجب إيقاف السيرفر بشكל آمن
+  if (NODE_ENV === "production") {
+    process.exit(1);
+  }
 });
 
 process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
+  // في الإنتاج، يجب إيقاف السيرفر بشكل آمن
+  if (NODE_ENV === "production") {
+    process.exit(1);
+  }
 });
 
+// ==================== Start Server ====================
+
 httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`API server listening on http://0.0.0.0:${PORT}`);
-  console.log(`CORS enabled for all origins`);
-  console.log(`Node version: ${process.version}`);
-  console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(`
+╔═══════════════════════════════════════════════════════════╗
+║           WhatsApp CRM API Server Started                 ║
+╠═══════════════════════════════════════════════════════════╣
+║  URL: http://0.0.0.0:${PORT}                                 ║
+║  Environment: ${(process.env.NODE_ENV || "development").padEnd(42)}║
+║  Node: ${process.version.padEnd(50)}║
+╚═══════════════════════════════════════════════════════════╝
+  `);
 });

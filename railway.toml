@@ -1,6 +1,14 @@
 # Railway Configuration
 # لنشر Backend على Railway
 
+# ⚠️ مهم: لحفظ WhatsApp Sessions بين deployments
+# في Railway Dashboard:
+# 1. اذهب إلى Settings → Volumes
+# 2. أضف Volume جديد:
+#    - Mount Path: /app/.wwebjs_auth
+#    - Size: 1 GB (كافية)
+# 3. عند Redeploy، الجلسات ستبقى محفوظة
+
 [build]
 builder = "NIXPACKS"
 buildCommand = "cd apps/api && npm install --include=dev && npm run build"

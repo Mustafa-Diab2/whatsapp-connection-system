@@ -1,0 +1,124 @@
+# ==============================================================================
+# WhatsApp CRM Docker Compose
+# Full-Stack: API + Web + Nginx Reverse Proxy
+# ==============================================================================
+#
+# Usage:
+#   Development (without nginx): docker compose up api web -d
+#   Production (with nginx):     docker compose up -d --build
+#
+# ==============================================================================
+
+version: "3.8"
+
+services:
+  # ============================================================================
+  # API Server (Express + Socket.io + WhatsApp-Web.js)
+  # ============================================================================
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: whatsapp-crm-api
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+      - WEBHOOK_URL=${WEBHOOK_URL:-}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
+    volumes:
+      # Persistent WhatsApp session storage
+      - wa_auth:/app/.wwebjs_auth
+      - wa_cache:/app/.wwebjs_cache
+    # Shared memory size for Chromium (required for Puppeteer)
+    shm_size: "1gb"
+    # Expose port for development (when running without nginx)
+    ports:
+      - "${API_PORT:-3001}:3001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - whatsapp-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ============================================================================
+  # Web Frontend (Next.js)
+  # ============================================================================
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_BASE=/api
+        - NEXT_PUBLIC_SOCKET_URL=
+    container_name: whatsapp-crm-web
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    # Expose port for development (when running without nginx)
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - whatsapp-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ============================================================================
+  # Nginx Reverse Proxy
+  # ============================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: whatsapp-crm-nginx
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Uncomment for SSL certificates
+      # - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+      # - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - api
+      - web
+    networks:
+      - whatsapp-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ==============================================================================
+# Volumes
+# ==============================================================================
+volumes:
+  # Persistent WhatsApp session data
+  wa_auth:
+    name: whatsapp-crm-auth
+  wa_cache:
+    name: whatsapp-crm-cache
+
+# ==============================================================================
+# Networks
+# ==============================================================================
+networks:
+  whatsapp-network:
+    driver: bridge
+    name: whatsapp-crm-network

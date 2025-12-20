@@ -1,0 +1,39 @@
+# .antigravityignore
+# ملفات لن يتم فحصها بواسطة Antigravity
+
+# Logs
+*.log
+dev.log
+dev.err.log
+
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+.next/
+out/
+build/
+
+# WhatsApp sessions
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Environment
+.env
+.env.local
+.env.production.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+
+# IDE
+.vscode/
+.idea/
+
+# Artifacts (antigravity brain)
+.gemini/
