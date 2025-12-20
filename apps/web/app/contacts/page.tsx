@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 
 type Contact = {
     id: string;
@@ -13,22 +13,32 @@ type Contact = {
 };
 
 const groups = ["الكل", "عملاء VIP", "عملاء جدد", "موردين", "فريق العمل"];
-
-const initialContacts: Contact[] = [
-    { id: "1", name: "أحمد محمد", phone: "+201234567890", email: "ahmed@email.com", group: "عملاء VIP", lastMessage: "شكراً لكم", avatar: "👤" },
-    { id: "2", name: "سارة علي", phone: "+201098765432", email: "sara@email.com", group: "عملاء جدد", lastMessage: "متى التوصيل؟", avatar: "👩" },
-    { id: "3", name: "محمود خالد", phone: "+201555666777", email: "mahmoud@email.com", group: "موردين", lastMessage: "تم الاستلام", avatar: "👨" },
-    { id: "4", name: "نور أحمد", phone: "+201111222333", email: "nour@email.com", group: "عملاء VIP", lastMessage: "ممتاز!", avatar: "👩" },
-    { id: "5", name: "خالد حسن", phone: "+201999888777", email: "khaled@email.com", group: "فريق العمل", lastMessage: "تم التنفيذ", avatar: "👨" },
-];
+const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export default function ContactsPage() {
-    const [contacts, setContacts] = useState<Contact[]>(initialContacts);
+    const [contacts, setContacts] = useState<Contact[]>([]);
     const [search, setSearch] = useState("");
     const [selectedGroup, setSelectedGroup] = useState("الكل");
     const [showModal, setShowModal] = useState(false);
     const [editingContact, setEditingContact] = useState<Contact | null>(null);
+    const [loading, setLoading] = useState(true);
     const [formData, setFormData] = useState({ name: "", phone: "", email: "", group: "عملاء جدد" });
+
+    const fetchContacts = useCallback(async () => {
+        try {
+            const res = await fetch(`${apiBase}/api/contacts`);
+            const data = await res.json();
+            setContacts(data.contacts || []);
+        } catch (err) {
+            console.error("Failed to fetch contacts:", err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchContacts();
+    }, [fetchContacts]);
 
     const filteredContacts = useMemo(() => {
         return contacts.filter((c) => {
@@ -50,25 +60,47 @@ export default function ContactsPage() {
         setShowModal(true);
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!formData.name || !formData.phone) return;
-        if (editingContact) {
-            setContacts((prev) => prev.map((c) => c.id === editingContact.id ? { ...c, ...formData } : c));
-        } else {
-            setContacts((prev) => [{ id: Date.now().toString(), ...formData, lastMessage: "", avatar: "👤" }, ...prev]);
+        try {
+            if (editingContact) {
+                await fetch(`${apiBase}/api/contacts/${editingContact.id}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(formData),
+                });
+            } else {
+                await fetch(`${apiBase}/api/contacts`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(formData),
+                });
+            }
+            await fetchContacts();
+            setShowModal(false);
+        } catch (err) {
+            console.error("Failed to save contact:", err);
         }
-        setShowModal(false);
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (confirm("هل أنت متأكد من حذف جهة الاتصال؟")) {
-            setContacts((prev) => prev.filter((c) => c.id !== id));
+            try {
+                await fetch(`${apiBase}/api/contacts/${id}`, { method: "DELETE" });
+                await fetchContacts();
+            } catch (err) {
+                console.error("Failed to delete contact:", err);
+            }
         }
     };
 
     const sendMessage = (phone: string) => {
         window.open(`/chat?phone=${phone}`, "_self");
     };
+
+    if (loading) {
+        return <div className="text-center py-12 text-slate-500">جاري التحميل...</div>;
+    }
 
     return (
         <div className="space-y-6">

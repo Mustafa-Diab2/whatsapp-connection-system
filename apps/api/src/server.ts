@@ -205,6 +205,175 @@ app.get("/whatsapp/messages/:clientId/:chatId", async (req, res) => {
   }
 });
 
+// ========== CRM / CUSTOMERS API ==========
+const customersStore = new Map<string, any[]>();
+customersStore.set("default", [
+  { id: "1", name: "أحمد محمد", phone: "+201234567890", email: "ahmed@example.com", status: "active", notes: "عميل مميز", createdAt: new Date().toISOString().split("T")[0], lastContact: new Date().toISOString().split("T")[0] },
+]);
+
+app.get("/api/customers", (req, res) => {
+  const customers = customersStore.get("default") || [];
+  res.json({ customers });
+});
+
+app.post("/api/customers", (req, res) => {
+  const { name, phone, email, status, notes } = req.body;
+  const customers = customersStore.get("default") || [];
+  const newCustomer = {
+    id: Date.now().toString(),
+    name, phone, email, status: status || "pending", notes: notes || "",
+    createdAt: new Date().toISOString().split("T")[0],
+    lastContact: new Date().toISOString().split("T")[0],
+  };
+  customers.unshift(newCustomer);
+  customersStore.set("default", customers);
+  res.json({ ok: true, customer: newCustomer });
+});
+
+app.put("/api/customers/:id", (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
+  const customers = customersStore.get("default") || [];
+  const idx = customers.findIndex((c) => c.id === id);
+  if (idx !== -1) {
+    customers[idx] = { ...customers[idx], ...updates, lastContact: new Date().toISOString().split("T")[0] };
+    customersStore.set("default", customers);
+    res.json({ ok: true, customer: customers[idx] });
+  } else {
+    res.status(404).json({ message: "Customer not found" });
+  }
+});
+
+app.delete("/api/customers/:id", (req, res) => {
+  const { id } = req.params;
+  let customers = customersStore.get("default") || [];
+  customers = customers.filter((c) => c.id !== id);
+  customersStore.set("default", customers);
+  res.json({ ok: true });
+});
+
+// ========== CONTACTS API ==========
+const contactsStore = new Map<string, any[]>();
+contactsStore.set("default", [
+  { id: "1", name: "أحمد محمد", phone: "+201234567890", email: "ahmed@email.com", group: "عملاء VIP", lastMessage: "", avatar: "👤" },
+]);
+
+app.get("/api/contacts", (req, res) => {
+  const contacts = contactsStore.get("default") || [];
+  res.json({ contacts });
+});
+
+app.post("/api/contacts", (req, res) => {
+  const { name, phone, email, group } = req.body;
+  const contacts = contactsStore.get("default") || [];
+  const newContact = { id: Date.now().toString(), name, phone, email, group: group || "عملاء جدد", lastMessage: "", avatar: "👤" };
+  contacts.unshift(newContact);
+  contactsStore.set("default", contacts);
+  res.json({ ok: true, contact: newContact });
+});
+
+app.put("/api/contacts/:id", (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
+  const contacts = contactsStore.get("default") || [];
+  const idx = contacts.findIndex((c) => c.id === id);
+  if (idx !== -1) {
+    contacts[idx] = { ...contacts[idx], ...updates };
+    contactsStore.set("default", contacts);
+    res.json({ ok: true, contact: contacts[idx] });
+  } else {
+    res.status(404).json({ message: "Contact not found" });
+  }
+});
+
+app.delete("/api/contacts/:id", (req, res) => {
+  const { id } = req.params;
+  let contacts = contactsStore.get("default") || [];
+  contacts = contacts.filter((c) => c.id !== id);
+  contactsStore.set("default", contacts);
+  res.json({ ok: true });
+});
+
+// ========== SETTINGS API ==========
+const settingsStore = new Map<string, any>();
+settingsStore.set("default", {
+  companyName: "شركتي",
+  welcomeMessage: "مرحباً بك! كيف يمكنني مساعدتك؟",
+  autoReply: true,
+  notifyNewMessage: true,
+  notifyNewCustomer: true,
+  language: "ar",
+  theme: "light",
+});
+
+app.get("/api/settings", (req, res) => {
+  const settings = settingsStore.get("default") || {};
+  res.json(settings);
+});
+
+app.post("/api/settings", (req, res) => {
+  const newSettings = req.body;
+  settingsStore.set("default", newSettings);
+  res.json({ ok: true });
+});
+
+// ========== THREADS API ==========
+const threadsStore = new Map<string, any[]>();
+threadsStore.set("default", [
+  { id: "1", title: "مشكلة في الطلب #1234", customer: "أحمد محمد", status: "open", priority: "high", messages: 5, lastUpdate: new Date().toISOString() },
+]);
+
+app.get("/api/threads", (req, res) => {
+  const threads = threadsStore.get("default") || [];
+  res.json({ threads });
+});
+
+app.post("/api/threads", (req, res) => {
+  const { title, customer, priority } = req.body;
+  const threads = threadsStore.get("default") || [];
+  const newThread = { id: Date.now().toString(), title, customer, status: "open", priority: priority || "medium", messages: 0, lastUpdate: new Date().toISOString() };
+  threads.unshift(newThread);
+  threadsStore.set("default", threads);
+  res.json({ ok: true, thread: newThread });
+});
+
+app.put("/api/threads/:id", (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
+  const threads = threadsStore.get("default") || [];
+  const idx = threads.findIndex((t) => t.id === id);
+  if (idx !== -1) {
+    threads[idx] = { ...threads[idx], ...updates, lastUpdate: new Date().toISOString() };
+    threadsStore.set("default", threads);
+    res.json({ ok: true, thread: threads[idx] });
+  } else {
+    res.status(404).json({ message: "Thread not found" });
+  }
+});
+
+app.delete("/api/threads/:id", (req, res) => {
+  const { id } = req.params;
+  let threads = threadsStore.get("default") || [];
+  threads = threads.filter((t) => t.id !== id);
+  threadsStore.set("default", threads);
+  res.json({ ok: true });
+});
+
+// ========== REPORTS API ==========
+app.get("/api/reports/stats", (req, res) => {
+  const customers = customersStore.get("default") || [];
+  const threads = threadsStore.get("default") || [];
+  const contacts = contactsStore.get("default") || [];
+
+  res.json({
+    totalCustomers: customers.length,
+    activeCustomers: customers.filter((c) => c.status === "active").length,
+    totalContacts: contacts.length,
+    openThreads: threads.filter((t) => t.status === "open").length,
+    pendingThreads: threads.filter((t) => t.status === "pending").length,
+  });
+});
+
 // 404
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
@@ -223,3 +392,4 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (reason) => {
   console.error("Unhandled rejection:", reason);
 });
+

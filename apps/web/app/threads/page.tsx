@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 type Thread = {
     id: string;
@@ -12,24 +12,94 @@ type Thread = {
     lastUpdate: string;
 };
 
-const initialThreads: Thread[] = [
-    { id: "1", title: "مشكلة في الطلب #1234", customer: "أحمد محمد", status: "open", priority: "high", messages: 5, lastUpdate: "منذ 10 دقائق" },
-    { id: "2", title: "استفسار عن الأسعار", customer: "سارة علي", status: "pending", priority: "medium", messages: 3, lastUpdate: "منذ ساعة" },
-    { id: "3", title: "طلب إرجاع منتج", customer: "محمود خالد", status: "open", priority: "high", messages: 8, lastUpdate: "منذ 30 دقيقة" },
-    { id: "4", title: "شكر وتقدير", customer: "نور أحمد", status: "closed", priority: "low", messages: 2, lastUpdate: "منذ يومين" },
-];
-
 const statusLabels: Record<string, string> = { open: "مفتوح", pending: "قيد الانتظار", closed: "مغلق" };
 const statusColors: Record<string, string> = { open: "bg-green-100 text-green-700", pending: "bg-amber-100 text-amber-700", closed: "bg-slate-100 text-slate-600" };
 const priorityLabels: Record<string, string> = { high: "عالية", medium: "متوسطة", low: "منخفضة" };
 const priorityColors: Record<string, string> = { high: "text-red-600", medium: "text-amber-600", low: "text-slate-500" };
 
+const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+
 export default function ThreadsPage() {
-    const [threads, setThreads] = useState<Thread[]>(initialThreads);
+    const [threads, setThreads] = useState<Thread[]>([]);
     const [filter, setFilter] = useState("all");
     const [selectedThread, setSelectedThread] = useState<Thread | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [showNewModal, setShowNewModal] = useState(false);
+    const [newThread, setNewThread] = useState({ title: "", customer: "", priority: "medium" });
+
+    const fetchThreads = useCallback(async () => {
+        try {
+            const res = await fetch(`${apiBase}/api/threads`);
+            const data = await res.json();
+            setThreads(data.threads || []);
+        } catch (err) {
+            console.error("Failed to fetch threads:", err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchThreads();
+    }, [fetchThreads]);
 
     const filteredThreads = threads.filter((t) => filter === "all" || t.status === filter);
+
+    const handleCreateThread = async () => {
+        if (!newThread.title || !newThread.customer) return;
+        try {
+            await fetch(`${apiBase}/api/threads`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(newThread),
+            });
+            await fetchThreads();
+            setShowNewModal(false);
+            setNewThread({ title: "", customer: "", priority: "medium" });
+        } catch (err) {
+            console.error("Failed to create thread:", err);
+        }
+    };
+
+    const handleCloseThread = async (id: string) => {
+        try {
+            await fetch(`${apiBase}/api/threads/${id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: "closed" }),
+            });
+            await fetchThreads();
+            setSelectedThread(null);
+        } catch (err) {
+            console.error("Failed to close thread:", err);
+        }
+    };
+
+    const handleDeleteThread = async (id: string) => {
+        if (confirm("هل أنت متأكد من حذف هذا الموضوع؟")) {
+            try {
+                await fetch(`${apiBase}/api/threads/${id}`, { method: "DELETE" });
+                await fetchThreads();
+            } catch (err) {
+                console.error("Failed to delete thread:", err);
+            }
+        }
+    };
+
+    const formatDate = (dateStr: string) => {
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diff = now.getTime() - date.getTime();
+        const mins = Math.floor(diff / 60000);
+        if (mins < 60) return `منذ ${mins} دقيقة`;
+        const hours = Math.floor(mins / 60);
+        if (hours < 24) return `منذ ${hours} ساعة`;
+        return `منذ ${Math.floor(hours / 24)} يوم`;
+    };
+
+    if (loading) {
+        return <div className="text-center py-12 text-slate-500">جاري التحميل...</div>;
+    }
 
     return (
         <div className="space-y-6">
@@ -39,16 +109,26 @@ export default function ThreadsPage() {
                     <p className="text-slate-500">إدارة تذاكر الدعم والمحادثات</p>
                 </div>
                 <div className="flex gap-2">
-                    {["all", "open", "pending", "closed"].map((f) => (
-                        <button
-                            key={f}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${filter === f ? 'bg-brand-blue text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                            onClick={() => setFilter(f)}
-                        >
-                            {f === "all" ? "الكل" : statusLabels[f]}
-                        </button>
-                    ))}
+                    <button
+                        className="btn bg-brand-blue px-6 py-2 text-white hover:bg-blue-700"
+                        onClick={() => setShowNewModal(true)}
+                    >
+                        + موضوع جديد
+                    </button>
                 </div>
+            </div>
+
+            {/* Filter */}
+            <div className="flex gap-2 flex-wrap">
+                {["all", "open", "pending", "closed"].map((f) => (
+                    <button
+                        key={f}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition ${filter === f ? 'bg-brand-blue text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                        onClick={() => setFilter(f)}
+                    >
+                        {f === "all" ? "الكل" : statusLabels[f]}
+                    </button>
+                ))}
             </div>
 
             {/* Stats */}
@@ -95,10 +175,19 @@ export default function ThreadsPage() {
                                 <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[thread.status]}`}>
                                     {statusLabels[thread.status]}
                                 </span>
-                                <span className="text-xs text-slate-400">{thread.lastUpdate}</span>
+                                <span className="text-xs text-slate-400">{formatDate(thread.lastUpdate)}</span>
+                                <button
+                                    className="text-red-400 hover:text-red-600"
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteThread(thread.id); }}
+                                >
+                                    🗑️
+                                </button>
                             </div>
                         </div>
                     ))}
+                    {filteredThreads.length === 0 && (
+                        <div className="p-8 text-center text-slate-500">لا توجد مواضيع</div>
+                    )}
                 </div>
             </div>
 
@@ -123,7 +212,7 @@ export default function ThreadsPage() {
                         <div className="border-t pt-4 space-y-4">
                             <div className="bg-slate-50 p-4 rounded-xl">
                                 <p className="text-sm text-slate-600">العميل: <strong>{selectedThread.customer}</strong></p>
-                                <p className="text-sm text-slate-600">آخر تحديث: {selectedThread.lastUpdate}</p>
+                                <p className="text-sm text-slate-600">آخر تحديث: {formatDate(selectedThread.lastUpdate)}</p>
                             </div>
 
                             <textarea
@@ -134,14 +223,55 @@ export default function ThreadsPage() {
 
                         <div className="flex gap-3">
                             <button className="flex-1 btn bg-brand-blue py-3 text-white hover:bg-blue-700">إرسال رد</button>
-                            <button
-                                className="btn bg-green-100 py-3 px-6 text-green-700 hover:bg-green-200"
-                                onClick={() => {
-                                    setThreads((prev) => prev.map((t) => t.id === selectedThread.id ? { ...t, status: "closed" } : t));
-                                    setSelectedThread(null);
-                                }}
+                            {selectedThread.status !== "closed" && (
+                                <button
+                                    className="btn bg-green-100 py-3 px-6 text-green-700 hover:bg-green-200"
+                                    onClick={() => handleCloseThread(selectedThread.id)}
+                                >
+                                    إغلاق الموضوع
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* New Thread Modal */}
+            {showNewModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-lg p-6 space-y-4">
+                        <h3 className="text-xl font-bold text-slate-800">موضوع جديد</h3>
+                        <div className="space-y-3">
+                            <input
+                                type="text"
+                                placeholder="عنوان الموضوع *"
+                                className="w-full p-3 rounded-xl border border-slate-200 outline-none"
+                                value={newThread.title}
+                                onChange={(e) => setNewThread({ ...newThread, title: e.target.value })}
+                            />
+                            <input
+                                type="text"
+                                placeholder="اسم العميل *"
+                                className="w-full p-3 rounded-xl border border-slate-200 outline-none"
+                                value={newThread.customer}
+                                onChange={(e) => setNewThread({ ...newThread, customer: e.target.value })}
+                            />
+                            <select
+                                className="w-full p-3 rounded-xl border border-slate-200 outline-none"
+                                value={newThread.priority}
+                                onChange={(e) => setNewThread({ ...newThread, priority: e.target.value })}
                             >
-                                إغلاق الموضوع
+                                <option value="low">أولوية منخفضة</option>
+                                <option value="medium">أولوية متوسطة</option>
+                                <option value="high">أولوية عالية</option>
+                            </select>
+                        </div>
+                        <div className="flex gap-3">
+                            <button className="flex-1 btn bg-brand-blue py-3 text-white hover:bg-blue-700" onClick={handleCreateThread}>
+                                إنشاء
+                            </button>
+                            <button className="flex-1 btn bg-slate-100 py-3 text-slate-700 hover:bg-slate-200" onClick={() => setShowNewModal(false)}>
+                                إلغاء
                             </button>
                         </div>
                     </div>

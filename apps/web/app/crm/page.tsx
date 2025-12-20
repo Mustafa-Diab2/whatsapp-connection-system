@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 
 type Customer = {
     id: string;
@@ -25,18 +25,15 @@ const statusColors: Record<string, string> = {
     pending: "bg-amber-100 text-amber-700",
 };
 
-const initialCustomers: Customer[] = [
-    { id: "1", name: "أحمد محمد", phone: "+201234567890", email: "ahmed@example.com", status: "active", notes: "عميل مميز", createdAt: "2024-01-15", lastContact: "2024-12-20" },
-    { id: "2", name: "سارة علي", phone: "+201098765432", email: "sara@example.com", status: "pending", notes: "مهتم بالمنتج", createdAt: "2024-02-20", lastContact: "2024-12-18" },
-    { id: "3", name: "محمد خالد", phone: "+201555666777", email: "mohamed@example.com", status: "inactive", notes: "", createdAt: "2024-03-10", lastContact: "2024-11-01" },
-];
+const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export default function CRMPage() {
-    const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
+    const [customers, setCustomers] = useState<Customer[]>([]);
     const [search, setSearch] = useState("");
     const [filterStatus, setFilterStatus] = useState<string>("all");
     const [showModal, setShowModal] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+    const [loading, setLoading] = useState(true);
     const [formData, setFormData] = useState({
         name: "",
         phone: "",
@@ -44,6 +41,22 @@ export default function CRMPage() {
         status: "pending" as Customer["status"],
         notes: "",
     });
+
+    const fetchCustomers = useCallback(async () => {
+        try {
+            const res = await fetch(`${apiBase}/api/customers`);
+            const data = await res.json();
+            setCustomers(data.customers || []);
+        } catch (err) {
+            console.error("Failed to fetch customers:", err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchCustomers();
+    }, [fetchCustomers]);
 
     const filteredCustomers = useMemo(() => {
         return customers.filter((c) => {
@@ -71,32 +84,38 @@ export default function CRMPage() {
         setShowModal(true);
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!formData.name || !formData.phone) return;
 
-        if (editingCustomer) {
-            setCustomers((prev) =>
-                prev.map((c) =>
-                    c.id === editingCustomer.id
-                        ? { ...c, ...formData, lastContact: new Date().toISOString().split("T")[0] }
-                        : c
-                )
-            );
-        } else {
-            const newCustomer: Customer = {
-                id: Date.now().toString(),
-                ...formData,
-                createdAt: new Date().toISOString().split("T")[0],
-                lastContact: new Date().toISOString().split("T")[0],
-            };
-            setCustomers((prev) => [newCustomer, ...prev]);
+        try {
+            if (editingCustomer) {
+                await fetch(`${apiBase}/api/customers/${editingCustomer.id}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(formData),
+                });
+            } else {
+                await fetch(`${apiBase}/api/customers`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(formData),
+                });
+            }
+            await fetchCustomers();
+            setShowModal(false);
+        } catch (err) {
+            console.error("Failed to save customer:", err);
         }
-        setShowModal(false);
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
         if (confirm("هل أنت متأكد من حذف هذا العميل؟")) {
-            setCustomers((prev) => prev.filter((c) => c.id !== id));
+            try {
+                await fetch(`${apiBase}/api/customers/${id}`, { method: "DELETE" });
+                await fetchCustomers();
+            } catch (err) {
+                console.error("Failed to delete customer:", err);
+            }
         }
     };
 
@@ -158,61 +177,65 @@ export default function CRMPage() {
 
             {/* Customers Table */}
             <div className="card overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full">
-                        <thead className="bg-slate-50 border-b">
-                            <tr>
-                                <th className="text-right p-4 text-sm font-semibold text-slate-600">الاسم</th>
-                                <th className="text-right p-4 text-sm font-semibold text-slate-600">الهاتف</th>
-                                <th className="text-right p-4 text-sm font-semibold text-slate-600">البريد</th>
-                                <th className="text-right p-4 text-sm font-semibold text-slate-600">الحالة</th>
-                                <th className="text-right p-4 text-sm font-semibold text-slate-600">آخر تواصل</th>
-                                <th className="text-right p-4 text-sm font-semibold text-slate-600">إجراءات</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {filteredCustomers.map((customer) => (
-                                <tr key={customer.id} className="hover:bg-slate-50 transition">
-                                    <td className="p-4">
-                                        <p className="font-semibold text-slate-800">{customer.name}</p>
-                                        {customer.notes && <p className="text-xs text-slate-500">{customer.notes}</p>}
-                                    </td>
-                                    <td className="p-4 text-slate-600">{customer.phone}</td>
-                                    <td className="p-4 text-slate-600">{customer.email}</td>
-                                    <td className="p-4">
-                                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[customer.status]}`}>
-                                            {statusLabels[customer.status]}
-                                        </span>
-                                    </td>
-                                    <td className="p-4 text-slate-500 text-sm">{customer.lastContact}</td>
-                                    <td className="p-4">
-                                        <div className="flex gap-2">
-                                            <button
-                                                className="px-3 py-1 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"
-                                                onClick={() => openEditModal(customer)}
-                                            >
-                                                تعديل
-                                            </button>
-                                            <button
-                                                className="px-3 py-1 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
-                                                onClick={() => handleDelete(customer.id)}
-                                            >
-                                                حذف
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                            {filteredCustomers.length === 0 && (
+                {loading ? (
+                    <div className="p-8 text-center text-slate-500">جاري التحميل...</div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="bg-slate-50 border-b">
                                 <tr>
-                                    <td colSpan={6} className="p-8 text-center text-slate-500">
-                                        لا يوجد عملاء مطابقون للبحث
-                                    </td>
+                                    <th className="text-right p-4 text-sm font-semibold text-slate-600">الاسم</th>
+                                    <th className="text-right p-4 text-sm font-semibold text-slate-600">الهاتف</th>
+                                    <th className="text-right p-4 text-sm font-semibold text-slate-600">البريد</th>
+                                    <th className="text-right p-4 text-sm font-semibold text-slate-600">الحالة</th>
+                                    <th className="text-right p-4 text-sm font-semibold text-slate-600">آخر تواصل</th>
+                                    <th className="text-right p-4 text-sm font-semibold text-slate-600">إجراءات</th>
                                 </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {filteredCustomers.map((customer) => (
+                                    <tr key={customer.id} className="hover:bg-slate-50 transition">
+                                        <td className="p-4">
+                                            <p className="font-semibold text-slate-800">{customer.name}</p>
+                                            {customer.notes && <p className="text-xs text-slate-500">{customer.notes}</p>}
+                                        </td>
+                                        <td className="p-4 text-slate-600">{customer.phone}</td>
+                                        <td className="p-4 text-slate-600">{customer.email}</td>
+                                        <td className="p-4">
+                                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[customer.status]}`}>
+                                                {statusLabels[customer.status]}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-slate-500 text-sm">{customer.lastContact}</td>
+                                        <td className="p-4">
+                                            <div className="flex gap-2">
+                                                <button
+                                                    className="px-3 py-1 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"
+                                                    onClick={() => openEditModal(customer)}
+                                                >
+                                                    تعديل
+                                                </button>
+                                                <button
+                                                    className="px-3 py-1 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
+                                                    onClick={() => handleDelete(customer.id)}
+                                                >
+                                                    حذف
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {filteredCustomers.length === 0 && (
+                                    <tr>
+                                        <td colSpan={6} className="p-8 text-center text-slate-500">
+                                            لا يوجد عملاء مطابقون للبحث
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
 
             {/* Modal */}

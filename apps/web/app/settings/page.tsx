@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+
+const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export default function SettingsPage() {
     const [settings, setSettings] = useState({
-        companyName: "شركتي",
-        welcomeMessage: "مرحباً بك! كيف يمكنني مساعدتك؟",
+        companyName: "",
+        welcomeMessage: "",
         autoReply: true,
         notifyNewMessage: true,
         notifyNewCustomer: true,
@@ -13,16 +15,49 @@ export default function SettingsPage() {
         theme: "light",
     });
     const [saving, setSaving] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+    const fetchSettings = useCallback(async () => {
+        try {
+            const res = await fetch(`${apiBase}/api/settings`);
+            const data = await res.json();
+            setSettings(data);
+        } catch (err) {
+            console.error("Failed to fetch settings:", err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchSettings();
+    }, [fetchSettings]);
 
     const handleSave = async () => {
         setSaving(true);
         setMsg(null);
-        // Simulate save
-        await new Promise((r) => setTimeout(r, 1000));
-        setMsg({ type: "success", text: "تم حفظ الإعدادات بنجاح!" });
-        setSaving(false);
+        try {
+            const res = await fetch(`${apiBase}/api/settings`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(settings),
+            });
+            if (res.ok) {
+                setMsg({ type: "success", text: "تم حفظ الإعدادات بنجاح!" });
+            } else {
+                throw new Error("Failed to save");
+            }
+        } catch (err) {
+            setMsg({ type: "error", text: "فشل حفظ الإعدادات، حاول مرة أخرى." });
+        } finally {
+            setSaving(false);
+        }
     };
+
+    if (loading) {
+        return <div className="text-center py-12 text-slate-500">جاري التحميل...</div>;
+    }
 
     return (
         <div className="space-y-6 max-w-4xl mx-auto">

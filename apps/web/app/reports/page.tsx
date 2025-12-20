@@ -1,20 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
-const stats = [
-    { label: "رسائل مرسلة", value: 1234, change: "+12%", color: "text-blue-600" },
-    { label: "رسائل مستلمة", value: 5678, change: "+8%", color: "text-green-600" },
-    { label: "عملاء جدد", value: 45, change: "+23%", color: "text-purple-600" },
-    { label: "معدل الرد", value: "2.3 دقيقة", change: "-15%", color: "text-amber-600" },
-];
-
-const recentMessages = [
-    { id: 1, customer: "أحمد محمد", message: "شكراً لكم على الخدمة الممتازة", time: "منذ 5 دقائق", type: "incoming" },
-    { id: 2, customer: "سارة علي", message: "متى سيتم التوصيل؟", time: "منذ 15 دقيقة", type: "incoming" },
-    { id: 3, customer: "محمود خالد", message: "تم استلام الطلب بنجاح", time: "منذ 30 دقيقة", type: "outgoing" },
-    { id: 4, customer: "نور أحمد", message: "هل يوجد عروض حالياً؟", time: "منذ ساعة", type: "incoming" },
-];
+const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 const dailyData = [
     { day: "السبت", messages: 120, customers: 8 },
@@ -28,6 +16,41 @@ const dailyData = [
 
 export default function ReportsPage() {
     const [period, setPeriod] = useState("week");
+    const [stats, setStats] = useState({
+        totalCustomers: 0,
+        activeCustomers: 0,
+        totalContacts: 0,
+        openThreads: 0,
+        pendingThreads: 0,
+    });
+    const [loading, setLoading] = useState(true);
+
+    const fetchStats = useCallback(async () => {
+        try {
+            const res = await fetch(`${apiBase}/api/reports/stats`);
+            const data = await res.json();
+            setStats(data);
+        } catch (err) {
+            console.error("Failed to fetch stats:", err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchStats();
+    }, [fetchStats]);
+
+    const statsCards = [
+        { label: "إجمالي العملاء", value: stats.totalCustomers, color: "text-blue-600" },
+        { label: "عملاء نشطون", value: stats.activeCustomers, color: "text-green-600" },
+        { label: "جهات الاتصال", value: stats.totalContacts, color: "text-purple-600" },
+        { label: "مواضيع مفتوحة", value: stats.openThreads, color: "text-amber-600" },
+    ];
+
+    if (loading) {
+        return <div className="text-center py-12 text-slate-500">جاري التحميل...</div>;
+    }
 
     return (
         <div className="space-y-6">
@@ -50,13 +73,10 @@ export default function ReportsPage() {
 
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {stats.map((stat, i) => (
+                {statsCards.map((stat, i) => (
                     <div key={i} className="card p-6">
                         <p className="text-sm text-slate-500">{stat.label}</p>
                         <p className={`text-3xl font-bold mt-1 ${stat.color}`}>{stat.value}</p>
-                        <p className={`text-sm mt-2 ${stat.change.startsWith('+') ? 'text-green-600' : 'text-red-600'}`}>
-                            {stat.change} من الفترة السابقة
-                        </p>
                     </div>
                 ))}
             </div>
@@ -72,7 +92,7 @@ export default function ReportsPage() {
                                 <span className="w-16 text-sm text-slate-600">{d.day}</span>
                                 <div className="flex-1 bg-slate-100 rounded-full h-6 overflow-hidden">
                                     <div
-                                        className="h-full bg-gradient-to-r from-brand-blue to-blue-400 rounded-full"
+                                        className="h-full bg-gradient-to-r from-brand-blue to-blue-400 rounded-full transition-all duration-500"
                                         style={{ width: `${(d.messages / 220) * 100}%` }}
                                     />
                                 </div>
@@ -91,7 +111,7 @@ export default function ReportsPage() {
                                 <span className="w-16 text-sm text-slate-600">{d.day}</span>
                                 <div className="flex-1 bg-slate-100 rounded-full h-6 overflow-hidden">
                                     <div
-                                        className="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full"
+                                        className="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full transition-all duration-500"
                                         style={{ width: `${(d.customers / 18) * 100}%` }}
                                     />
                                 </div>
@@ -102,24 +122,22 @@ export default function ReportsPage() {
                 </div>
             </div>
 
-            {/* Recent Activity */}
-            <div className="card p-6">
-                <h3 className="font-semibold text-slate-800 mb-4">آخر النشاطات</h3>
-                <div className="divide-y divide-slate-100">
-                    {recentMessages.map((msg) => (
-                        <div key={msg.id} className="flex items-center justify-between py-3">
-                            <div className="flex items-center gap-3">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${msg.type === 'incoming' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}>
-                                    {msg.type === 'incoming' ? '📥' : '📤'}
-                                </div>
-                                <div>
-                                    <p className="font-medium text-slate-800">{msg.customer}</p>
-                                    <p className="text-sm text-slate-500 truncate max-w-[300px]">{msg.message}</p>
-                                </div>
-                            </div>
-                            <span className="text-xs text-slate-400">{msg.time}</span>
-                        </div>
-                    ))}
+            {/* Summary Cards */}
+            <div className="grid md:grid-cols-3 gap-4">
+                <div className="card p-6 text-center bg-gradient-to-br from-blue-50 to-blue-100">
+                    <div className="text-4xl mb-2">📊</div>
+                    <p className="text-2xl font-bold text-blue-700">1,130</p>
+                    <p className="text-sm text-blue-600">إجمالي الرسائل هذا الأسبوع</p>
+                </div>
+                <div className="card p-6 text-center bg-gradient-to-br from-green-50 to-green-100">
+                    <div className="text-4xl mb-2">✅</div>
+                    <p className="text-2xl font-bold text-green-700">94%</p>
+                    <p className="text-sm text-green-600">معدل الرد على الرسائل</p>
+                </div>
+                <div className="card p-6 text-center bg-gradient-to-br from-purple-50 to-purple-100">
+                    <div className="text-4xl mb-2">⏱️</div>
+                    <p className="text-2xl font-bold text-purple-700">2.3 دقيقة</p>
+                    <p className="text-sm text-purple-600">متوسط وقت الرد</p>
                 </div>
             </div>
         </div>
