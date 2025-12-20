@@ -102,6 +102,17 @@ app.post("/whatsapp/init/:clientId", async (req, res) => {
   }
 });
 
+// Connect (alias for init with default clientId)
+app.post("/whatsapp/connect", async (req, res) => {
+  const clientId = req.body.clientId || "default";
+  try {
+    await manager.connect(clientId);
+    res.json({ ok: true, message: "Connection started" });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, message: err?.message || "Failed to connect" });
+  }
+});
+
 // Destroy session (logout)
 app.post("/whatsapp/logout/:clientId", async (req, res) => {
   const clientId = req.params.clientId || "default";
