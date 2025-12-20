@@ -165,6 +165,33 @@ app.post("/messages/send", async (req, res) => {
   }
 });
 
+// Get messages for a chat
+app.get("/whatsapp/messages/:clientId/:chatId", async (req, res) => {
+  const clientId = req.params.clientId || "default";
+  const chatId = req.params.chatId;
+
+  if (!chatId) {
+    return res.status(400).json({ message: "chatId required" });
+  }
+
+  try {
+    const client = manager.ensureReadyClient(clientId);
+    const chat = await client.getChatById(chatId);
+    const messages = await chat.fetchMessages({ limit: 50 });
+    const simplified = messages.map((m) => ({
+      id: m.id._serialized,
+      body: m.body,
+      fromMe: m.fromMe,
+      timestamp: m.timestamp,
+      type: m.type,
+    })).reverse();
+    res.json({ messages: simplified });
+  } catch (err: any) {
+    console.error(`[${clientId}] Get messages error:`, err);
+    res.status(400).json({ message: err?.message || "Failed to get messages" });
+  }
+});
+
 // 404
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
