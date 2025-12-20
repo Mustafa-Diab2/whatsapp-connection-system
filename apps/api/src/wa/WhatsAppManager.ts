@@ -362,22 +362,34 @@ export class WhatsAppManager {
     let client = this.clients.get(clientId);
 
     if (!client) {
-      // Detect Chromium path automatically
+      // Detect Chromium path
       const chromiumPaths = [
         process.env.PUPPETEER_EXECUTABLE_PATH,
+        process.env.CHROME_BIN,
+        "/nix/store/*/bin/chromium",
         "/usr/bin/chromium",
         "/usr/bin/chromium-browser",
         "/usr/bin/google-chrome",
         "/usr/bin/google-chrome-stable",
+        "chromium",
       ].filter(Boolean);
+
+      console.log(`[${clientId}] Looking for Chromium...`);
+      console.log(`[${clientId}] PUPPETEER_EXECUTABLE_PATH:`, process.env.PUPPETEER_EXECUTABLE_PATH);
 
       let executablePath: string | undefined;
       for (const p of chromiumPaths) {
         if (p && fs.existsSync(p)) {
           executablePath = p;
-          console.log(`[${clientId}] Using Chromium at: ${p}`);
+          console.log(`[${clientId}] Found Chromium at: ${p}`);
           break;
+        } else {
+          console.log(`[${clientId}] Not found: ${p}`);
         }
+      }
+
+      if (!executablePath) {
+        console.log(`[${clientId}] No Chromium found, using default puppeteer`);
       }
 
       const puppeteerOptions: any = {
@@ -408,6 +420,7 @@ export class WhatsAppManager {
         puppeteerOptions.executablePath = executablePath;
       }
 
+      console.log(`[${clientId}] Creating WhatsApp client...`);
       client = new Client({
         authStrategy: new LocalAuth({ clientId }),
         puppeteer: puppeteerOptions,
