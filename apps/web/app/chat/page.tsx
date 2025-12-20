@@ -6,7 +6,7 @@ import { io, Socket } from "socket.io-client";
 type Status = "idle" | "initializing" | "waiting_qr" | "ready" | "error" | "disconnected";
 
 type ChatItem = { id: string; name: string; isGroup: boolean; unreadCount: number };
-type MessageItem = { id: string; body: string; fromMe: boolean; timestamp: number; author?: string; type?: string };
+type MessageItem = { id: string; body: string; fromMe: boolean; timestamp: number; author?: string; type?: string; from?: string; to?: string };
 
 const clientId = "default";
 const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -41,6 +41,18 @@ export default function ChatPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [messageInput, setMessageInput] = useState("");
   const socketRef = useRef<Socket | null>(null);
+  const selectedChatRef = useRef<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Keep ref in sync with state for socket callback
+  useEffect(() => {
+    selectedChatRef.current = selectedChat;
+  }, [selectedChat]);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const statusBadge = useMemo(() => statusLabels[status], [status]);
 
@@ -64,20 +76,36 @@ export default function ChatPage() {
     });
 
     socket.on("wa:message", (data: any) => {
-      console.log("New message:", data);
+      console.log("New message received:", data);
       if (data.message) {
-        // Add new message to the list if it belongs to selected chat
-        setMessages((prev) => {
-          // Avoid duplicates
-          if (prev.some((m) => m.id === data.message.id)) return prev;
-          return [...prev, {
-            id: data.message.id,
-            body: data.message.body,
-            fromMe: data.message.fromMe,
-            timestamp: data.message.timestamp,
-            type: data.message.type,
-          }];
-        });
+        const msg = data.message;
+        const currentChat = selectedChatRef.current;
+
+        // Check if message belongs to currently viewed chat
+        const belongsToChat = currentChat && (
+          msg.from === currentChat ||
+          msg.to === currentChat ||
+          (msg.from && currentChat.includes(msg.from.split('@')[0])) ||
+          (msg.from && msg.from.includes(currentChat.split('@')[0]))
+        );
+
+        console.log("Current chat:", currentChat, "Message from:", msg.from, "Belongs:", belongsToChat);
+
+        if (belongsToChat) {
+          setMessages((prev) => {
+            // Avoid duplicates
+            if (prev.some((m) => m.id === msg.id)) return prev;
+            return [...prev, {
+              id: msg.id,
+              body: msg.body,
+              fromMe: msg.fromMe,
+              timestamp: msg.timestamp,
+              type: msg.type,
+              from: msg.from,
+              to: msg.to,
+            }];
+          });
+        }
       }
     });
 
@@ -164,13 +192,13 @@ export default function ChatPage() {
         throw new Error(data.message || "تعذر إرسال الرسالة");
       }
       setMessageInput("");
-      await fetchMessages(selectedChat);
+      // Don't refetch - wait for socket event or add optimistically
     } catch (err: any) {
       setErrorMsg(err?.message || "فشل إرسال الرسالة");
     } finally {
       setSending(false);
     }
-  }, [selectedChat, messageInput, fetchMessages]);
+  }, [selectedChat, messageInput]);
 
   return (
     <div className="space-y-6">
@@ -211,8 +239,7 @@ export default function ChatPage() {
                 return (
                   <li
                     key={chat.id}
-                    className={`cursor-pointer px-4 py-3 transition ${active ? "bg-blue-50" : "hover:bg-slate-50"
-                      }`}
+                    className={`cursor-pointer px-4 py-3 transition ${active ? "bg-blue-50" : "hover:bg-slate-50"}`}
                     onClick={() => setSelectedChat(chat.id)}
                   >
                     <div className="flex items-center justify-between">
@@ -235,9 +262,9 @@ export default function ChatPage() {
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
             <div>
               <p className="text-sm font-semibold text-slate-700">
-                {selectedChat ? `المحادثة: ${selectedChat}` : "اختر محادثة"}
+                {selectedChat ? `المحادثة: ${selectedChat.split('@')[0]}` : "اختر محادثة"}
               </p>
-              <p className="text-xs text-slate-500">عرض آخر 50 رسالة</p>
+              <p className="text-xs text-slate-500">الرسائل تظهر تلقائياً</p>
             </div>
             <button
               className="btn bg-slate-100 px-3 py-2 text-sm text-slate-700 hover:bg-slate-200"
@@ -257,8 +284,7 @@ export default function ChatPage() {
               {messages.map((msg) => (
                 <div
                   key={msg.id}
-                  className={`max-w-[80%] rounded-xl px-4 py-2 text-sm shadow ${msg.fromMe ? "ml-auto bg-brand-blue text-white" : "mr-auto bg-white text-slate-800"
-                    }`}
+                  className={`max-w-[80%] rounded-xl px-4 py-2 text-sm shadow ${msg.fromMe ? "ml-auto bg-brand-blue text-white" : "mr-auto bg-white text-slate-800"}`}
                 >
                   <p>{msg.body}</p>
                   <div className="mt-1 text-[11px] opacity-80">
@@ -267,6 +293,7 @@ export default function ChatPage() {
                   </div>
                 </div>
               ))}
+              <div ref={messagesEndRef} />
             </div>
           </div>
 
@@ -278,6 +305,7 @@ export default function ChatPage() {
                 placeholder="اكتب رسالتك..."
                 value={messageInput}
                 onChange={(e) => setMessageInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
                 disabled={!selectedChat || status !== "ready"}
               />
               <button
