@@ -165,6 +165,19 @@ app.post("/messages/send", async (req, res) => {
   }
 });
 
+// Bot Configuration
+app.get("/bot/config/:clientId", (req, res) => {
+  const clientId = req.params.clientId || "default";
+  const config = manager.getBotConfig(clientId);
+  res.json(config);
+});
+
+app.post("/bot/config", (req, res) => {
+  const { clientId = "default", systemPrompt, apiKey, enabled } = req.body;
+  manager.setBotConfig(clientId, { systemPrompt, apiKey, enabled });
+  res.json({ ok: true });
+});
+
 // Get messages for a chat
 app.get("/whatsapp/messages/:clientId/:chatId", async (req, res) => {
   const clientId = req.params.clientId || "default";

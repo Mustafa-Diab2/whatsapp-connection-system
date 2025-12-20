@@ -265,6 +265,11 @@ export class WhatsAppManager {
       };
 
       await this.sendWebhook(payload);
+
+      // Add delay to prevent immediate reply overlap
+      setTimeout(() => {
+        void this.handleBotReply(clientId, message);
+      }, 1000);
     });
 
     // Handle message_create for sent messages (real-time)
@@ -457,6 +462,88 @@ export class WhatsAppManager {
 
   getClient(clientId: string): Client | undefined {
     return this.clients.get(clientId);
+  }
+
+  private botConfigs = new Map<string, { systemPrompt: string; apiKey: string; enabled: boolean }>();
+
+  setBotConfig(clientId: string, config: { systemPrompt: string; apiKey: string; enabled: boolean }) {
+    this.botConfigs.set(clientId, config);
+    console.log(`[${clientId}] Bot config updated: ${config.enabled ? "Enabled" : "Disabled"}`);
+  }
+
+  getBotConfig(clientId: string) {
+    return this.botConfigs.get(clientId) || { systemPrompt: "", apiKey: "", enabled: false };
+  }
+
+  private async generateGeminiReply(apiKey: string, systemPrompt: string, userMessage: string): Promise<string> {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+      const payload = {
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: `System Prompt: ${systemPrompt}\n\nUser Message: ${userMessage}` }]
+          }
+        ]
+      };
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini API Error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    } catch (err) {
+      console.error("Gemini generation error:", err);
+      return "";
+    }
+  }
+
+  private async handleBotReply(clientId: string, message: Message) {
+    const config = this.botConfigs.get(clientId);
+    if (!config || !config.enabled || !config.apiKey) return;
+
+    // Ignore status updates or media for now, focus on text
+    if (message.type !== "chat") return;
+
+    // Simulate typing
+    const client = this.clients.get(clientId);
+    const chat = await message.getChat();
+    await chat.sendStateTyping();
+
+    try {
+      const replyText = await this.generateGeminiReply(config.apiKey, config.systemPrompt, message.body);
+
+      if (replyText) {
+        await chat.clearState();
+        const replyMsg = await message.reply(replyText);
+        console.log(`[${clientId}] Bot replied to ${message.from}`);
+
+        // Emit bot reply to frontend
+        this.io.to(clientId).emit("wa:message", {
+          clientId,
+          message: {
+            id: replyMsg.id._serialized,
+            from: replyMsg.from,
+            to: replyMsg.to,
+            body: replyMsg.body,
+            timestamp: replyMsg.timestamp,
+            fromMe: true,
+            type: replyMsg.type,
+          }
+        });
+      }
+    } catch (err) {
+      console.error(`[${clientId}] Bot failed to reply:`, err);
+    } finally {
+      await chat.clearState();
+    }
   }
 
   ensureReadyClient(clientId: string): Client {
