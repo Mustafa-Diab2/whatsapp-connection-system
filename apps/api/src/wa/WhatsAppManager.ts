@@ -233,10 +233,27 @@ export class WhatsAppManager {
       });
     });
 
-    // Handle incoming messages for webhook
+    // Handle incoming messages for webhook and real-time
     client.on("message", async (message: Message) => {
       console.log(`[${clientId}] Message received from ${message.from}`);
 
+      const messageData = {
+        id: message.id._serialized,
+        from: message.from,
+        to: message.to,
+        body: message.body,
+        timestamp: message.timestamp,
+        fromMe: message.fromMe,
+        type: message.type,
+      };
+
+      // Emit to socket for real-time updates
+      this.io.to(clientId).emit("wa:message", {
+        clientId,
+        message: messageData,
+      });
+
+      // Send webhook
       const payload: WebhookPayload = {
         event: "message",
         clientId,
@@ -248,6 +265,29 @@ export class WhatsAppManager {
       };
 
       await this.sendWebhook(payload);
+    });
+
+    // Handle message_create for sent messages (real-time)
+    client.on("message_create", async (message: Message) => {
+      if (message.fromMe) {
+        console.log(`[${clientId}] Message sent to ${message.to}`);
+
+        const messageData = {
+          id: message.id._serialized,
+          from: message.from,
+          to: message.to,
+          body: message.body,
+          timestamp: message.timestamp,
+          fromMe: message.fromMe,
+          type: message.type,
+        };
+
+        // Emit to socket for real-time updates
+        this.io.to(clientId).emit("wa:message", {
+          clientId,
+          message: messageData,
+        });
+      }
     });
   }
 
