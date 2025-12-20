@@ -17,12 +17,12 @@ const menuItems: MenuItem[] = [
   { label: "Bot + Survey Bot", labelAr: "البوت + استطلاع", href: "/bot", icon: "🤖" },
   { label: "Configuration", labelAr: "الإعدادات", href: "/settings", icon: "⚙️" },
   { label: "Mini CRM", labelAr: "إدارة العملاء", href: "/crm", icon: "👥" },
-  { label: "Setting", labelAr: "الضبط", href: "#", icon: "🔧" },
-  { label: "Report", labelAr: "التقارير", href: "#", icon: "📈" },
-  { label: "AI / AI Agent", labelAr: "الذكاء الاصطناعي", href: "#", icon: "🧠" },
-  { label: "Threads", labelAr: "المواضيع", href: "#", icon: "📝" },
-  { label: "Add-ons", labelAr: "الإضافات", href: "#", icon: "🔌" },
-  { label: "Contacts", labelAr: "جهات الاتصال", href: "#", icon: "📞" }
+  { label: "Setting", labelAr: "الضبط", href: "/tuning", icon: "🔧" },
+  { label: "Report", labelAr: "التقارير", href: "/reports", icon: "📈" },
+  { label: "AI / AI Agent", labelAr: "الذكاء الاصطناعي", href: "/ai", icon: "🧠" },
+  { label: "Threads", labelAr: "المواضيع", href: "/threads", icon: "📝" },
+  { label: "Add-ons", labelAr: "الإضافات", href: "/addons", icon: "🔌" },
+  { label: "Contacts", labelAr: "جهات الاتصال", href: "/contacts", icon: "📞" }
 ];
 
 const Sidebar = () => {
