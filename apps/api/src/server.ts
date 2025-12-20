@@ -1,110 +1,68 @@
 import http from "http";
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
-import { Server } from "socket.io";
 
-dotenv.config();
+// Use ONLY Railway's PORT - no fallback
+const PORT = process.env.PORT || 3001;
 
-const PORT = Number(process.env.PORT) || 3001;
-const NODE_ENV = process.env.NODE_ENV || "development";
+console.log("=== SERVER STARTING ===");
+console.log("PORT:", PORT);
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("========================");
 
 const app = express();
 
-// CORS - Allow ALL
-app.use(cors({
-  origin: "*",
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-}));
+app.use(cors());
+app.use(express.json());
 
-app.use(express.json({ limit: "10mb" }));
-
-const httpServer = http.createServer(app);
-const io = new Server(httpServer, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
+// Routes
+app.get("/", (req, res) => {
+  res.json({ message: "Server is running!", port: PORT });
 });
 
-// Socket.io
-io.on("connection", (socket) => {
-  console.log(`Socket connected: ${socket.id}`);
-  socket.on("disconnect", () => {
-    console.log(`Socket disconnected: ${socket.id}`);
-  });
+app.get("/health", (req, res) => {
+  res.json({ ok: true, port: PORT, timestamp: new Date().toISOString() });
 });
 
-// ========== ROUTES ==========
-
-app.get("/health", (_req, res) => {
-  res.json({ ok: true, timestamp: new Date().toISOString() });
-});
-
-app.get("/debug", (_req, res) => {
+app.get("/debug", (req, res) => {
   res.json({
-    status: "running",
-    node: process.version,
-    env: NODE_ENV,
+    status: "ok",
     port: PORT,
+    env: process.env.NODE_ENV,
+    node: process.version,
     uptime: process.uptime(),
-    memory: process.memoryUsage(),
   });
 });
 
-// WhatsApp status - MOCK for now
+// Simple test endpoints
 app.get("/whatsapp/status/:clientId", (req, res) => {
-  res.json({
-    status: "idle",
-    message: "Server is running - WhatsApp not initialized yet",
-    clientId: req.params.clientId
-  });
+  res.json({ status: "idle", clientId: req.params.clientId });
 });
 
-// WhatsApp connect - MOCK
 app.post("/whatsapp/connect", (req, res) => {
-  res.json({
-    status: "connecting",
-    message: "Server is running - This is a test response",
-    clientId: req.body?.clientId || "default"
-  });
+  res.json({ status: "test", message: "This is test mode" });
 });
 
-// WhatsApp QR - MOCK
-app.get("/whatsapp/qr/:clientId", (req, res) => {
-  res.json({ qrDataUrl: null, message: "WhatsApp not initialized" });
-});
-
-// Session reset - MOCK
 app.delete("/whatsapp/session/:clientId", (req, res) => {
-  res.json({ status: "idle", message: "Session reset mock" });
+  res.json({ status: "idle" });
 });
 
-// 404
-app.use((_req, res) => {
-  res.status(404).json({ error: "Not found" });
+// Start server
+const server = http.createServer(app);
+
+server.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
+  console.log("Server ready to accept connections");
 });
 
-// ========== START ==========
-
-httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`
-╔═══════════════════════════════════════════════════════════╗
-║           TEST SERVER STARTED                             ║
-╠═══════════════════════════════════════════════════════════╣
-║  URL: http://0.0.0.0:${PORT}                                 ║
-║  Environment: ${NODE_ENV}                                ║
-║  This is a TEST version without WhatsApp                  ║
-╚═══════════════════════════════════════════════════════════╝
-  `);
+server.on("error", (err) => {
+  console.error("Server error:", err);
 });
 
 process.on("uncaughtException", (err) => {
-  console.error("Uncaught Exception:", err);
+  console.error("Uncaught exception:", err);
 });
 
 process.on("unhandledRejection", (reason) => {
-  console.error("Unhandled Rejection:", reason);
+  console.error("Unhandled rejection:", reason);
 });
