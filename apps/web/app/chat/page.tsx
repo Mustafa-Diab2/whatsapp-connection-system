@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { io, Socket } from "socket.io-client";
 
 type Status = "idle" | "initializing" | "waiting_qr" | "ready" | "error" | "disconnected";
 
@@ -9,6 +10,7 @@ type MessageItem = { id: string; body: string; fromMe: boolean; timestamp: numbe
 
 const clientId = "default";
 const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || apiBase;
 
 const statusLabels: Record<Status, string> = {
   idle: "غير متصل",
@@ -38,8 +40,51 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [messageInput, setMessageInput] = useState("");
+  const socketRef = useRef<Socket | null>(null);
 
   const statusBadge = useMemo(() => statusLabels[status], [status]);
+
+  // Socket.io connection for real-time updates
+  useEffect(() => {
+    const socket = io(socketUrl, {
+      transports: ["websocket", "polling"],
+    });
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("Socket connected:", socket.id);
+      socket.emit("wa:subscribe", { clientId });
+    });
+
+    socket.on("wa:state", (data: any) => {
+      console.log("State update:", data);
+      if (data.status) {
+        setStatus(data.status as Status);
+      }
+    });
+
+    socket.on("wa:message", (data: any) => {
+      console.log("New message:", data);
+      if (data.message) {
+        // Add new message to the list if it belongs to selected chat
+        setMessages((prev) => {
+          // Avoid duplicates
+          if (prev.some((m) => m.id === data.message.id)) return prev;
+          return [...prev, {
+            id: data.message.id,
+            body: data.message.body,
+            fromMe: data.message.fromMe,
+            timestamp: data.message.timestamp,
+            type: data.message.type,
+          }];
+        });
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -166,9 +211,8 @@ export default function ChatPage() {
                 return (
                   <li
                     key={chat.id}
-                    className={`cursor-pointer px-4 py-3 transition ${
-                      active ? "bg-blue-50" : "hover:bg-slate-50"
-                    }`}
+                    className={`cursor-pointer px-4 py-3 transition ${active ? "bg-blue-50" : "hover:bg-slate-50"
+                      }`}
                     onClick={() => setSelectedChat(chat.id)}
                   >
                     <div className="flex items-center justify-between">
@@ -213,9 +257,8 @@ export default function ChatPage() {
               {messages.map((msg) => (
                 <div
                   key={msg.id}
-                  className={`max-w-[80%] rounded-xl px-4 py-2 text-sm shadow ${
-                    msg.fromMe ? "ml-auto bg-brand-blue text-white" : "mr-auto bg-white text-slate-800"
-                  }`}
+                  className={`max-w-[80%] rounded-xl px-4 py-2 text-sm shadow ${msg.fromMe ? "ml-auto bg-brand-blue text-white" : "mr-auto bg-white text-slate-800"
+                    }`}
                 >
                   <p>{msg.body}</p>
                   <div className="mt-1 text-[11px] opacity-80">
