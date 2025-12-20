@@ -17,7 +17,6 @@ const menuItems: MenuItem[] = [
   { label: "Bot + Survey Bot", labelAr: "البوت + استطلاع", href: "/bot", icon: "🤖" },
   { label: "Configuration", labelAr: "الإعدادات", href: "#", icon: "⚙️" },
   { label: "Mini CRM", labelAr: "إدارة العملاء", href: "#", icon: "👥" },
-  { label: "Drivers", labelAr: "السائقون", href: "#", icon: "🚗" },
   { label: "Setting", labelAr: "الضبط", href: "#", icon: "🔧" },
   { label: "Report", labelAr: "التقارير", href: "#", icon: "📈" },
   { label: "AI / AI Agent", labelAr: "الذكاء الاصطناعي", href: "#", icon: "🧠" },
@@ -43,8 +42,8 @@ const Sidebar = () => {
                 key={item.label}
                 href={item.href}
                 className={`flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 ${isActive
-                    ? "bg-brand-green text-white shadow-md"
-                    : "bg-slate-50 text-slate-700 hover:bg-slate-100 hover:shadow-sm"
+                  ? "bg-brand-green text-white shadow-md"
+                  : "bg-slate-50 text-slate-700 hover:bg-slate-100 hover:shadow-sm"
                   }`}
               >
                 <div className="flex items-center gap-3">
@@ -52,8 +51,8 @@ const Sidebar = () => {
                   <span>{item.labelAr}</span>
                 </div>
                 <span className={`text-xs px-2 py-0.5 rounded-md ${isActive
-                    ? "bg-white/20"
-                    : "bg-slate-200 text-slate-600"
+                  ? "bg-white/20"
+                  : "bg-slate-200 text-slate-600"
                   }`}>
                   {isActive ? "نشط" : "انتقل"}
                 </span>
