@@ -362,35 +362,7 @@ export class WhatsAppManager {
     let client = this.clients.get(clientId);
 
     if (!client) {
-      // Detect Chromium path
-      const chromiumPaths = [
-        process.env.PUPPETEER_EXECUTABLE_PATH,
-        process.env.CHROME_BIN,
-        "/nix/store/*/bin/chromium",
-        "/usr/bin/chromium",
-        "/usr/bin/chromium-browser",
-        "/usr/bin/google-chrome",
-        "/usr/bin/google-chrome-stable",
-        "chromium",
-      ].filter(Boolean);
-
-      console.log(`[${clientId}] Looking for Chromium...`);
-      console.log(`[${clientId}] PUPPETEER_EXECUTABLE_PATH:`, process.env.PUPPETEER_EXECUTABLE_PATH);
-
-      let executablePath: string | undefined;
-      for (const p of chromiumPaths) {
-        if (p && fs.existsSync(p)) {
-          executablePath = p;
-          console.log(`[${clientId}] Found Chromium at: ${p}`);
-          break;
-        } else {
-          console.log(`[${clientId}] Not found: ${p}`);
-        }
-      }
-
-      if (!executablePath) {
-        console.log(`[${clientId}] No Chromium found, using default puppeteer`);
-      }
+      console.log(`[${clientId}] Creating new WhatsApp client...`);
 
       const puppeteerOptions: any = {
         headless: true,
@@ -403,24 +375,17 @@ export class WhatsAppManager {
           "--no-zygote",
           "--single-process",
           "--disable-gpu",
-          "--disable-software-rasterizer",
-          "--disable-extensions",
-          "--disable-background-networking",
-          "--disable-default-apps",
-          "--disable-sync",
-          "--disable-translate",
-          "--metrics-recording-only",
-          "--mute-audio",
-          "--no-default-browser-check",
-          "--safebrowsing-disable-auto-update",
         ],
       };
 
-      if (executablePath) {
-        puppeteerOptions.executablePath = executablePath;
+      // Only use custom path if explicitly set
+      if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+        puppeteerOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+        console.log(`[${clientId}] Using custom Chromium: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
+      } else {
+        console.log(`[${clientId}] Using Puppeteer bundled Chromium`);
       }
 
-      console.log(`[${clientId}] Creating WhatsApp client...`);
       client = new Client({
         authStrategy: new LocalAuth({ clientId }),
         puppeteer: puppeteerOptions,
