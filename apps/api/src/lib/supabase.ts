@@ -328,6 +328,26 @@ export const db = {
         if (error) throw error;
         return data;
     },
+
+    // ========== AI AGENTS ==========
+    async getAgents() {
+        const { data, error } = await supabase
+            .from('ai_agents')
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    },
+
+    async createAgent(agent: { name: string; description?: string; system_prompt: string; model?: string }) {
+        const { data, error } = await supabase
+            .from('ai_agents')
+            .insert(agent)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
 };
 
 export default supabase;

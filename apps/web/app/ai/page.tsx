@@ -9,10 +9,20 @@ export default function AIPage() {
     const [activeTab, setActiveTab] = useState<"agents" | "training" | "analytics">("agents");
     const [showModal, setShowModal] = useState(false);
 
+    // Agents List State
+    const [agents, setAgents] = useState<any[]>([]);
+
     // Real Bot State
     const [enabled, setEnabled] = useState(false);
     const [config, setConfig] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+
+    // Form State
+    const [agentForm, setAgentForm] = useState({
+        name: "",
+        description: "",
+        systemPrompt: "",
+    });
 
     const fetchConfig = async () => {
         try {
@@ -24,48 +34,92 @@ export default function AIPage() {
             }
         } catch (err) {
             console.error(err);
-        } finally {
-            setLoading(false);
+        }
+    };
+
+    const fetchAgents = async () => {
+        try {
+            const res = await fetch(`${apiBase}/api/agents`);
+            if (res.ok) {
+                const data = await res.json();
+                setAgents(data);
+            }
+        } catch (err) {
+            console.error("Failed to fetch agents", err);
         }
     };
 
     useEffect(() => {
         fetchConfig();
+        fetchAgents();
+        setLoading(false);
     }, []);
 
-    const toggleBot = async () => {
-        if (!config) return;
-        const newStatus = !enabled;
+    const toggleBot = async (forcedStatus?: boolean) => {
+        if (!config && !forcedStatus) return;
+        const newStatus = forcedStatus !== undefined ? forcedStatus : !enabled;
         try {
-            const res = await fetch(`${apiBase}/bot/config`, {
+            await fetch(`${apiBase}/bot/config`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     clientId,
-                    systemPrompt: config.systemPrompt || config.system_prompt || "",
-                    apiKey: config.apiKey || config.api_key || "",
+                    systemPrompt: config?.systemPrompt || config?.system_prompt || "",
+                    apiKey: config?.apiKey || config?.api_key || "",
                     enabled: newStatus
                 })
             });
-            if (res.ok) {
-                setEnabled(newStatus);
-                fetchConfig(); // Refresh
-            }
+            setEnabled(newStatus);
+            fetchConfig(); // Refresh
         } catch (err) {
             console.error("Failed to toggle bot", err);
         }
     };
 
-    // Derived agents list for UI
-    const agents = [
-        {
-            id: 1,
-            name: "المساعد الرئيسي (Perplexity)",
-            status: enabled ? "active" : "inactive",
-            messages: 479,
-            rating: 4.8
-        },
-    ];
+    const handleCreateAgent = async () => {
+        if (!agentForm.name || !agentForm.systemPrompt) return;
+
+        try {
+            const res = await fetch(`${apiBase}/api/agents`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(agentForm)
+            });
+
+            if (res.ok) {
+                setShowModal(false);
+                setAgentForm({ name: "", description: "", systemPrompt: "" });
+                fetchAgents();
+            }
+        } catch (err) {
+            console.error("Failed to create agent", err);
+        }
+    };
+
+    const activateAgent = async (agent: any) => {
+        // Activate this agent's persona on the main bot
+        if (confirm(`هل أنت متأكد من تفعيل الوكيل "${agent.name}"؟ سيتم تحديث إعدادات البوت الحالية.`)) {
+            try {
+                // 1. Update bot config with new prompt
+                await fetch(`${apiBase}/bot/config`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        clientId,
+                        systemPrompt: agent.system_prompt, // Load persona
+                        apiKey: config?.apiKey || config?.api_key || "", // Keep key
+                        enabled: true // Auto enable
+                    })
+                });
+
+                // 2. Refresh UI
+                await fetchConfig();
+                alert(`تم تفعيل الوكيل ${agent.name} بنجاح!`);
+            } catch (err) {
+                console.error("Failed to activate agent", err);
+            }
+        }
+    };
 
     return (
         <div className="space-y-6">
@@ -102,30 +156,53 @@ export default function AIPage() {
             {/* Agents Tab */}
             {activeTab === "agents" && (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {/* Main Active Bot Card */}
+                    <div className="card p-6 space-y-4 border-2 border-brand-blue/20 bg-blue-50/50 relative overflow-hidden">
+                        <div className="absolute top-0 left-0 bg-brand-blue text-white text-xs px-3 py-1 rounded-br-xl">
+                            البوت الحالي
+                        </div>
+                        <div className="flex items-center justify-between mt-2">
+                            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center text-white text-xl">
+                                🤖
+                            </div>
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${enabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                {enabled ? 'متصل' : 'موقف'}
+                            </span>
+                        </div>
+                        <div>
+                            <h3 className="font-semibold text-slate-800">المساعد النشط</h3>
+                            <p className="text-xs text-slate-500 line-clamp-2 mt-1">
+                                {config?.systemPrompt || config?.system_prompt || "لا يوجد وصف"}
+                            </p>
+                        </div>
+                        <div className="flex gap-2 pt-2">
+                            <button
+                                onClick={() => toggleBot()}
+                                className={`flex-1 btn py-2 text-white transition ${enabled ? 'bg-red-500 hover:bg-red-600' : 'bg-brand-green hover:bg-green-600'}`}
+                            >
+                                {enabled ? 'إيقاف البوت' : 'تفعيل البوت'}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Agents List from DB */}
                     {agents.map((agent) => (
                         <div key={agent.id} className="card p-6 space-y-4">
                             <div className="flex items-center justify-between">
                                 <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center text-white text-xl">
-                                    🤖
+                                    👤
                                 </div>
-                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${agent.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
-                                    {agent.status === 'active' ? 'نشط' : 'غير نشط'}
-                                </span>
                             </div>
                             <div>
                                 <h3 className="font-semibold text-slate-800">{agent.name}</h3>
-                                <div className="flex items-center gap-4 mt-2 text-sm text-slate-500">
-                                    <span>💬 {agent.messages} رسالة</span>
-                                    <span>⭐ {agent.rating}</span>
-                                </div>
+                                <p className="text-sm text-slate-500 mt-1 line-clamp-2">{agent.description || agent.system_prompt}</p>
                             </div>
                             <div className="flex gap-2 pt-2">
-                                <button className="flex-1 btn bg-slate-100 py-2 text-slate-700 hover:bg-slate-200">تعديل</button>
                                 <button
-                                    onClick={toggleBot}
-                                    className={`flex-1 btn py-2 text-white transition ${enabled ? 'bg-red-500 hover:bg-red-600' : 'bg-brand-green hover:bg-green-600'}`}
+                                    onClick={() => activateAgent(agent)}
+                                    className="flex-1 btn bg-slate-100 py-2 text-slate-700 hover:bg-slate-200"
                                 >
-                                    {enabled ? 'إيقاف' : 'تفعيل'}
+                                    تفعيل هذا الوكيل
                                 </button>
                             </div>
                         </div>
@@ -137,25 +214,8 @@ export default function AIPage() {
             {activeTab === "training" && (
                 <div className="card p-6 space-y-6">
                     <h3 className="font-semibold text-slate-800">تدريب الوكيل</h3>
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">اختر الوكيل</label>
-                            <select className="w-full p-3 rounded-xl border border-slate-200 outline-none">
-                                {agents.map((a) => (
-                                    <option key={a.id} value={a.id}>{a.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">أضف بيانات تدريب</label>
-                            <textarea
-                                className="w-full p-4 rounded-xl border border-slate-200 min-h-[200px] outline-none"
-                                placeholder="أدخل أمثلة للأسئلة والأجوبة لتحسين أداء الوكيل..."
-                            />
-                        </div>
-                        <button className="btn bg-brand-blue px-8 py-3 text-white hover:bg-blue-700">
-                            بدء التدريب
-                        </button>
+                    <div className="bg-yellow-50 p-4 rounded-xl text-yellow-800 text-sm">
+                        هذه الميزة قيد التطوير. قريباً ستتمكن من رفع ملفات PDF لتدريب البوت.
                     </div>
                 </div>
             )}
@@ -164,30 +224,62 @@ export default function AIPage() {
             {activeTab === "analytics" && (
                 <div className="grid md:grid-cols-3 gap-4">
                     <div className="card p-6 text-center">
-                        <p className="text-4xl font-bold text-brand-blue">479</p>
+                        <p className="text-4xl font-bold text-brand-blue">--</p>
                         <p className="text-slate-500 mt-1">إجمالي المحادثات</p>
                     </div>
-                    <div className="card p-6 text-center">
-                        <p className="text-4xl font-bold text-green-600">94%</p>
-                        <p className="text-slate-500 mt-1">معدل الرضا</p>
-                    </div>
-                    <div className="card p-6 text-center">
-                        <p className="text-4xl font-bold text-purple-600">1.2s</p>
-                        <p className="text-slate-500 mt-1">متوسط وقت الرد</p>
-                    </div>
+                    {/* Placeholders */}
                 </div>
             )}
 
-            {/* Modal */}
+            {/* Create Agent Modal */}
             {showModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl w-full max-w-lg p-6 space-y-4">
                         <h3 className="text-xl font-bold text-slate-800">إنشاء وكيل جديد</h3>
-                        <p className="text-sm text-yellow-600 bg-yellow-50 p-3 rounded-lg">
-                            ملاحظة: هذه الميزة قيد التطوير. حالياً يمكنك استخدام "المساعد الرئيسي" فقط.
-                        </p>
-                        <div className="flex gap-3">
-                            <button className="flex-1 btn bg-slate-100 py-3 text-slate-700 hover:bg-slate-200" onClick={() => setShowModal(false)}>إغلاق</button>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-sm font-medium text-slate-700">اسم الوكيل</label>
+                                <input
+                                    type="text"
+                                    placeholder="مثال: موظف المبيعات"
+                                    className="w-full p-3 mt-1 rounded-xl border border-slate-200 outline-none focus:border-brand-blue"
+                                    value={agentForm.name}
+                                    onChange={(e) => setAgentForm({ ...agentForm, name: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-slate-700">الوصف (اختياري)</label>
+                                <input
+                                    type="text"
+                                    placeholder="وصف قصير للوكيل"
+                                    className="w-full p-3 mt-1 rounded-xl border border-slate-200 outline-none focus:border-brand-blue"
+                                    value={agentForm.description}
+                                    onChange={(e) => setAgentForm({ ...agentForm, description: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-slate-700">تعليمات البوت (System Prompt)</label>
+                                <textarea
+                                    placeholder="أنت مساعد ذكي..."
+                                    className="w-full p-3 mt-1 rounded-xl border border-slate-200 min-h-[120px] outline-none focus:border-brand-blue"
+                                    value={agentForm.systemPrompt}
+                                    onChange={(e) => setAgentForm({ ...agentForm, systemPrompt: e.target.value })}
+                                />
+                            </div>
+                        </div>
+                        <div className="flex gap-3 pt-2">
+                            <button
+                                onClick={handleCreateAgent}
+                                className="flex-1 btn bg-brand-blue py-3 text-white hover:bg-blue-700"
+                            >
+                                حفظ الوكيل
+                            </button>
+                            <button
+                                className="flex-1 btn bg-slate-100 py-3 text-slate-700 hover:bg-slate-200"
+                                onClick={() => setShowModal(false)}
+                            >
+                                إلغاء
+                            </button>
                         </div>
                     </div>
                 </div>

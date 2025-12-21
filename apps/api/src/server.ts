@@ -508,6 +508,33 @@ app.get("/api/messages/conversation/:conversationId", async (req, res) => {
   }
 });
 
+// ========== AI AGENTS API ==========
+app.get("/api/agents", async (req, res) => {
+  try {
+    const agents = await db.getAgents();
+    res.json(agents);
+  } catch (err: any) {
+    console.error("Failed to get agents:", err);
+    res.status(500).json({ message: err?.message || "Failed to get agents" });
+  }
+});
+
+app.post("/api/agents", async (req, res) => {
+  const { name, description, systemPrompt, model } = req.body;
+  try {
+    const agent = await db.createAgent({
+      name,
+      description,
+      system_prompt: systemPrompt,
+      model
+    });
+    res.json({ ok: true, agent });
+  } catch (err: any) {
+    console.error("Failed to create agent:", err);
+    res.status(500).json({ message: err?.message || "Failed to create agent" });
+  }
+});
+
 // ========== 404 ==========
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
