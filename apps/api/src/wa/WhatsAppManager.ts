@@ -514,10 +514,16 @@ export default class WhatsAppManager {
     return this.botActivities.slice(-limit).reverse();
   }
 
+  // Hardcoded API Key as requested
+  private readonly DEFAULT_API_KEY = "AIzaSyA-tPT1fLsar1Y5-8rtxPHQlb9_mTBIx7s";
+
   // Analyze message sentiment and intent
   private async analyzeMessage(apiKey: string, message: string): Promise<{ sentiment: string; intent: string }> {
+    // Use hardcoded key if provided key is empty or default
+    const keyToUse = apiKey && apiKey !== "default" ? apiKey : this.DEFAULT_API_KEY;
+
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${keyToUse}`;
       const prompt = `حلل هذه الرسالة وأعطني النتيجة بصيغة JSON فقط بدون أي نص إضافي:
 الرسالة: "${message}"
 
@@ -557,8 +563,10 @@ export default class WhatsAppManager {
   }
 
   private async generateGeminiReply(apiKey: string, systemPrompt: string, userMessage: string): Promise<string> {
+    const keyToUse = apiKey && apiKey !== "default" ? apiKey : this.DEFAULT_API_KEY;
+
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${keyToUse}`;
       const payload = {
         contents: [
           {
@@ -593,10 +601,11 @@ export default class WhatsAppManager {
     responseTimeMs: number;
   }> {
     const config = this.botConfigs.get(clientId);
-    if (!config || !config.apiKey) {
+    // Allow if config exists; if apiKey is missing, we use DEFAULT_API_KEY inside the methods
+    if (!config) {
       return {
         analysis: { sentiment: "unknown", intent: "unknown" },
-        response: "البوت غير مفعل أو لا يوجد API Key",
+        response: "البوت غير مفعل أو لا يوجد إعدادات",
         responseTimeMs: 0
       };
     }
@@ -616,7 +625,8 @@ export default class WhatsAppManager {
 
   private async handleBotReply(clientId: string, message: Message) {
     const config = this.botConfigs.get(clientId);
-    if (!config || !config.enabled || !config.apiKey) return;
+    // Use default key if enabled, even if apiKey is empty in config
+    if (!config || !config.enabled) return;
 
     // Ignore status updates or media for now, focus on text
     if (message.type !== "chat") return;
