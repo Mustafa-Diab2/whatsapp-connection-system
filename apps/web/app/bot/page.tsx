@@ -205,15 +205,10 @@ export default function BotPage() {
                         </label>
                     </div>
 
-                    <div className="space-y-2">
-                        <label className="block text-sm font-medium text-slate-700">مفتاح Gemini API</label>
-                        <input
-                            type="password"
-                            className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-brand-blue/50"
-                            placeholder="pplx-..."
-                            value={apiKey}
-                            onChange={(e) => setApiKey(e.target.value)}
-                        />
+                    <div className="p-3 bg-green-50 rounded-xl border border-green-200">
+                        <p className="text-sm text-green-700">
+                            ✅ مفتاح Gemini API مُعدّ على الخادم. لا حاجة لإدخاله هنا.
+                        </p>
                     </div>
 
                     {/* System Prompt Input */}

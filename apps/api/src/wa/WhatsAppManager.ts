@@ -514,16 +514,23 @@ export default class WhatsAppManager {
     return this.botActivities.slice(-limit).reverse();
   }
 
-  // API Key should be configured in settings or environment variables
-  private readonly DEFAULT_API_KEY = process.env.GEMINI_API_KEY || "";
+  // API Key ONLY from environment variable - never from database
+  private readonly GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
   // Analyze message sentiment and intent
-  private async analyzeMessage(apiKey: string, message: string): Promise<{ sentiment: string; intent: string }> {
-    const keyToUse = apiKey && apiKey !== "default" ? apiKey : this.DEFAULT_API_KEY;
+  private async analyzeMessage(_apiKey: string, message: string): Promise<{ sentiment: string; intent: string }> {
+    // Always use environment variable
+    const keyToUse = this.GEMINI_API_KEY;
     console.log(`[AI] Analyzing message. Using key starting with: ${keyToUse ? keyToUse.substring(0, 8) + "..." : "EMPTY"}`);
 
+    if (!keyToUse) {
+      console.error("[AI] No GEMINI_API_KEY configured in environment!");
+      return { sentiment: "neutral", intent: "other" };
+    }
+
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${keyToUse}`;
+      // Use v1 API instead of v1beta
+      const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${keyToUse}`;
       const prompt = `
       Analyze this message and return pure JSON only (no markdown, no extra text).
       Message: "${message}"
@@ -560,19 +567,25 @@ export default class WhatsAppManager {
     return { sentiment: "neutral", intent: "other" };
   }
 
-  private async generateAIReply(apiKey: string, systemPrompt: string, userMessage: string): Promise<string> {
-    const keyToUse = apiKey && apiKey !== "default" ? apiKey : this.DEFAULT_API_KEY;
+  private async generateAIReply(_apiKey: string, systemPrompt: string, userMessage: string): Promise<string> {
+    // Always use environment variable
+    const keyToUse = this.GEMINI_API_KEY;
+
+    if (!keyToUse) {
+      return "خطأ: لم يتم تكوين مفتاح API. يرجى إضافة GEMINI_API_KEY في إعدادات الخادم.";
+    }
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${keyToUse}`;
+      // Use v1 API instead of v1beta
+      const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${keyToUse}`;
 
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [
-            { role: "user", parts: [{ text: systemPrompt || "You are a helpful assistant." }] },
-            { role: "model", parts: [{ text: "Understood. I am ready to assist." }] },
+            { role: "user", parts: [{ text: systemPrompt || "أنت مساعد ذكي ومفيد." }] },
+            { role: "model", parts: [{ text: "مفهوم. أنا جاهز للمساعدة." }] },
             { role: "user", parts: [{ text: userMessage }] }
           ]
         })
@@ -583,10 +596,10 @@ export default class WhatsAppManager {
         throw new Error(`Gemini API Error: ${response.status} ${response.statusText} - ${errorText}`);
       }
       const data = await response.json();
-      return data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
+      return data?.candidates?.[0]?.content?.parts?.[0]?.text || "لم يتم توليد رد.";
     } catch (err: any) {
       console.error("AI generation error:", err);
-      return `Error generating reply: ${err.message || "Unknown Error"}`;
+      return `خطأ في توليد الرد: ${err.message || "Unknown Error"}`;
     }
   }
 
