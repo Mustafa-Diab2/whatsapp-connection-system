@@ -2,8 +2,9 @@ import fs from "fs-extra";
 import path from "path";
 import crypto from "crypto";
 import QRCode from "qrcode";
-import { Client, LocalAuth, Message } from "whatsapp-web.js";
+import { Client, LocalAuth, Message, MessageMedia } from "whatsapp-web.js";
 import type { Server } from "socket.io";
+import { db } from "../lib/supabase";
 
 export type WaStatus =
   | "idle"
@@ -19,6 +20,12 @@ export type WaState = {
   lastError?: string;
   updatedAt: string;
   attemptCount: number;
+};
+
+export type BotConfig = {
+  systemPrompt: string;
+  apiKey: string;
+  enabled: boolean;
 };
 
 type ResetOptions = {
@@ -37,12 +44,13 @@ type WebhookPayload = {
   raw?: any;
 };
 
-export class WhatsAppManager {
+export default class WhatsAppManager {
   private clients = new Map<string, Client>();
   private states = new Map<string, WaState>();
   private locks = new Map<string, boolean>();
   private qrTimeouts = new Map<string, NodeJS.Timeout>();
   private connectInFlight = new Map<string, Promise<WaState>>();
+  private botConfigs = new Map<string, BotConfig>();
   private readonly io: Server;
   private readonly qrTimeoutMs = 20_000;
   private isShuttingDown = false;
@@ -50,6 +58,23 @@ export class WhatsAppManager {
   constructor(io: Server) {
     this.io = io;
     this.setupGracefulShutdown();
+    this.loadConfigs();
+  }
+
+  private async loadConfigs() {
+    try {
+      const config = await db.getBotConfig("default");
+      if (config) {
+        this.botConfigs.set("default", {
+          systemPrompt: config.system_prompt || "",
+          apiKey: config.api_key || "",
+          enabled: config.enabled || false
+        });
+        console.log("[WhatsAppManager] Loaded default bot config from Supabase");
+      }
+    } catch (err) {
+      console.error("[WhatsAppManager] Failed to load bot config:", err);
+    }
   }
 
   private setupGracefulShutdown() {
@@ -464,7 +489,7 @@ export class WhatsAppManager {
     return this.clients.get(clientId);
   }
 
-  private botConfigs = new Map<string, { systemPrompt: string; apiKey: string; enabled: boolean }>();
+
   private botActivities: Array<{
     id: string;
     timestamp: Date;
@@ -690,6 +715,26 @@ export class WhatsAppManager {
       throw err;
     }
   }
+
+  async sendMediaMessage(clientId: string, to: string, base64: string, mimetype: string, filename?: string, caption?: string): Promise<{ ok: boolean; messageId?: string }> {
+    const client = this.ensureReadyClient(clientId);
+
+    let chatId = to;
+    if (!to.includes("@")) {
+      chatId = to.replace(/\D/g, "") + "@c.us";
+    }
+
+    try {
+      const media = new MessageMedia(mimetype, base64, filename);
+      const options = caption ? { caption } : {};
+      const msg = await client.sendMessage(chatId, media, options);
+      console.log(`[${clientId}] Media sent to ${chatId}`);
+      return { ok: true, messageId: msg.id._serialized };
+    } catch (err) {
+      console.error(`[${clientId}] Failed to send media to ${chatId}:`, err);
+      throw err;
+    }
+  }
 }
 
-export default WhatsAppManager;
+

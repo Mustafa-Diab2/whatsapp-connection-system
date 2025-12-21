@@ -113,6 +113,27 @@ app.post("/whatsapp/connect", async (req, res) => {
   }
 });
 
+// Send message
+app.post("/whatsapp/send", async (req, res) => {
+  const { clientId = "default", chatId, message } = req.body;
+  try {
+    await manager.sendMessage(clientId, chatId, message);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, message: err?.message || "Failed to send message" });
+  }
+});
+
+app.post("/whatsapp/send-media", async (req, res) => {
+  const { clientId = "default", chatId, base64, mimetype, filename, caption } = req.body;
+  try {
+    await manager.sendMediaMessage(clientId, chatId, base64, mimetype, filename, caption);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, message: err?.message || "Failed to send media" });
+  }
+});
+
 // Destroy session (logout)
 app.post("/whatsapp/logout/:clientId", async (req, res) => {
   const clientId = req.params.clientId || "default";

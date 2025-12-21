@@ -200,6 +200,50 @@ export default function ChatPage() {
     }
   }, [selectedChat, messageInput]);
 
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showEmojis, setShowEmojis] = useState(false);
+
+  const emojis = ["😀", "😂", "🥰", "😎", "🤔", "😭", "😡", "👍", "👎", "👏", "🙏", "❤️", "💔", "🔥", "✨", "🎉", "📅", "✅", "❌", "👋"];
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedChat) return;
+
+    setSending(true);
+    setErrorMsg(null);
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64Full = reader.result as string;
+        const base64 = base64Full.split(',')[1];
+
+        const res = await fetch(`${apiBase}/whatsapp/send-media`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientId,
+            chatId: selectedChat,
+            base64,
+            mimetype: file.type,
+            filename: file.name,
+            caption: messageInput.trim() // Optional caption
+          }),
+        });
+
+        if (!res.ok) throw new Error("فشل إرسال الملف");
+        setMessageInput("");
+      } catch (err: any) {
+        setErrorMsg(err.message || "فشل رفع الملف");
+      } finally {
+        setSending(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -258,7 +302,7 @@ export default function ChatPage() {
           </div>
         </div>
 
-        <div className="card flex h-[70vh] flex-col">
+        <div className="card flex h-[70vh] flex-col relative">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
             <div>
               <p className="text-sm font-semibold text-slate-700">
@@ -297,9 +341,50 @@ export default function ChatPage() {
             </div>
           </div>
 
+          {/* Emoji Picker Popover */}
+          {showEmojis && (
+            <div className="absolute bottom-20 left-4 bg-white shadow-xl border border-slate-200 rounded-xl p-3 grid grid-cols-5 gap-2 z-10 w-64">
+              {emojis.map(e => (
+                <button
+                  key={e}
+                  className="text-xl hover:bg-slate-100 p-1 rounded"
+                  onClick={() => {
+                    setMessageInput(prev => prev + e);
+                    setShowEmojis(false);
+                  }}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="border-t border-slate-200 p-4">
             {errorMsg && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMsg}</div>}
             <div className="flex items-center gap-3">
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+              <button
+                className="btn bg-slate-100 text-slate-500 p-2 rounded-full hover:bg-slate-200"
+                onClick={() => fileInputRef.current?.click()}
+                title="إرفاق ملف"
+                disabled={!selectedChat || status !== "ready"}
+              >
+                📎
+              </button>
+              <button
+                className="btn bg-slate-100 text-slate-500 p-2 rounded-full hover:bg-slate-200"
+                onClick={() => setShowEmojis(!showEmojis)}
+                title="إيموجي"
+                disabled={!selectedChat || status !== "ready"}
+              >
+                😊
+              </button>
+
               <input
                 className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-blue/50"
                 placeholder="اكتب رسالتك..."

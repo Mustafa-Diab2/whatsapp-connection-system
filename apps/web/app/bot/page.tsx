@@ -219,9 +219,27 @@ export default function BotPage() {
 
                     {/* System Prompt Input */}
                     <div className="space-y-2">
-                        <label className="block text-sm font-medium text-slate-700">ذاكرة البوت (System Prompt)</label>
+                        <div className="flex justify-between items-center">
+                            <label className="block text-sm font-medium text-slate-700">ذاكرة البوت (System Prompt)</label>
+                            <div className="flex gap-2">
+                                {[
+                                    { name: "💼 مبيعات", text: "أنت موظف مبيعات محترف ومقنع. هدفك هو مساعدة العملاء في العثور على المنتجات المناسبة وإتمام عملية الشراء. كن ودوداً واستخدم لغة تشجيعية." },
+                                    { name: "🛠️ دعم فني", text: "أنت مهندس دعم فني متخصص. ساعد العملاء في حل مشاكلهم التقنية بخطوات واضحة ومبسطة. كن صبوراً وتأكد من حل المشكلة." },
+                                    { name: "📅 سكرتير", text: "أنت سكرتير شخصي محترف. ساعد في تنظيم المواعيد والرد على الاستفسارات العامة بأسلوب رسمي ومهذب." },
+                                    { name: "🎧 خدمة عملاء", text: "أنت مساعد خدمة عملاء ودود. جاوب على استفسارات العملاء برحابة صدر. استخدم الإيموجي المناسب وكن متعاوناً." }
+                                ].map(t => (
+                                    <button
+                                        key={t.name}
+                                        onClick={() => setPrompt(t.text)}
+                                        className="px-3 py-1 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-colors"
+                                    >
+                                        {t.name}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                         <textarea
-                            className="w-full min-h-[150px] p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-blue/50 outline-none text-slate-800"
+                            className="w-full min-h-[150px] p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-blue/50 outline-none text-slate-800 leading-relaxed"
                             placeholder="اكتب تعليمات البوت هنا..."
                             value={prompt}
                             onChange={(e) => setPrompt(e.target.value)}
