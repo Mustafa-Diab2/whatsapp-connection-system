@@ -603,6 +603,60 @@ export default class WhatsAppManager {
     }
   }
 
+  // Generate AI reply with conversation context
+  private async generateAIReplyWithContext(
+    systemPrompt: string,
+    conversationHistory: { role: string; text: string }[],
+    currentMessage: string
+  ): Promise<string> {
+    const keyToUse = this.GEMINI_API_KEY;
+
+    if (!keyToUse) {
+      return "خطأ: لم يتم تكوين مفتاح API. يرجى إضافة GEMINI_API_KEY في إعدادات الخادم.";
+    }
+
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${keyToUse}`;
+
+      // Build conversation contents for Gemini
+      const contents: { role: string; parts: { text: string }[] }[] = [];
+
+      // Add system prompt as first user message
+      contents.push({ role: "user", parts: [{ text: `تعليمات النظام: ${systemPrompt || "أنت مساعد ذكي ومفيد. رد بشكل طبيعي كأنك إنسان."}` }] });
+      contents.push({ role: "model", parts: [{ text: "مفهوم، سأتبع هذه التعليمات في ردودي." }] });
+
+      // Add conversation history (last 10 messages)
+      for (const msg of conversationHistory.slice(-8)) {
+        contents.push({
+          role: msg.role === "model" ? "model" : "user",
+          parts: [{ text: msg.text }]
+        });
+      }
+
+      // Add current message if not already in history
+      const lastMsg = conversationHistory[conversationHistory.length - 1];
+      if (!lastMsg || lastMsg.text !== currentMessage) {
+        contents.push({ role: "user", parts: [{ text: currentMessage }] });
+      }
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Gemini API Error: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+      const data = await response.json();
+      return data?.candidates?.[0]?.content?.parts?.[0]?.text || "لم يتم توليد رد.";
+    } catch (err: any) {
+      console.error("AI generation error:", err);
+      return `خطأ في توليد الرد: ${err.message || "Unknown Error"}`;
+    }
+  }
+
   // Test bot response without sending to WhatsApp
   async testBotResponse(clientId: string, testMessage: string): Promise<{
     analysis: { sentiment: string; intent: string };
@@ -652,8 +706,17 @@ export default class WhatsAppManager {
       const analysis = await this.analyzeMessage(config.apiKey, message.body);
       console.log(`[${clientId}] Analysis: sentiment=${analysis.sentiment}, intent=${analysis.intent}`);
 
-      // Step 2: Generate response
-      const replyText = await this.generateAIReply(config.apiKey, config.systemPrompt, message.body);
+      // Step 2: Fetch conversation history for context
+      const messages = await chat.fetchMessages({ limit: 10 });
+      const conversationHistory = messages
+        .filter(m => m.type === "chat")
+        .map(m => ({
+          role: m.fromMe ? "model" : "user",
+          text: m.body
+        }));
+
+      // Step 3: Generate response with context
+      const replyText = await this.generateAIReplyWithContext(config.systemPrompt, conversationHistory, message.body);
       const responseTimeMs = Date.now() - startTime;
 
       if (replyText) {
