@@ -514,8 +514,8 @@ export default class WhatsAppManager {
     return this.botActivities.slice(-limit).reverse();
   }
 
-  // Hardcoded API Key as requested
-  private readonly DEFAULT_API_KEY = "AIzaSyA-tPT1fLsar1Y5-8rtxPHQlb9_mTBIx7s";
+  // API Key should be configured in settings or environment variables
+  private readonly DEFAULT_API_KEY = process.env.PERPLEXITY_API_KEY || "";
 
   // Analyze message sentiment and intent
   private async analyzeMessage(apiKey: string, message: string): Promise<{ sentiment: string; intent: string }> {
@@ -523,7 +523,7 @@ export default class WhatsAppManager {
     const keyToUse = apiKey && apiKey !== "default" ? apiKey : this.DEFAULT_API_KEY;
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${keyToUse}`;
+      const url = "https://api.perplexity.ai/chat/completions";
       const prompt = `حلل هذه الرسالة وأعطني النتيجة بصيغة JSON فقط بدون أي نص إضافي:
 الرسالة: "${message}"
 
@@ -536,16 +536,24 @@ export default class WhatsAppManager {
 
       const response = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${keyToUse}`
+        },
         body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }]
+          model: "llama-3.1-sonar-small-128k-online",
+          messages: [
+            { role: "system", content: "You are a helpful assistant that outputs only JSON." },
+            { role: "user", content: prompt }
+          ],
+          temperature: 0.1
         })
       });
 
       if (!response.ok) return { sentiment: "neutral", intent: "other" };
 
       const data = await response.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const text = data?.choices?.[0]?.message?.content || "";
 
       // Parse JSON from response
       const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -562,35 +570,38 @@ export default class WhatsAppManager {
     return { sentiment: "neutral", intent: "other" };
   }
 
-  private async generateGeminiReply(apiKey: string, systemPrompt: string, userMessage: string): Promise<string> {
+  private async generateAIReply(apiKey: string, systemPrompt: string, userMessage: string): Promise<string> {
     const keyToUse = apiKey && apiKey !== "default" ? apiKey : this.DEFAULT_API_KEY;
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${keyToUse}`;
-      const payload = {
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: `${systemPrompt}\n\nرسالة العميل: ${userMessage}\n\nاكتب رداً مناسباً ومهنياً:` }]
-          }
-        ]
-      };
+      const url = "https://api.perplexity.ai/chat/completions";
 
       const response = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${keyToUse}`
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-sonar-small-128k-online",
+          messages: [
+            { role: "system", content: systemPrompt || "أنت مساعد ذكي لخدمة العملاء." },
+            { role: "user", content: userMessage }
+          ],
+          temperature: 0.7
+        })
       });
 
       if (!response.ok) {
-        throw new Error(`Gemini API Error: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`Perplexity API Error: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const data = await response.json();
-      return data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    } catch (err) {
-      console.error("Gemini generation error:", err);
-      return "";
+      return data?.choices?.[0]?.message?.content || "لم يتم استلام رد من النموذج (Empty Response)";
+    } catch (err: any) {
+      console.error("AI generation error:", err);
+      return `خطأ في توليد الرد: ${err.message || "Unknown Error"}`;
     }
   }
 
@@ -605,7 +616,7 @@ export default class WhatsAppManager {
     if (!config) {
       return {
         analysis: { sentiment: "unknown", intent: "unknown" },
-        response: "البوت غير مفعل أو لا يوجد إعدادات",
+        response: "البوت غير مفعل أو لا يوجد إعدادات محفوظة لهذا العميل. يرجى حفظ الإعدادات أولاً.",
         responseTimeMs: 0
       };
     }
@@ -616,7 +627,7 @@ export default class WhatsAppManager {
     const analysis = await this.analyzeMessage(config.apiKey, testMessage);
 
     // Generate response
-    const response = await this.generateGeminiReply(config.apiKey, config.systemPrompt, testMessage);
+    const response = await this.generateAIReply(config.apiKey, config.systemPrompt, testMessage);
 
     const responseTimeMs = Date.now() - startTime;
 
@@ -644,7 +655,7 @@ export default class WhatsAppManager {
       console.log(`[${clientId}] Analysis: sentiment=${analysis.sentiment}, intent=${analysis.intent}`);
 
       // Step 2: Generate response
-      const replyText = await this.generateGeminiReply(config.apiKey, config.systemPrompt, message.body);
+      const replyText = await this.generateAIReply(config.apiKey, config.systemPrompt, message.body);
       const responseTimeMs = Date.now() - startTime;
 
       if (replyText) {

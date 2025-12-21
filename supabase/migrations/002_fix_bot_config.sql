@@ -17,7 +17,7 @@ VALUES (
   'default', 
   true, 
   'أنت مساعد ذكي لخدمة العملاء. كن مهذباً ومفيداً.',
-  'AIzaSyA-tPT1fLsar1Y5-8rtxPHQlb9_mTBIx7s'
+  ''
 )
 ON CONFLICT (client_id) 
 DO UPDATE SET 
