@@ -181,7 +181,7 @@ export default function AIPage() {
                             </span>
                         </div>
                         <div>
-                            <h3 className="font-semibold text-slate-800">المساعد النشط</h3>
+                            <h3 className="font-semibold text-slate-800">المساعد الرئيسي (Gemini)</h3>
                             <p className="text-xs text-slate-500 line-clamp-2 mt-1">
                                 {config?.systemPrompt || config?.system_prompt || "لا يوجد وصف"}
                             </p>

@@ -515,47 +515,35 @@ export default class WhatsAppManager {
   }
 
   // API Key should be configured in settings or environment variables
-  private readonly DEFAULT_API_KEY = process.env.PERPLEXITY_API_KEY || "";
+  private readonly DEFAULT_API_KEY = process.env.GEMINI_API_KEY || "";
 
   // Analyze message sentiment and intent
   private async analyzeMessage(apiKey: string, message: string): Promise<{ sentiment: string; intent: string }> {
-    // Use hardcoded key if provided key is empty or default
     const keyToUse = apiKey && apiKey !== "default" ? apiKey : this.DEFAULT_API_KEY;
-
     console.log(`[AI] Analyzing message. Using key starting with: ${keyToUse ? keyToUse.substring(0, 8) + "..." : "EMPTY"}`);
 
     try {
-      const url = "https://api.perplexity.ai/chat/completions";
-      const prompt = `حلل هذه الرسالة وأعطني النتيجة بصيغة JSON فقط بدون أي نص إضافي:
-الرسالة: "${message}"
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${keyToUse}`;
+      const prompt = `
+      Analyze this message and return pure JSON only (no markdown, no extra text).
+      Message: "${message}"
 
-أعطني:
-1. sentiment: واحد من (positive, negative, neutral)
-2. intent: واحد من (question, complaint, order, greeting, feedback, support, other)
-
-مثال الإجابة:
-{"sentiment": "positive", "intent": "greeting"}`;
+      Output format:
+      {"sentiment": "positive" | "negative" | "neutral", "intent": "question" | "complaint" | "order" | "greeting" | "feedback" | "support" | "other"}
+      `;
 
       const response = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${keyToUse}`
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "llama-3.1-sonar-large-128k-online",
-          messages: [
-            { role: "system", content: "You are a helpful assistant that outputs only JSON." },
-            { role: "user", content: prompt }
-          ],
-          temperature: 0.1
+          contents: [{ parts: [{ text: prompt }] }]
         })
       });
 
       if (!response.ok) return { sentiment: "neutral", intent: "other" };
 
       const data = await response.json();
-      const text = data?.choices?.[0]?.message?.content || "";
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
       // Parse JSON from response
       const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -576,34 +564,29 @@ export default class WhatsAppManager {
     const keyToUse = apiKey && apiKey !== "default" ? apiKey : this.DEFAULT_API_KEY;
 
     try {
-      const url = "https://api.perplexity.ai/chat/completions";
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${keyToUse}`;
 
       const response = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${keyToUse}`
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "llama-3.1-sonar-large-128k-online",
-          messages: [
-            { role: "system", content: systemPrompt || "أنت مساعد ذكي لخدمة العملاء." },
-            { role: "user", content: userMessage }
-          ],
-          temperature: 0.7
+          contents: [
+            { role: "user", parts: [{ text: systemPrompt || "You are a helpful assistant." }] },
+            { role: "model", parts: [{ text: "Understood. I am ready to assist." }] },
+            { role: "user", parts: [{ text: userMessage }] }
+          ]
         })
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Perplexity API Error: ${response.status} ${response.statusText} - ${errorText}`);
+        throw new Error(`Gemini API Error: ${response.status} ${response.statusText} - ${errorText}`);
       }
-
       const data = await response.json();
-      return data?.choices?.[0]?.message?.content || "لم يتم استلام رد من النموذج (Empty Response)";
+      return data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
     } catch (err: any) {
       console.error("AI generation error:", err);
-      return `خطأ في توليد الرد: ${err.message || "Unknown Error"}`;
+      return `Error generating reply: ${err.message || "Unknown Error"}`;
     }
   }
 

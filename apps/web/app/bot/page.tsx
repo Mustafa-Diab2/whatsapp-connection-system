@@ -205,9 +205,8 @@ export default function BotPage() {
                         </label>
                     </div>
 
-                    {/* API Key Input */}
                     <div className="space-y-2">
-                        <label className="block text-sm font-medium text-slate-700">مفتاح Perplexity API</label>
+                        <label className="block text-sm font-medium text-slate-700">مفتاح Gemini API</label>
                         <input
                             type="password"
                             className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-brand-blue/50"
