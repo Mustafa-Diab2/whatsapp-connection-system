@@ -583,14 +583,15 @@ export default class WhatsAppManager {
       });
 
       if (!response.ok) {
-        throw new Error(`Gemini API Error: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`Gemini API Error: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const data = await response.json();
-      return data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    } catch (err) {
+      return data?.candidates?.[0]?.content?.parts?.[0]?.text || "لم يتم استلام رد من النموذج (Empty Response)";
+    } catch (err: any) {
       console.error("Gemini generation error:", err);
-      return "";
+      return `خطأ في توليد الرد: ${err.message || "Unknown Error"}`;
     }
   }
 
@@ -605,7 +606,7 @@ export default class WhatsAppManager {
     if (!config) {
       return {
         analysis: { sentiment: "unknown", intent: "unknown" },
-        response: "البوت غير مفعل أو لا يوجد إعدادات",
+        response: "البوت غير مفعل أو لا يوجد إعدادات محفوظة لهذا العميل. يرجى حفظ الإعدادات أولاً.",
         responseTimeMs: 0
       };
     }
