@@ -523,7 +523,7 @@ export default class WhatsAppManager {
     console.log(`[AI] Analyzing message. Using key starting with: ${keyToUse ? keyToUse.substring(0, 8) + "..." : "EMPTY"}`);
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${keyToUse}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${keyToUse}`;
       const prompt = `
       Analyze this message and return pure JSON only (no markdown, no extra text).
       Message: "${message}"
@@ -564,7 +564,7 @@ export default class WhatsAppManager {
     const keyToUse = apiKey && apiKey !== "default" ? apiKey : this.DEFAULT_API_KEY;
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${keyToUse}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${keyToUse}`;
 
       const response = await fetch(url, {
         method: "POST",
