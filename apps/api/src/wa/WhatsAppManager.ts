@@ -522,6 +522,8 @@ export default class WhatsAppManager {
     // Use hardcoded key if provided key is empty or default
     const keyToUse = apiKey && apiKey !== "default" ? apiKey : this.DEFAULT_API_KEY;
 
+    console.log(`[AI] Analyzing message. Using key starting with: ${keyToUse ? keyToUse.substring(0, 8) + "..." : "EMPTY"}`);
+
     try {
       const url = "https://api.perplexity.ai/chat/completions";
       const prompt = `حلل هذه الرسالة وأعطني النتيجة بصيغة JSON فقط بدون أي نص إضافي:
@@ -541,7 +543,7 @@ export default class WhatsAppManager {
           "Authorization": `Bearer ${keyToUse}`
         },
         body: JSON.stringify({
-          model: "llama-3.1-sonar-small-128k-online",
+          model: "sonar-reasoning",
           messages: [
             { role: "system", content: "You are a helpful assistant that outputs only JSON." },
             { role: "user", content: prompt }
@@ -583,7 +585,7 @@ export default class WhatsAppManager {
           "Authorization": `Bearer ${keyToUse}`
         },
         body: JSON.stringify({
-          model: "llama-3.1-sonar-small-128k-online",
+          model: "sonar-reasoning",
           messages: [
             { role: "system", content: systemPrompt || "أنت مساعد ذكي لخدمة العملاء." },
             { role: "user", content: userMessage }
