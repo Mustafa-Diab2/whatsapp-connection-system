@@ -529,8 +529,8 @@ export default class WhatsAppManager {
     }
 
     try {
-      // Use v1 API instead of v1beta
-      const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${keyToUse}`;
+      // Use v1beta API with gemini-pro
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${keyToUse}`;
       const prompt = `
       Analyze this message and return pure JSON only (no markdown, no extra text).
       Message: "${message}"
@@ -576,8 +576,8 @@ export default class WhatsAppManager {
     }
 
     try {
-      // Use v1 API instead of v1beta
-      const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${keyToUse}`;
+      // Use v1beta API with gemini-pro
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${keyToUse}`;
 
       const response = await fetch(url, {
         method: "POST",
