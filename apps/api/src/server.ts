@@ -244,6 +244,34 @@ app.post("/bot/config", async (req, res) => {
   }
 });
 
+// Bot Activity - get recent bot interactions
+app.get("/bot/activity/:clientId", (req, res) => {
+  const clientId = req.params.clientId || "default";
+  const limit = parseInt(req.query.limit as string) || 20;
+  try {
+    const activities = manager.getBotActivities(limit);
+    res.json({ activities });
+  } catch (err: any) {
+    console.error("Failed to get bot activities:", err);
+    res.status(500).json({ message: err?.message || "Failed to get activities" });
+  }
+});
+
+// Test Bot - test response without sending to WhatsApp
+app.post("/bot/test", async (req, res) => {
+  const { clientId = "default", message } = req.body;
+  if (!message) {
+    return res.status(400).json({ ok: false, message: "message required" });
+  }
+  try {
+    const result = await manager.testBotResponse(clientId, message);
+    res.json({ ok: true, ...result });
+  } catch (err: any) {
+    console.error("Failed to test bot:", err);
+    res.status(500).json({ ok: false, message: err?.message || "Failed to test bot" });
+  }
+});
+
 // ========== CRM / CUSTOMERS API (Supabase) ==========
 app.get("/api/customers", async (req, res) => {
   try {

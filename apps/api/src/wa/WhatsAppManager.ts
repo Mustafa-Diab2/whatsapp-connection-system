@@ -465,6 +465,16 @@ export class WhatsAppManager {
   }
 
   private botConfigs = new Map<string, { systemPrompt: string; apiKey: string; enabled: boolean }>();
+  private botActivities: Array<{
+    id: string;
+    timestamp: Date;
+    customerPhone: string;
+    customerMessage: string;
+    sentiment: string;
+    intent: string;
+    botReply: string;
+    responseTimeMs: number;
+  }> = [];
 
   setBotConfig(clientId: string, config: { systemPrompt: string; apiKey: string; enabled: boolean }) {
     this.botConfigs.set(clientId, config);
@@ -475,6 +485,52 @@ export class WhatsAppManager {
     return this.botConfigs.get(clientId) || { systemPrompt: "", apiKey: "", enabled: false };
   }
 
+  getBotActivities(limit = 20) {
+    return this.botActivities.slice(-limit).reverse();
+  }
+
+  // Analyze message sentiment and intent
+  private async analyzeMessage(apiKey: string, message: string): Promise<{ sentiment: string; intent: string }> {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+      const prompt = `حلل هذه الرسالة وأعطني النتيجة بصيغة JSON فقط بدون أي نص إضافي:
+الرسالة: "${message}"
+
+أعطني:
+1. sentiment: واحد من (positive, negative, neutral)
+2. intent: واحد من (question, complaint, order, greeting, feedback, support, other)
+
+مثال الإجابة:
+{"sentiment": "positive", "intent": "greeting"}`;
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }]
+        })
+      });
+
+      if (!response.ok) return { sentiment: "neutral", intent: "other" };
+
+      const data = await response.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+      // Parse JSON from response
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return {
+          sentiment: parsed.sentiment || "neutral",
+          intent: parsed.intent || "other"
+        };
+      }
+    } catch (err) {
+      console.error("Analysis error:", err);
+    }
+    return { sentiment: "neutral", intent: "other" };
+  }
+
   private async generateGeminiReply(apiKey: string, systemPrompt: string, userMessage: string): Promise<string> {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
@@ -482,7 +538,7 @@ export class WhatsAppManager {
         contents: [
           {
             role: "user",
-            parts: [{ text: `System Prompt: ${systemPrompt}\n\nUser Message: ${userMessage}` }]
+            parts: [{ text: `${systemPrompt}\n\nرسالة العميل: ${userMessage}\n\nاكتب رداً مناسباً ومهنياً:` }]
           }
         ]
       };
@@ -505,6 +561,34 @@ export class WhatsAppManager {
     }
   }
 
+  // Test bot response without sending to WhatsApp
+  async testBotResponse(clientId: string, testMessage: string): Promise<{
+    analysis: { sentiment: string; intent: string };
+    response: string;
+    responseTimeMs: number;
+  }> {
+    const config = this.botConfigs.get(clientId);
+    if (!config || !config.apiKey) {
+      return {
+        analysis: { sentiment: "unknown", intent: "unknown" },
+        response: "البوت غير مفعل أو لا يوجد API Key",
+        responseTimeMs: 0
+      };
+    }
+
+    const startTime = Date.now();
+
+    // Analyze message
+    const analysis = await this.analyzeMessage(config.apiKey, testMessage);
+
+    // Generate response
+    const response = await this.generateGeminiReply(config.apiKey, config.systemPrompt, testMessage);
+
+    const responseTimeMs = Date.now() - startTime;
+
+    return { analysis, response, responseTimeMs };
+  }
+
   private async handleBotReply(clientId: string, message: Message) {
     const config = this.botConfigs.get(clientId);
     if (!config || !config.enabled || !config.apiKey) return;
@@ -512,20 +596,52 @@ export class WhatsAppManager {
     // Ignore status updates or media for now, focus on text
     if (message.type !== "chat") return;
 
+    const startTime = Date.now();
+
     // Simulate typing
     const client = this.clients.get(clientId);
     const chat = await message.getChat();
     await chat.sendStateTyping();
 
     try {
+      // Step 1: Analyze message
+      const analysis = await this.analyzeMessage(config.apiKey, message.body);
+      console.log(`[${clientId}] Analysis: sentiment=${analysis.sentiment}, intent=${analysis.intent}`);
+
+      // Step 2: Generate response
       const replyText = await this.generateGeminiReply(config.apiKey, config.systemPrompt, message.body);
+      const responseTimeMs = Date.now() - startTime;
 
       if (replyText) {
         await chat.clearState();
         const replyMsg = await message.reply(replyText);
         console.log(`[${clientId}] Bot replied to ${message.from}`);
 
-        // Emit bot reply to frontend
+        // Save activity for frontend
+        const activity = {
+          id: replyMsg.id._serialized,
+          timestamp: new Date(),
+          customerPhone: message.from,
+          customerMessage: message.body,
+          sentiment: analysis.sentiment,
+          intent: analysis.intent,
+          botReply: replyText,
+          responseTimeMs
+        };
+        this.botActivities.push(activity);
+
+        // Keep only last 100 activities
+        if (this.botActivities.length > 100) {
+          this.botActivities = this.botActivities.slice(-100);
+        }
+
+        // Emit bot activity to frontend
+        this.io.to(clientId).emit("bot:activity", {
+          clientId,
+          activity
+        });
+
+        // Emit bot reply as message
         this.io.to(clientId).emit("wa:message", {
           clientId,
           message: {
