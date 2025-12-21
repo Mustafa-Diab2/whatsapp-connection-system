@@ -543,7 +543,7 @@ export default class WhatsAppManager {
           "Authorization": `Bearer ${keyToUse}`
         },
         body: JSON.stringify({
-          model: "sonar-reasoning",
+          model: "llama-3.1-sonar-large-128k-online",
           messages: [
             { role: "system", content: "You are a helpful assistant that outputs only JSON." },
             { role: "user", content: prompt }
@@ -585,7 +585,7 @@ export default class WhatsAppManager {
           "Authorization": `Bearer ${keyToUse}`
         },
         body: JSON.stringify({
-          model: "sonar-reasoning",
+          model: "llama-3.1-sonar-large-128k-online",
           messages: [
             { role: "system", content: systemPrompt || "أنت مساعد ذكي لخدمة العملاء." },
             { role: "user", content: userMessage }
