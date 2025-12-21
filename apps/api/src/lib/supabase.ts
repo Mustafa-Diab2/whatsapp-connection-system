@@ -232,7 +232,7 @@ export const db = {
     async updateSettings(key: string, value: any) {
         const { error } = await supabase
             .from('settings')
-            .upsert({ key, value, updated_at: new Date().toISOString() });
+            .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
         if (error) throw error;
     },
 
