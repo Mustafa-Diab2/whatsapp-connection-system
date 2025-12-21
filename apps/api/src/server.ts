@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import { Server } from "socket.io";
 import WhatsAppManager from "./wa/WhatsAppManager";
 import { db } from "./lib/supabase";
+import authRoutes from "./routes/auth";
 
 dotenv.config();
 
@@ -81,6 +82,9 @@ app.get("/", (req, res) => {
 app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
+
+// Auth routes
+app.use("/auth", authRoutes);
 
 // ========== WHATSAPP ROUTES ==========
 
