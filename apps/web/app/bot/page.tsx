@@ -205,13 +205,16 @@ export default function BotPage() {
                         </label>
                     </div>
 
-                    {/* API Key Input (Hidden/Static) */}
+                    {/* API Key Input */}
                     <div className="space-y-2">
                         <label className="block text-sm font-medium text-slate-700">مفتاح Perplexity API</label>
-                        <div className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 flex items-center gap-2">
-                            <span>🔒</span>
-                            <span>تم إعداد المفتاح في النظام (Static Key Configured)</span>
-                        </div>
+                        <input
+                            type="password"
+                            className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-brand-blue/50"
+                            placeholder="pplx-..."
+                            value={apiKey}
+                            onChange={(e) => setApiKey(e.target.value)}
+                        />
                     </div>
 
                     {/* System Prompt Input */}
