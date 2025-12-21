@@ -26,7 +26,10 @@ export default function AIPage() {
 
     const fetchConfig = async () => {
         try {
-            const res = await fetch(`${apiBase}/bot/config/${clientId}`);
+            // Add timestamp to prevent caching
+            const res = await fetch(`${apiBase}/bot/config/${clientId}?t=${Date.now()}`, {
+                cache: 'no-store'
+            });
             if (res.ok) {
                 const data = await res.json();
                 setConfig(data);
@@ -58,21 +61,29 @@ export default function AIPage() {
     const toggleBot = async (forcedStatus?: boolean) => {
         if (!config && !forcedStatus) return;
         const newStatus = forcedStatus !== undefined ? forcedStatus : !enabled;
+
+        // 1. Optimistic Update (Update local state immediately)
+        setEnabled(newStatus);
+        setConfig((prev: any) => ({ ...prev, enabled: newStatus }));
+
         try {
             await fetch(`${apiBase}/bot/config`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     clientId,
+                    // Use most up-to-date state from config
                     systemPrompt: config?.systemPrompt || config?.system_prompt || "",
                     apiKey: config?.apiKey || config?.api_key || "",
                     enabled: newStatus
                 })
             });
-            setEnabled(newStatus);
-            fetchConfig(); // Refresh
+            // 2. Refresh to confirm
+            fetchConfig();
         } catch (err) {
             console.error("Failed to toggle bot", err);
+            // Revert on error
+            setEnabled(!newStatus);
         }
     };
 
