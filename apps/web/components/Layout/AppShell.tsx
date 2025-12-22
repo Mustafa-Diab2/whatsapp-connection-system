@@ -28,9 +28,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         }
     }, [pathname, isAuthPage, router]);
 
-    // Prevent Hydration Mismatch
+    // Prevent Hydration Mismatch by rendering a loading state or default structure
+    // But importantly, do NOT return null for children if possible, or ensure it matches server.
+    // However, since we check localStorage, we must wait for mount.
+
+    // To fix Error #310 (Hooks mismatch), we ensure hooks are always called in same order.
+    // They are.
+
+    // To safe-guard hydration:
     if (!mounted) {
-        return null; // Or a loading spinner
+        // Return a shell that matches the server structure as much as possible, 
+        // OR simply return nothing but don't crash.
+        // Returning null IS valid but can cause hydration warnings. 
+        // Let's return a simple loader that replaces the body content safely.
+        return (
+            <div className="flex h-screen items-center justify-center bg-slate-50">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-blue border-t-transparent"></div>
+            </div>
+        );
     }
 
     return (
