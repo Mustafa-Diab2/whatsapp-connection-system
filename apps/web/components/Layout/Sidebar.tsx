@@ -27,50 +27,83 @@ const menuItems: MenuItem[] = [
   { label: "Contacts", labelAr: "جهات الاتصال", href: "/contacts", icon: "📞" }
 ];
 
-const Sidebar = () => {
+type SidebarProps = {
+  isOpen?: boolean;
+  onClose?: () => void;
+};
+
+const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
   const pathname = usePathname();
 
   return (
-    <aside className="w-72 border-l border-slate-200 bg-white shadow-sm overflow-y-auto">
-      <div className="px-5 py-6">
-        <p className="mb-4 text-sm font-semibold text-slate-500">القائمة الرئيسية</p>
-        <nav className="space-y-2">
-          {menuItems.map((item) => {
-            const isActive = pathname === item.href ||
-              (item.href !== "#" && pathname?.startsWith(item.href));
+    <>
+      {/* Mobile Overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          onClick={onClose}
+        />
+      )}
 
-            return (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 ${isActive
-                  ? "bg-brand-green text-white shadow-md"
-                  : "bg-slate-50 text-slate-700 hover:bg-slate-100 hover:shadow-sm"
-                  }`}
-              >
-                <div className="flex items-center gap-3">
-                  {item.icon && <span className="text-base">{item.icon}</span>}
-                  <span>{item.labelAr}</span>
-                </div>
-                <span className={`text-xs px-2 py-0.5 rounded-md ${isActive
-                  ? "bg-white/20"
-                  : "bg-slate-200 text-slate-600"
-                  }`}>
-                  {isActive ? "نشط" : "انتقل"}
-                </span>
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
+      {/* Sidebar Container */}
+      <aside className={`
+        fixed inset-y-0 left-0 z-40 w-72 bg-white shadow-xl transform transition-transform duration-300 ease-in-out
+        md:translate-x-0 md:static md:shadow-sm md:border-l md:border-slate-200 md:h-[calc(100vh-72px)]
+        ${isOpen ? "translate-x-0" : "-translate-x-full bg-white"}
+      `}>
+        <div className="h-full overflow-y-auto">
+          <div className="px-5 py-4 flex justify-between items-center md:hidden">
+            <span className="font-bold text-lg text-slate-700">القائمة</span>
+            <button onClick={onClose} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200">
+              ✕
+            </button>
+          </div>
 
-      {/* Footer */}
-      <div className="border-t border-slate-100 px-5 py-4 mt-4">
-        <p className="text-xs text-slate-400 text-center">
-          WhatsApp CRM v1.0.0
-        </p>
-      </div>
-    </aside>
+          <div className="px-5 py-6">
+            <p className="mb-4 text-sm font-semibold text-slate-500 hidden md:block">القائمة الرئيسية</p>
+            <nav className="space-y-2">
+              {menuItems.map((item) => {
+                const isActive = pathname === item.href ||
+                  (item.href !== "#" && pathname?.startsWith(item.href));
+
+                return (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    onClick={() => {
+                      // Close sidebar on mobile when item clicked
+                      if (window.innerWidth < 768 && onClose) onClose();
+                    }}
+                    className={`flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 ${isActive
+                      ? "bg-brand-green text-white shadow-md"
+                      : "bg-slate-50 text-slate-700 hover:bg-slate-100 hover:shadow-sm"
+                      }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {item.icon && <span className="text-base">{item.icon}</span>}
+                      <span>{item.labelAr}</span>
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded-md ${isActive
+                      ? "bg-white/20"
+                      : "bg-slate-200 text-slate-600"
+                      }`}>
+                      {isActive ? "نشط" : "انتقل"}
+                    </span>
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* Footer */}
+          <div className="border-t border-slate-100 px-5 py-4 mt-auto">
+            <p className="text-xs text-slate-400 text-center">
+              WhatsApp CRM v1.0.0
+            </p>
+          </div>
+        </div>
+      </aside>
+    </>
   );
 };
 
