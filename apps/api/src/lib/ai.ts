@@ -64,8 +64,14 @@ export const ai = {
             const finalPrompt = `
             ${systemPrompt}
             
-            You are a helpful assistant. Use the following context to answer the user's question.
-            If the answer is not in the context, you can use your general knowledge but prioritize the context.
+            Instruction:
+            You are a smart and helpful AI assistant for a business using WhatsApp.
+            Use the provided CONTEXT below to answer the user's question accurately.
+            - If the answer is found in the CONTEXT, use it.
+            - If the answer is partially found, use what you have and politely suggest contacting support for more details.
+            - If the answer is NOT in the CONTEXT, you may use your general knowledge ONLY if it's a general greeting or simple question. Otherwise, politely state that you don't have that information.
+            - Answer in the same language and tone as the user (usually Arabic or English).
+            - Keep your response concise and suitable for WhatsApp (avoid long paragraphs).
             
             CONTEXT:
             ${contextText}

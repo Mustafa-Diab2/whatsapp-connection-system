@@ -42,6 +42,22 @@ export default function CampaignsPage() {
         }
     };
 
+    const handleResend = async (id: string) => {
+        if (!confirm("هل تريد استكمال إرسال هذه الحملة؟ سيتم الإرسال فقط للعملاء الذين لم يستلموا الرسالة.")) return;
+
+        try {
+            const token = localStorage.getItem("token");
+            await axios.post(`${API_URL}/api/campaigns/${id}/send`, {}, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            alert("تم بدء الإرسال في الخلفية");
+            fetchCampaigns();
+        } catch (error) {
+            console.error("Failed to resend campaign", error);
+            alert("فشل بدء الإرسال");
+        }
+    };
+
     const handleCreate = async () => {
         if (!name || !message) {
             alert("يرجى ملء جميع الحقول");
@@ -154,8 +170,8 @@ export default function CampaignsPage() {
 
                                     <div className="text-left">
                                         <span className={`badge mb-1 block w-fit ml-auto ${camp.status === 'completed' ? 'bg-green-100 text-green-700' :
-                                                camp.status === 'processing' ? 'bg-blue-100 text-blue-700' :
-                                                    'bg-slate-200 text-slate-700'
+                                            camp.status === 'processing' ? 'bg-blue-100 text-blue-700' :
+                                                'bg-slate-200 text-slate-700'
                                             }`}>
                                             {camp.status === 'completed' ? 'مكتملة' :
                                                 camp.status === 'processing' ? 'جاري الإرسال' : camp.status}
@@ -163,6 +179,15 @@ export default function CampaignsPage() {
                                         <p className="text-xs font-semibold">
                                             تم الإرسال: {camp.successful_sends} / {camp.total_recipients}
                                         </p>
+
+                                        {camp.status !== 'processing' && (
+                                            <button
+                                                onClick={() => handleResend(camp.id)}
+                                                className="mt-2 text-xs bg-brand-blue text-white px-3 py-1 rounded hover:bg-blue-700 transition"
+                                            >
+                                                استكمال / إعادة
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             ))}

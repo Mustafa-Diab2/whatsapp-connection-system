@@ -88,13 +88,30 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
             return;
         }
 
+        // Check for already sent messages (Idempotency)
+        const { data: logs } = await supabase
+            .from('campaign_logs')
+            .select('customer_id')
+            .eq('campaign_id', campaignId)
+            .eq('status', 'sent');
+
+        const sentCustomerIds = new Set(logs?.map(l => l.customer_id) || []);
+        const pendingCustomers = customers.filter(c => !sentCustomerIds.has(c.id));
+
+        console.log(`[Campaign ${campaignId}] Total: ${customers.length}, Already Sent: ${sentCustomerIds.size}, Pending: ${pendingCustomers.length}`);
+
+        if (pendingCustomers.length === 0) {
+            await db.updateCampaignStatus(campaignId, "completed", { total_recipients: customers.length });
+            return;
+        }
+
         await db.updateCampaignStatus(campaignId, "processing", { total_recipients: customers.length });
 
-        let successCount = 0;
+        let successCount = sentCustomerIds.size; // Start count with already sent
         let failCount = 0;
 
         // 2. Loop and Send
-        for (const customer of customers) {
+        for (const customer of pendingCustomers) {
             // Rate Limiting / Delay (Random 2s to 5s)
             const delay = Math.floor(Math.random() * 3000) + 2000;
             await new Promise(r => setTimeout(r, delay));

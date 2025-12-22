@@ -83,6 +83,22 @@ export default function CRMPage() {
         }
     };
 
+    const handleDeleteDeal = async (dealId: string) => {
+        if (!confirm("هل أنت متأكد من حذف هذه الصفقة؟")) return;
+
+        try {
+            const token = localStorage.getItem("token");
+            await axios.delete(`${API_URL}/api/deals/${dealId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            // Update UI
+            setDeals(prev => prev.filter(d => d.id !== dealId));
+        } catch (error) {
+            console.error("Failed to delete deal", error);
+            alert("حدث خطأ أثناء الحذف");
+        }
+    };
+
     const handleAddDeal = async () => {
         const title = prompt("اسم الصفقة:");
         if (!title) return;
@@ -165,8 +181,19 @@ export default function CRMPage() {
                                                 <span>{Number(deal.value).toLocaleString()}</span>
                                                 <span>{deal.customer?.name || "بدون عميل"}</span>
                                             </div>
-                                            <div className="mt-2 text-[10px] text-slate-400 text-right">
-                                                {new Date(deal.created_at).toLocaleDateString()}
+                                            <div className="mt-2 flex justify-between items-center pt-2 border-t border-slate-100">
+                                                <div className="text-[10px] text-slate-400">
+                                                    {new Date(deal.created_at).toLocaleDateString()}
+                                                </div>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDeleteDeal(deal.id);
+                                                    }}
+                                                    className="text-red-400 hover:text-red-600 text-xs px-2 py-1 rounded hover:bg-red-50"
+                                                >
+                                                    حذف
+                                                </button>
                                             </div>
                                         </div>
                                     ))}
