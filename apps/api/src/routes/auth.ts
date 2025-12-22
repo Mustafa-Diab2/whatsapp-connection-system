@@ -31,21 +31,36 @@ router.post("/register", async (req: Request, res: Response) => {
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 12);
 
-        // Create user
+        // 1. Create Organization
+        const { data: org, error: orgError } = await supabase
+            .from("organizations")
+            .insert({ name: `${name || email.split("@")[0]}'s Organization` })
+            .select()
+            .single();
+
+        if (orgError) throw orgError;
+
+        // 2. Create User linked to Organization
         const { data: user, error } = await supabase
             .from("users")
             .insert({
                 email,
                 password: hashedPassword,
                 name: name || email.split("@")[0],
+                organization_id: org.id,
+                role: 'admin'
             })
-            .select("id, email, name, created_at")
+            .select("id, email, name, organization_id, role, created_at")
             .single();
 
         if (error) throw error;
 
         // Generate token
-        const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, {
+        const token = jwt.sign({
+            userId: user.id,
+            email: user.email,
+            organizationId: user.organization_id // Add organizationId to token
+        }, JWT_SECRET, {
             expiresIn: JWT_EXPIRES_IN,
         });
 
@@ -87,7 +102,11 @@ router.post("/login", async (req: Request, res: Response) => {
         }
 
         // Generate token
-        const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, {
+        const token = jwt.sign({
+            userId: user.id,
+            email: user.email,
+            organizationId: user.organization_id // Add organizationId to token
+        }, JWT_SECRET, {
             expiresIn: JWT_EXPIRES_IN,
         });
 
@@ -202,6 +221,79 @@ router.put("/change-password", verifyToken, async (req: Request, res: Response) 
         res.json({ message: "تم تغيير كلمة المرور بنجاح" });
     } catch (error: any) {
         console.error("Change password error:", error);
+        res.status(500).json({ error: error.message || "حدث خطأ" });
+    }
+});
+// Add Team Member
+router.post("/team/invite", verifyToken, async (req: Request, res: Response) => {
+    try {
+        const requesterId = (req as any).user.userId;
+        const requesterOrgId = (req as any).user.organizationId;
+        const { email, password, name, role } = req.body;
+
+        if (!email || !password) {
+            return res.status(400).json({ error: "البريد الإلكتروني وكلمة المرور مطلوبان" });
+        }
+
+        // Check requester role (optional, for now allow all valid users to invite)
+        // const { data: requester } = await supabase.from('users').select('role').eq('id', requesterId).single();
+        // if (requester?.role !== 'admin') return res.status(403).json({ error: "غير مصرح" });
+
+        // Check if user exists
+        const { data: existingUser } = await supabase
+            .from("users")
+            .select("id")
+            .eq("email", email)
+            .single();
+
+        if (existingUser) {
+            return res.status(400).json({ error: "هذا البريد الإلكتروني مسجل بالفعل" });
+        }
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 12);
+
+        // Create user in SAME organization
+        const { data: user, error } = await supabase
+            .from("users")
+            .insert({
+                email,
+                password: hashedPassword,
+                name: name || email.split("@")[0],
+                organization_id: requesterOrgId,
+                role: role || 'member'
+            })
+            .select("id, email, name, role, created_at")
+            .single();
+
+        if (error) throw error;
+
+        res.status(201).json({
+            message: "تم إضافة العضو بنجاح",
+            user
+        });
+    } catch (error: any) {
+        console.error("Invite error:", error);
+        res.status(500).json({ error: error.message || "حدث خطأ في إضافة العضو" });
+    }
+});
+
+// Get Team Members
+router.get("/team", verifyToken, async (req: Request, res: Response) => {
+    try {
+        const orgId = (req as any).user.organizationId;
+
+        const { data: members, error } = await supabase
+            .from("users")
+            .select("id, name, email, role, created_at, avatar")
+            .eq("organization_id", orgId)
+            .order("created_at", { ascending: false });
+
+        if (error) throw error;
+
+        res.json({ members });
+    } catch (error: any) {
+        console.error("Get team error:", error);
         res.status(500).json({ error: error.message || "حدث خطأ" });
     }
 });
