@@ -20,6 +20,7 @@ const menuItems: MenuItem[] = [
   { label: "Setting", labelAr: "الضبط", href: "/tuning", icon: "🔧" },
   { label: "Report", labelAr: "التقارير", href: "/reports", icon: "📈" },
   { label: "AI / AI Agent", labelAr: "الذكاء الاصطناعي", href: "/ai", icon: "🧠" },
+  { label: "Knowledge Base", labelAr: "قاعدة المعرفة", href: "/documents", icon: "📚" },
   { label: "Threads", labelAr: "المواضيع", href: "/threads", icon: "📝" },
   { label: "Add-ons", labelAr: "الإضافات", href: "/addons", icon: "🔌" },
   { label: "Contacts", labelAr: "جهات الاتصال", href: "/contacts", icon: "📞" }

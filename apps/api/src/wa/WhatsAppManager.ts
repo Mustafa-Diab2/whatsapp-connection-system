@@ -5,6 +5,7 @@ import QRCode from "qrcode";
 import { Client, LocalAuth, Message, MessageMedia } from "whatsapp-web.js";
 import type { Server } from "socket.io";
 import { db } from "../lib/supabase";
+import { ai } from "../lib/ai";
 
 export type WaStatus =
   | "idle"
@@ -26,6 +27,7 @@ export type BotConfig = {
   systemPrompt: string;
   apiKey: string;
   enabled: boolean;
+  organizationId?: string;
 };
 
 type ResetOptions = {
@@ -687,7 +689,28 @@ export default class WhatsAppManager {
   }
 
   private async handleBotReply(clientId: string, message: Message) {
-    const config = this.botConfigs.get(clientId);
+    // Refresh config from DB to ensure we have latest orgId and settings
+    // This is safer than relying on in-memory config which might lack orgId
+    let config: BotConfig | null = null;
+    let orgId: string | undefined;
+
+    try {
+      const dbConfig = await db.getBotConfig(clientId);
+      if (dbConfig) {
+        config = {
+          apiKey: dbConfig.api_key || "",
+          systemPrompt: dbConfig.system_prompt || "",
+          enabled: dbConfig.enabled || false,
+          organizationId: dbConfig.organization_id
+        };
+        orgId = dbConfig.organization_id;
+      }
+    } catch (e) {
+      // Fallback to memory
+      config = this.botConfigs.get(clientId) || null;
+      orgId = config?.organizationId;
+    }
+
     // Use default key if enabled, even if apiKey is empty in config
     if (!config || !config.enabled) return;
 
@@ -702,21 +725,27 @@ export default class WhatsAppManager {
     await chat.sendStateTyping();
 
     try {
-      // Step 1: Analyze message
-      const analysis = await this.analyzeMessage(config.apiKey, message.body);
-      console.log(`[${clientId}] Analysis: sentiment=${analysis.sentiment}, intent=${analysis.intent}`);
-
       // Step 2: Fetch conversation history for context
       const messages = await chat.fetchMessages({ limit: 10 });
       const conversationHistory = messages
         .filter(m => m.type === "chat")
         .map(m => ({
           role: m.fromMe ? "model" : "user",
-          text: m.body
+          parts: [{ text: m.body }], // Use correct structure for lib/ai
+          content: m.body
         }));
 
-      // Step 3: Generate response with context
-      const replyText = await this.generateAIReplyWithContext(config.systemPrompt, conversationHistory, message.body);
+      // Step 3: Generate response with RAG
+      // If no orgId, we can't do RAG properly, fallback to normal reply without context docs
+      let replyText = "";
+
+      if (orgId) {
+        replyText = await ai.generateRAGReply(message.body, conversationHistory, orgId, config.systemPrompt);
+      } else {
+        // Fallback if no org (shouldn't happen in prod)
+        replyText = await ai.generateReply(config.systemPrompt + "\n\nUser: " + message.body, conversationHistory);
+      }
+
       const responseTimeMs = Date.now() - startTime;
 
       if (replyText) {
@@ -730,8 +759,8 @@ export default class WhatsAppManager {
           timestamp: new Date(),
           customerPhone: message.from,
           customerMessage: message.body,
-          sentiment: analysis.sentiment,
-          intent: analysis.intent,
+          sentiment: "neutral", // Removed separate sentiment analysis to save API calls
+          intent: "chat",
           botReply: replyText,
           responseTimeMs
         };

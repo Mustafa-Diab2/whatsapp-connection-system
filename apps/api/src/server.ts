@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import WhatsAppManager from "./wa/WhatsAppManager";
 import { db } from "./lib/supabase";
 import authRoutes, { verifyToken } from "./routes/auth";
+import documentsRoutes from "./routes/documents";
 
 dotenv.config();
 
@@ -96,6 +97,7 @@ app.get("/health", (req, res) => {
 
 // Auth routes
 app.use("/auth", authRoutes);
+app.use("/api/documents", documentsRoutes);
 
 // Helper to extract orgId
 const getOrgId = (req: Request): string => {

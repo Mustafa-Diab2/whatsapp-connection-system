@@ -422,6 +422,21 @@ export const db = {
         if (error) throw error;
         return data;
     },
+
+    // ========== KNOWLEDGE BASE (RAG) ==========
+    async searchDocuments(embedding: number[], matchThreshold: number, matchCount: number, organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
+
+        const { data, error } = await supabase.rpc('match_documents', {
+            query_embedding: embedding,
+            match_threshold: matchThreshold,
+            match_count: matchCount,
+            filter_org_id: organizationId
+        });
+
+        if (error) throw error;
+        return data || [];
+    },
 };
 
 export default supabase;
