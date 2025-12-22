@@ -1,307 +1,186 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
+import axios from "axios";
 
-type Customer = {
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+
+interface Stage {
     id: string;
     name: string;
-    phone: string;
-    email: string;
-    status: "active" | "inactive" | "pending";
-    notes: string;
-    createdAt: string;
-    lastContact: string;
-};
+    color: string;
+}
 
-const statusLabels: Record<string, string> = {
-    active: "نشط",
-    inactive: "غير نشط",
-    pending: "قيد الانتظار",
-};
-
-const statusColors: Record<string, string> = {
-    active: "bg-green-100 text-green-700",
-    inactive: "bg-slate-100 text-slate-600",
-    pending: "bg-amber-100 text-amber-700",
-};
-
-const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+interface Deal {
+    id: string;
+    title: string;
+    value: number;
+    customer?: { name: string; phone: string };
+    stage_id: string;
+    created_at: string;
+}
 
 export default function CRMPage() {
-    const [customers, setCustomers] = useState<Customer[]>([]);
-    const [search, setSearch] = useState("");
-    const [filterStatus, setFilterStatus] = useState<string>("all");
-    const [showModal, setShowModal] = useState(false);
-    const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+    const [stages, setStages] = useState<Stage[]>([]);
+    const [deals, setDeals] = useState<Deal[]>([]);
     const [loading, setLoading] = useState(true);
-    const [formData, setFormData] = useState({
-        name: "",
-        phone: "",
-        email: "",
-        status: "pending" as Customer["status"],
-        notes: "",
-    });
 
-    const fetchCustomers = useCallback(async () => {
+    // Drag State
+    const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
+
+    useEffect(() => {
+        fetchData();
+    }, []);
+
+    const fetchData = async () => {
         try {
-            const res = await fetch(`${apiBase}/api/customers`);
-            const data = await res.json();
-            setCustomers(data.customers || []);
-        } catch (err) {
-            console.error("Failed to fetch customers:", err);
+            const token = localStorage.getItem("token");
+            const res = await axios.get(`${API_URL}/api/deals`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            setStages(res.data.stages);
+            setDeals(res.data.deals);
+        } catch (error) {
+            console.error("Failed to fetch CRM data", error);
         } finally {
             setLoading(false);
         }
-    }, []);
-
-    useEffect(() => {
-        fetchCustomers();
-    }, [fetchCustomers]);
-
-    const filteredCustomers = useMemo(() => {
-        return customers.filter((c) => {
-            const matchesSearch = c.name.includes(search) || c.phone.includes(search) || c.email.includes(search);
-            const matchesStatus = filterStatus === "all" || c.status === filterStatus;
-            return matchesSearch && matchesStatus;
-        });
-    }, [customers, search, filterStatus]);
-
-    const openAddModal = () => {
-        setEditingCustomer(null);
-        setFormData({ name: "", phone: "", email: "", status: "pending", notes: "" });
-        setShowModal(true);
     };
 
-    const openEditModal = (customer: Customer) => {
-        setEditingCustomer(customer);
-        setFormData({
-            name: customer.name,
-            phone: customer.phone,
-            email: customer.email,
-            status: customer.status,
-            notes: customer.notes,
-        });
-        setShowModal(true);
+    const handleDragStart = (e: React.DragEvent, dealId: string) => {
+        setDraggedDealId(dealId);
+        e.dataTransfer.effectAllowed = "move";
+        // Optional: set drag image or data
     };
 
-    const handleSave = async () => {
-        if (!formData.name || !formData.phone) return;
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault(); // Necessary to allow dropping
+    };
+
+    const handleDrop = async (e: React.DragEvent, targetStageId: string) => {
+        e.preventDefault();
+        if (!draggedDealId) return;
+
+        // Optimistic Update
+        const originalDeals = [...deals];
+        setDeals(prev => prev.map(d =>
+            d.id === draggedDealId ? { ...d, stage_id: targetStageId } : d
+        ));
 
         try {
-            if (editingCustomer) {
-                await fetch(`${apiBase}/api/customers/${editingCustomer.id}`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(formData),
-                });
-            } else {
-                await fetch(`${apiBase}/api/customers`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(formData),
-                });
-            }
-            await fetchCustomers();
-            setShowModal(false);
-        } catch (err) {
-            console.error("Failed to save customer:", err);
+            const token = localStorage.getItem("token");
+            await axios.put(`${API_URL}/api/deals/${draggedDealId}`,
+                { stageId: targetStageId },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+        } catch (error) {
+            console.error("Failed to update deal stage", error);
+            // Revert on error
+            setDeals(originalDeals);
+            alert("فشل تحديث المرحلة");
+        } finally {
+            setDraggedDealId(null);
         }
     };
 
-    const handleDelete = async (id: string) => {
-        if (confirm("هل أنت متأكد من حذف هذا العميل؟")) {
-            try {
-                await fetch(`${apiBase}/api/customers/${id}`, { method: "DELETE" });
-                await fetchCustomers();
-            } catch (err) {
-                console.error("Failed to delete customer:", err);
-            }
+    const handleAddDeal = async () => {
+        const title = prompt("اسم الصفقة:");
+        if (!title) return;
+
+        // For simplicity, just quick add now. In real app, modal with full details.
+        const value = prompt("قيمة الصفقة (اختياري):", "0");
+        const firstStage = stages[0]?.id;
+
+        if (!firstStage) return alert("لا توجد مراحل متاحة");
+
+        try {
+            const token = localStorage.getItem("token");
+            await axios.post(`${API_URL}/api/deals`,
+                { title, value: Number(value), stageId: firstStage },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            fetchData();
+        } catch (error) {
+            console.error("Failed to create deal", error);
         }
     };
+
+    if (loading) return <div className="p-12 text-center text-slate-500">جاري التحميل...</div>;
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="h-[calc(100vh-100px)] overflow-hidden flex flex-col p-4">
+            <div className="flex justify-between items-center mb-6 px-2">
                 <div>
-                    <h1 className="text-2xl font-extrabold text-slate-900">إدارة العملاء</h1>
-                    <p className="text-slate-500">إدارة قاعدة بيانات العملاء والتواصل معهم</p>
+                    <h1 className="text-2xl font-bold">إدارة المبيعات (Pipeline)</h1>
+                    <p className="text-slate-500 text-sm">تتبع صفقاتك عبر المراحل المختلفة</p>
                 </div>
                 <button
-                    className="btn bg-brand-blue px-6 py-3 text-white hover:bg-blue-700 shadow-md"
-                    onClick={openAddModal}
+                    onClick={handleAddDeal}
+                    className="btn bg-brand-blue text-white px-4 py-2 rounded-lg hover:bg-blue-700"
                 >
-                    + إضافة عميل
+                    + صفقة جديدة
                 </button>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="card p-4 text-center">
-                    <p className="text-3xl font-bold text-brand-blue">{customers.length}</p>
-                    <p className="text-sm text-slate-500">إجمالي العملاء</p>
-                </div>
-                <div className="card p-4 text-center">
-                    <p className="text-3xl font-bold text-green-600">{customers.filter(c => c.status === "active").length}</p>
-                    <p className="text-sm text-slate-500">عملاء نشطون</p>
-                </div>
-                <div className="card p-4 text-center">
-                    <p className="text-3xl font-bold text-amber-600">{customers.filter(c => c.status === "pending").length}</p>
-                    <p className="text-sm text-slate-500">قيد الانتظار</p>
-                </div>
-                <div className="card p-4 text-center">
-                    <p className="text-3xl font-bold text-slate-400">{customers.filter(c => c.status === "inactive").length}</p>
-                    <p className="text-sm text-slate-500">غير نشطين</p>
-                </div>
-            </div>
+            <div className="flex-1 overflow-x-auto pb-4">
+                <div className="flex gap-4 h-full min-w-max">
+                    {stages.map(stage => {
+                        const stageDeals = deals.filter(d => d.stage_id === stage.id);
+                        const totalValue = stageDeals.reduce((sum, d) => sum + Number(d.value), 0);
 
-            {/* Search & Filter */}
-            <div className="card p-4 flex flex-col md:flex-row gap-4">
-                <input
-                    type="text"
-                    placeholder="بحث بالاسم أو الهاتف أو البريد..."
-                    className="flex-1 p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-blue/50 outline-none"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                />
-                <select
-                    className="p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-blue/50 outline-none"
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
-                >
-                    <option value="all">جميع الحالات</option>
-                    <option value="active">نشط</option>
-                    <option value="pending">قيد الانتظار</option>
-                    <option value="inactive">غير نشط</option>
-                </select>
-            </div>
+                        return (
+                            <div
+                                key={stage.id}
+                                className="w-72 flex flex-col bg-slate-100 rounded-xl max-h-full"
+                                onDragOver={handleDragOver}
+                                onDrop={(e) => handleDrop(e, stage.id)}
+                            >
+                                {/* Column Header */}
+                                <div className="p-3 border-b border-slate-200 bg-white rounded-t-xl sticky top-0 z-10">
+                                    <div className="flex justify-between items-center mb-1">
+                                        <h3 className="font-bold text-slate-700">{stage.name}</h3>
+                                        <span className="text-xs bg-slate-200 px-2 py-0.5 rounded-full text-slate-600">
+                                            {stageDeals.length}
+                                        </span>
+                                    </div>
+                                    <div className="text-xs font-semibold text-slate-500">
+                                        {totalValue.toLocaleString()} JOD
+                                    </div>
+                                    <div className="mt-2 h-1 w-full rounded-full bg-slate-100 overflow-hidden">
+                                        <div className="h-full" style={{ width: '100%', backgroundColor: stage.color || '#3b82f6' }}></div>
+                                    </div>
+                                </div>
 
-            {/* Customers Table */}
-            <div className="card overflow-hidden">
-                {loading ? (
-                    <div className="p-8 text-center text-slate-500">جاري التحميل...</div>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead className="bg-slate-50 border-b">
-                                <tr>
-                                    <th className="text-right p-4 text-sm font-semibold text-slate-600">الاسم</th>
-                                    <th className="text-right p-4 text-sm font-semibold text-slate-600">الهاتف</th>
-                                    <th className="text-right p-4 text-sm font-semibold text-slate-600">البريد</th>
-                                    <th className="text-right p-4 text-sm font-semibold text-slate-600">الحالة</th>
-                                    <th className="text-right p-4 text-sm font-semibold text-slate-600">آخر تواصل</th>
-                                    <th className="text-right p-4 text-sm font-semibold text-slate-600">إجراءات</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {filteredCustomers.map((customer) => (
-                                    <tr key={customer.id} className="hover:bg-slate-50 transition">
-                                        <td className="p-4">
-                                            <p className="font-semibold text-slate-800">{customer.name}</p>
-                                            {customer.notes && <p className="text-xs text-slate-500">{customer.notes}</p>}
-                                        </td>
-                                        <td className="p-4 text-slate-600">{customer.phone}</td>
-                                        <td className="p-4 text-slate-600">{customer.email}</td>
-                                        <td className="p-4">
-                                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[customer.status]}`}>
-                                                {statusLabels[customer.status]}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-slate-500 text-sm">{customer.lastContact}</td>
-                                        <td className="p-4">
-                                            <div className="flex gap-2">
-                                                <button
-                                                    className="px-3 py-1 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"
-                                                    onClick={() => openEditModal(customer)}
-                                                >
-                                                    تعديل
-                                                </button>
-                                                <button
-                                                    className="px-3 py-1 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
-                                                    onClick={() => handleDelete(customer.id)}
-                                                >
-                                                    حذف
-                                                </button>
+                                {/* Deals List */}
+                                <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                                    {stageDeals.map(deal => (
+                                        <div
+                                            key={deal.id}
+                                            draggable
+                                            onDragStart={(e) => handleDragStart(e, deal.id)}
+                                            className="bg-white p-3 rounded-lg shadow-sm border border-slate-200 cursor-move hover:shadow-md hover:border-brand-blue transition-all"
+                                        >
+                                            <h4 className="font-semibold text-slate-800 mb-1">{deal.title}</h4>
+                                            <div className="flex justify-between items-center text-xs text-slate-500">
+                                                <span>{Number(deal.value).toLocaleString()}</span>
+                                                <span>{deal.customer?.name || "بدون عميل"}</span>
                                             </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {filteredCustomers.length === 0 && (
-                                    <tr>
-                                        <td colSpan={6} className="p-8 text-center text-slate-500">
-                                            لا يوجد عملاء مطابقون للبحث
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
-
-            {/* Modal */}
-            {showModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-lg p-6 space-y-4">
-                        <h3 className="text-xl font-bold text-slate-800">
-                            {editingCustomer ? "تعديل عميل" : "إضافة عميل جديد"}
-                        </h3>
-
-                        <div className="space-y-3">
-                            <input
-                                type="text"
-                                placeholder="الاسم *"
-                                className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-blue/50 outline-none"
-                                value={formData.name}
-                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                            />
-                            <input
-                                type="tel"
-                                placeholder="رقم الهاتف *"
-                                className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-blue/50 outline-none"
-                                value={formData.phone}
-                                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                            />
-                            <input
-                                type="email"
-                                placeholder="البريد الإلكتروني"
-                                className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-blue/50 outline-none"
-                                value={formData.email}
-                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                            />
-                            <select
-                                className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-blue/50 outline-none"
-                                value={formData.status}
-                                onChange={(e) => setFormData({ ...formData, status: e.target.value as Customer["status"] })}
-                            >
-                                <option value="pending">قيد الانتظار</option>
-                                <option value="active">نشط</option>
-                                <option value="inactive">غير نشط</option>
-                            </select>
-                            <textarea
-                                placeholder="ملاحظات"
-                                className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-blue/50 outline-none min-h-[80px]"
-                                value={formData.notes}
-                                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                            />
-                        </div>
-
-                        <div className="flex gap-3 pt-2">
-                            <button
-                                className="flex-1 btn bg-brand-blue py-3 text-white hover:bg-blue-700"
-                                onClick={handleSave}
-                            >
-                                حفظ
-                            </button>
-                            <button
-                                className="flex-1 btn bg-slate-100 py-3 text-slate-700 hover:bg-slate-200"
-                                onClick={() => setShowModal(false)}
-                            >
-                                إلغاء
-                            </button>
-                        </div>
-                    </div>
+                                            <div className="mt-2 text-[10px] text-slate-400 text-right">
+                                                {new Date(deal.created_at).toLocaleDateString()}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {stageDeals.length === 0 && (
+                                        <div className="text-center py-8 text-slate-400 text-sm border border-dashed border-slate-300 rounded-lg">
+                                            اسحب هنا
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )
+                    })}
                 </div>
-            )}
+            </div>
         </div>
     );
 }

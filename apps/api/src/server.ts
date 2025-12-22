@@ -8,6 +8,7 @@ import { db } from "./lib/supabase";
 import authRoutes, { verifyToken } from "./routes/auth";
 import documentsRoutes from "./routes/documents";
 import campaignsRoutes from "./routes/campaigns";
+import dealsRoutes from "./routes/deals";
 
 dotenv.config();
 
@@ -106,6 +107,7 @@ app.get("/health", (req, res) => {
 app.use("/auth", authRoutes);
 app.use("/api/documents", documentsRoutes);
 app.use("/api/campaigns", campaignsRoutes);
+app.use("/api/deals", dealsRoutes);
 
 // Helper to extract orgId
 const getOrgId = (req: Request): string => {

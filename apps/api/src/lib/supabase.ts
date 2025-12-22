@@ -492,6 +492,74 @@ export const db = {
             .from('campaign_logs')
             .insert({ ...log, sent_at: new Date().toISOString() });
         if (error) console.error("Failed to log campaign result", error);
+    },
+
+    // ========== DEALS / CRM PIPELINE ==========
+    async getStages(organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
+
+        let { data, error } = await supabase
+            .from('stages')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .order('position', { ascending: true });
+
+        // If no stages, create defaults
+        if (data && data.length === 0) {
+            const defaults = [
+                { name: 'Lead', position: 0, color: '#94a3b8' },
+                { name: 'Contacted', position: 1, color: '#3b82f6' },
+                { name: 'Proposal', position: 2, color: '#f59e0b' },
+                { name: 'Won', position: 3, color: '#10b981' },
+                { name: 'Lost', position: 4, color: '#ef4444' }
+            ];
+
+            for (const d of defaults) {
+                await supabase.from('stages').insert({ ...d, organization_id: organizationId });
+            }
+
+            // Re-fetch
+            ({ data, error } = await supabase
+                .from('stages')
+                .select('*')
+                .eq('organization_id', organizationId)
+                .order('position', { ascending: true }));
+        }
+
+        if (error) throw error;
+        return data || [];
+    },
+
+    async getDeals(organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
+        const { data, error } = await supabase
+            .from('deals')
+            .select('*, customer:customers(name, phone)')
+            .eq('organization_id', organizationId)
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        return data;
+    },
+
+    async createDeal(deal: any) {
+        const { data, error } = await supabase
+            .from('deals')
+            .insert(deal)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async updateDealStage(id: string, stageId: string) {
+        const { data, error } = await supabase
+            .from('deals')
+            .update({ stage_id: stageId, updated_at: new Date().toISOString() })
+            .eq('id', id)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
     }
 };
 
