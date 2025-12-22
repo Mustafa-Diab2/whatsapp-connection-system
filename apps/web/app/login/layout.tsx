@@ -8,10 +8,8 @@ export const metadata: Metadata = {
 
 export default function LoginLayout({ children }: { children: React.ReactNode }) {
     return (
-        <html lang="ar" dir="rtl">
-            <body className="rtl">
-                {children}
-            </body>
-        </html>
+        <>
+            {children}
+        </>
     );
 }
