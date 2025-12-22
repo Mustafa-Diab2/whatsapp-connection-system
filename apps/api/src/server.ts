@@ -7,6 +7,7 @@ import WhatsAppManager from "./wa/WhatsAppManager";
 import { db } from "./lib/supabase";
 import authRoutes, { verifyToken } from "./routes/auth";
 import documentsRoutes from "./routes/documents";
+import campaignsRoutes from "./routes/campaigns";
 
 dotenv.config();
 
@@ -51,6 +52,12 @@ try {
   console.error("Failed to initialize WhatsAppManager:", err);
   process.exit(1);
 }
+
+// Middleware to inject manager
+app.use((req, res, next) => {
+  (req as any).whatsappManager = manager;
+  next();
+});
 
 // Socket.io events
 io.on("connection", (socket) => {
@@ -98,6 +105,7 @@ app.get("/health", (req, res) => {
 // Auth routes
 app.use("/auth", authRoutes);
 app.use("/api/documents", documentsRoutes);
+app.use("/api/campaigns", campaignsRoutes);
 
 // Helper to extract orgId
 const getOrgId = (req: Request): string => {

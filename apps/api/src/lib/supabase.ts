@@ -437,6 +437,62 @@ export const db = {
         if (error) throw error;
         return data || [];
     },
+
+    // ========== CAMPAIGNS ==========
+    async createCampaign(campaign: {
+        name: string;
+        message_template: string;
+        organization_id: string;
+        target_group?: string;
+        scheduled_at?: string;
+    }) {
+        const { data, error } = await supabase
+            .from('campaigns')
+            .insert(campaign)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async getCampaigns(organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
+        const { data, error } = await supabase
+            .from('campaigns')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        return data;
+    },
+
+    async updateCampaignStatus(id: string, status: string, stats?: any) {
+        const updateData: any = { status, updated_at: new Date().toISOString() };
+        if (stats) {
+            Object.assign(updateData, stats);
+        }
+        const { data, error } = await supabase
+            .from('campaigns')
+            .update(updateData)
+            .eq('id', id)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async logCampaignResult(log: {
+        campaign_id: string;
+        phone: string;
+        status: string;
+        error_message?: string;
+        customer_id?: string;
+    }) {
+        const { error } = await supabase
+            .from('campaign_logs')
+            .insert({ ...log, sent_at: new Date().toISOString() });
+        if (error) console.error("Failed to log campaign result", error);
+    }
 };
 
 export default supabase;
