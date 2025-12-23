@@ -108,6 +108,71 @@ export default function SettingsPage() {
         }
     };
 
+    // Edit member state
+    const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
+    const [editForm, setEditForm] = useState({ name: "", role: "" });
+
+    // Delete team member
+    const handleDeleteMember = async (memberId: string, memberName: string) => {
+        if (!confirm(`هل أنت متأكد من حذف العضو "${memberName}"؟`)) {
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${apiBase}/api/auth/team/${memberId}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                setTeamMsg({ type: "success", text: "تم حذف العضو بنجاح!" });
+                fetchTeamMembers();
+            } else {
+                setTeamMsg({ type: "error", text: data.error || "فشل حذف العضو" });
+            }
+        } catch (err) {
+            setTeamMsg({ type: "error", text: "حدث خطأ، حاول مرة أخرى" });
+        }
+    };
+
+    // Update team member
+    const handleUpdateMember = async () => {
+        if (!editingMember) return;
+
+        try {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${apiBase}/api/auth/team/${editingMember.id}`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(editForm)
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                setTeamMsg({ type: "success", text: "تم تحديث العضو بنجاح!" });
+                setEditingMember(null);
+                fetchTeamMembers();
+            } else {
+                setTeamMsg({ type: "error", text: data.error || "فشل تحديث العضو" });
+            }
+        } catch (err) {
+            setTeamMsg({ type: "error", text: "حدث خطأ، حاول مرة أخرى" });
+        }
+    };
+
+    // Open edit modal
+    const openEditModal = (member: TeamMember) => {
+        setEditingMember(member);
+        setEditForm({ name: member.name || "", role: member.role });
+    };
+
     useEffect(() => {
         fetchSettings();
         fetchTeamMembers();
@@ -329,6 +394,7 @@ export default function SettingsPage() {
                                         <th className="text-right p-4 text-sm font-semibold text-slate-600">البريد الإلكتروني</th>
                                         <th className="text-right p-4 text-sm font-semibold text-slate-600">الدور</th>
                                         <th className="text-right p-4 text-sm font-semibold text-slate-600">تاريخ الإنضمام</th>
+                                        <th className="text-center p-4 text-sm font-semibold text-slate-600">الإجراءات</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -345,12 +411,12 @@ export default function SettingsPage() {
                                             <td className="p-4 text-slate-600">{member.email}</td>
                                             <td className="p-4">
                                                 <span className={`px-3 py-1 rounded-full text-xs font-medium ${member.role === 'admin'
-                                                        ? 'bg-red-100 text-red-700'
-                                                        : member.role === 'supervisor'
-                                                            ? 'bg-orange-100 text-orange-700'
-                                                            : member.role === 'moderator'
-                                                                ? 'bg-blue-100 text-blue-700'
-                                                                : 'bg-gray-100 text-gray-700'
+                                                    ? 'bg-red-100 text-red-700'
+                                                    : member.role === 'supervisor'
+                                                        ? 'bg-orange-100 text-orange-700'
+                                                        : member.role === 'moderator'
+                                                            ? 'bg-blue-100 text-blue-700'
+                                                            : 'bg-gray-100 text-gray-700'
                                                     }`}>
                                                     {member.role === 'admin' ? '🔑 أدمن'
                                                         : member.role === 'supervisor' ? '👁️ مشرف'
@@ -360,6 +426,24 @@ export default function SettingsPage() {
                                             </td>
                                             <td className="p-4 text-slate-500 text-sm">
                                                 {new Date(member.created_at).toLocaleDateString('ar-EG')}
+                                            </td>
+                                            <td className="p-4">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <button
+                                                        onClick={() => openEditModal(member)}
+                                                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                        title="تعديل"
+                                                    >
+                                                        ✏️
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteMember(member.id, member.name || member.email)}
+                                                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                        title="حذف"
+                                                    >
+                                                        🗑️
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -386,6 +470,76 @@ export default function SettingsPage() {
                     </div>
                 )}
             </div>
+
+            {/* Edit Member Modal */}
+            {editingMember && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-xl font-bold text-slate-800">✏️ تعديل العضو</h3>
+                            <button
+                                onClick={() => setEditingMember(null)}
+                                className="text-slate-400 hover:text-slate-600 text-2xl"
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-600 mb-1">البريد الإلكتروني</label>
+                                <input
+                                    type="email"
+                                    value={editingMember.email}
+                                    disabled
+                                    className="w-full p-3 rounded-xl border border-slate-200 bg-slate-100 text-slate-500"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-600 mb-1">الاسم</label>
+                                <input
+                                    type="text"
+                                    value={editForm.name}
+                                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                                    className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-blue/50 outline-none"
+                                    placeholder="اسم العضو"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-600 mb-1">الدور</label>
+                                <select
+                                    value={editForm.role}
+                                    onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                                    className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-blue/50 outline-none"
+                                >
+                                    <option value="admin">🔑 أدمن (صلاحيات كاملة)</option>
+                                    <option value="supervisor">👁️ مشرف (إدارة المحادثات)</option>
+                                    <option value="moderator">💬 مودريتور (رد على الرسائل)</option>
+                                    <option value="member">👤 عضو عادي</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 mt-6">
+                            <button
+                                onClick={handleUpdateMember}
+                                className="flex-1 bg-gradient-to-r from-brand-blue to-indigo-600 text-white py-3 rounded-xl font-medium hover:shadow-lg transition-all"
+                            >
+                                💾 حفظ التغييرات
+                            </button>
+                            <button
+                                onClick={() => setEditingMember(null)}
+                                className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-medium hover:bg-slate-200 transition-all"
+                            >
+                                إلغاء
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
+

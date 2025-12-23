@@ -298,4 +298,110 @@ router.get("/team", verifyToken, async (req: Request, res: Response) => {
     }
 });
 
+// Update Team Member
+router.put("/team/:memberId", verifyToken, async (req: Request, res: Response) => {
+    try {
+        const requesterId = (req as any).user.userId;
+        const orgId = (req as any).user.organizationId;
+        const { memberId } = req.params;
+        const { name, role } = req.body;
+
+        // Check if requester is admin
+        const { data: requester } = await supabase
+            .from("users")
+            .select("role")
+            .eq("id", requesterId)
+            .single();
+
+        if (requester?.role !== 'admin') {
+            return res.status(403).json({ error: "غير مصرح - فقط الأدمن يمكنه تعديل الأعضاء" });
+        }
+
+        // Verify member belongs to same organization
+        const { data: member } = await supabase
+            .from("users")
+            .select("id, organization_id")
+            .eq("id", memberId)
+            .eq("organization_id", orgId)
+            .single();
+
+        if (!member) {
+            return res.status(404).json({ error: "العضو غير موجود" });
+        }
+
+        // Update member
+        const { data: updatedMember, error } = await supabase
+            .from("users")
+            .update({
+                name,
+                role,
+                updated_at: new Date().toISOString()
+            })
+            .eq("id", memberId)
+            .select("id, name, email, role, created_at")
+            .single();
+
+        if (error) throw error;
+
+        res.json({
+            message: "تم تحديث العضو بنجاح",
+            member: updatedMember
+        });
+    } catch (error: any) {
+        console.error("Update member error:", error);
+        res.status(500).json({ error: error.message || "حدث خطأ في تحديث العضو" });
+    }
+});
+
+// Delete Team Member
+router.delete("/team/:memberId", verifyToken, async (req: Request, res: Response) => {
+    try {
+        const requesterId = (req as any).user.userId;
+        const orgId = (req as any).user.organizationId;
+        const { memberId } = req.params;
+
+        // Can't delete yourself
+        if (requesterId === memberId) {
+            return res.status(400).json({ error: "لا يمكنك حذف نفسك" });
+        }
+
+        // Check if requester is admin
+        const { data: requester } = await supabase
+            .from("users")
+            .select("role")
+            .eq("id", requesterId)
+            .single();
+
+        if (requester?.role !== 'admin') {
+            return res.status(403).json({ error: "غير مصرح - فقط الأدمن يمكنه حذف الأعضاء" });
+        }
+
+        // Verify member belongs to same organization
+        const { data: member } = await supabase
+            .from("users")
+            .select("id, organization_id, role")
+            .eq("id", memberId)
+            .eq("organization_id", orgId)
+            .single();
+
+        if (!member) {
+            return res.status(404).json({ error: "العضو غير موجود" });
+        }
+
+        // Delete member
+        const { error } = await supabase
+            .from("users")
+            .delete()
+            .eq("id", memberId);
+
+        if (error) throw error;
+
+        res.json({ message: "تم حذف العضو بنجاح" });
+    } catch (error: any) {
+        console.error("Delete member error:", error);
+        res.status(500).json({ error: error.message || "حدث خطأ في حذف العضو" });
+    }
+});
+
 export default router;
+
