@@ -103,7 +103,8 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Auth routes
+// Auth routes - support both paths for compatibility
+app.use("/auth", authRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/documents", documentsRoutes);
 app.use("/api/campaigns", campaignsRoutes);
