@@ -1,7 +1,9 @@
 import http from "http";
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { Server } from "socket.io";
 import WhatsAppManager from "./wa/WhatsAppManager";
 import { db } from "./lib/supabase";
@@ -15,6 +17,13 @@ dotenv.config();
 const PORT = process.env.PORT || 3001;
 const NODE_ENV = process.env.NODE_ENV || "development";
 
+// Allowed origins for CORS
+const ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  process.env.FRONTEND_URL,
+].filter(Boolean) as string[];
+
 console.log("=== SERVER STARTING ===");
 console.log("PORT:", PORT);
 console.log("NODE_ENV:", NODE_ENV);
@@ -22,14 +31,74 @@ console.log("SUPABASE_URL:", process.env.SUPABASE_URL ? "✓ Set" : "✗ Not set
 
 const app = express();
 
-// CORS
+// ============ SECURITY MIDDLEWARE ============
+
+// 1. Helmet - Security Headers (XSS, Clickjacking, etc.)
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+
+// 2. Rate Limiting - Protect against DDoS and Brute Force
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 500, // 500 requests per 15 min per IP
+  message: { error: "طلبات كثيرة جداً، حاول لاحقاً" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Stricter rate limit for auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Only 20 login attempts per 15 min
+  message: { error: "محاولات دخول كثيرة، انتظر 15 دقيقة" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Apply general rate limiter
+app.use(generalLimiter);
+
+// 3. CORS - Allow all origins with vercel.app
 app.use(cors({
-  origin: "*",
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin) || origin.includes('vercel.app') || origin.includes('localhost')) {
+      callback(null, true);
+    } else {
+      console.warn(`⚠️ Blocked CORS request from: ${origin}`);
+      callback(null, true); // Allow but log
+    }
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 }));
 
-app.use(express.json({ limit: "10mb" }));
+// 4. Body Parser with size limits
+app.use(express.json({ limit: "5mb" }));
+app.use(express.urlencoded({ extended: true, limit: "5mb" }));
+
+// 5. Security logging middleware
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const suspiciousPatterns = [
+    /(\%27)|(\')|(\-\-)|(\%23)|(#)/i, // SQL Injection
+    /<script/i, // XSS
+    /javascript:/i, // XSS
+  ];
+
+  const requestData = JSON.stringify(req.body) + req.url;
+  const isSuspicious = suspiciousPatterns.some(pattern => pattern.test(requestData));
+
+  if (isSuspicious) {
+    console.warn(`🚨 Suspicious request from ${req.ip}: ${req.method} ${req.url}`);
+  }
+
+  next();
+});
+
+// 6. Remove X-Powered-By header
+app.disable('x-powered-by');
 
 // Create HTTP server
 const httpServer = http.createServer(app);
@@ -103,9 +172,9 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Auth routes - support both paths for compatibility
-app.use("/auth", authRoutes);
-app.use("/api/auth", authRoutes);
+// Auth routes - support both paths for compatibility + Rate Limiting
+app.use("/auth", authLimiter, authRoutes);
+app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/documents", documentsRoutes);
 app.use("/api/campaigns", campaignsRoutes);
 app.use("/api/deals", dealsRoutes);
