@@ -4,6 +4,15 @@ import { useState, useEffect, useCallback } from "react";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
+type TeamMember = {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    created_at: string;
+    avatar?: string;
+};
+
 export default function SettingsPage() {
     const [settings, setSettings] = useState({
         companyName: "",
@@ -18,6 +27,18 @@ export default function SettingsPage() {
     const [loading, setLoading] = useState(true);
     const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+    // Team Management State
+    const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+    const [loadingTeam, setLoadingTeam] = useState(true);
+    const [newMember, setNewMember] = useState({
+        email: "",
+        password: "",
+        name: "",
+        role: "member"
+    });
+    const [addingMember, setAddingMember] = useState(false);
+    const [teamMsg, setTeamMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
     const fetchSettings = useCallback(async () => {
         try {
             const res = await fetch(`${apiBase}/api/settings`);
@@ -30,9 +51,67 @@ export default function SettingsPage() {
         }
     }, []);
 
+    // Fetch team members
+    const fetchTeamMembers = useCallback(async () => {
+        try {
+            const token = localStorage.getItem("token");
+            if (!token) return;
+
+            const res = await fetch(`${apiBase}/api/auth/team`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (data.members) {
+                setTeamMembers(data.members);
+            }
+        } catch (err) {
+            console.error("Failed to fetch team:", err);
+        } finally {
+            setLoadingTeam(false);
+        }
+    }, []);
+
+    // Add new team member
+    const handleAddMember = async () => {
+        if (!newMember.email || !newMember.password) {
+            setTeamMsg({ type: "error", text: "البريد الإلكتروني وكلمة المرور مطلوبان" });
+            return;
+        }
+
+        setAddingMember(true);
+        setTeamMsg(null);
+
+        try {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${apiBase}/api/auth/team/invite`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(newMember)
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                setTeamMsg({ type: "success", text: "تم إضافة العضو بنجاح!" });
+                setNewMember({ email: "", password: "", name: "", role: "member" });
+                fetchTeamMembers(); // Refresh list
+            } else {
+                setTeamMsg({ type: "error", text: data.error || "فشل إضافة العضو" });
+            }
+        } catch (err) {
+            setTeamMsg({ type: "error", text: "حدث خطأ، حاول مرة أخرى" });
+        } finally {
+            setAddingMember(false);
+        }
+    };
+
     useEffect(() => {
         fetchSettings();
-    }, [fetchSettings]);
+        fetchTeamMembers();
+    }, [fetchSettings, fetchTeamMembers]);
 
     const handleSave = async () => {
         setSaving(true);
@@ -153,6 +232,141 @@ export default function SettingsPage() {
                         <option value="light">فاتح</option>
                         <option value="dark">داكن</option>
                     </select>
+                </div>
+            </div>
+
+            {/* Team Management Section */}
+            <div className="card p-6 space-y-6">
+                <div className="flex items-center justify-between border-b pb-2">
+                    <h2 className="text-lg font-semibold text-slate-800">👥 إدارة الفريق</h2>
+                    <span className="text-sm text-slate-500">{teamMembers.length} عضو</span>
+                </div>
+
+                {/* Add New Member Form */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-5 rounded-2xl space-y-4">
+                    <h3 className="font-medium text-slate-700 flex items-center gap-2">
+                        <span className="w-8 h-8 bg-brand-blue text-white rounded-full flex items-center justify-center text-sm">+</span>
+                        إضافة عضو جديد
+                    </h3>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-600 mb-1">الاسم</label>
+                            <input
+                                type="text"
+                                placeholder="اسم العضو"
+                                className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-blue/50 outline-none bg-white"
+                                value={newMember.name}
+                                onChange={(e) => setNewMember({ ...newMember, name: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-600 mb-1">البريد الإلكتروني *</label>
+                            <input
+                                type="email"
+                                placeholder="example@email.com"
+                                className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-blue/50 outline-none bg-white"
+                                value={newMember.email}
+                                onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-600 mb-1">كلمة المرور *</label>
+                            <input
+                                type="password"
+                                placeholder="••••••••"
+                                className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-blue/50 outline-none bg-white"
+                                value={newMember.password}
+                                onChange={(e) => setNewMember({ ...newMember, password: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-600 mb-1">الدور</label>
+                            <select
+                                className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-blue/50 outline-none bg-white"
+                                value={newMember.role}
+                                onChange={(e) => setNewMember({ ...newMember, role: e.target.value })}
+                            >
+                                <option value="admin">أدمن (صلاحيات كاملة)</option>
+                                <option value="supervisor">مشرف (إدارة المحادثات)</option>
+                                <option value="moderator">مودريتور (رد على الرسائل)</option>
+                                <option value="member">عضو عادي</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 pt-2">
+                        <button
+                            className={`btn bg-gradient-to-r from-brand-blue to-indigo-600 px-6 py-2.5 text-white hover:shadow-lg transition-all rounded-xl ${addingMember ? 'opacity-70' : ''}`}
+                            onClick={handleAddMember}
+                            disabled={addingMember}
+                        >
+                            {addingMember ? "جاري الإضافة..." : "➕ إضافة العضو"}
+                        </button>
+
+                        {teamMsg && (
+                            <div className={`text-sm px-4 py-2 rounded-lg ${teamMsg.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                {teamMsg.text}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Team Members List */}
+                <div className="space-y-3">
+                    <h3 className="font-medium text-slate-700">أعضاء الفريق الحاليين</h3>
+
+                    {loadingTeam ? (
+                        <div className="text-center py-8 text-slate-400">جاري التحميل...</div>
+                    ) : teamMembers.length === 0 ? (
+                        <div className="text-center py-8 text-slate-400">لا يوجد أعضاء بعد</div>
+                    ) : (
+                        <div className="overflow-x-auto rounded-xl border border-slate-200">
+                            <table className="w-full">
+                                <thead className="bg-slate-50">
+                                    <tr>
+                                        <th className="text-right p-4 text-sm font-semibold text-slate-600">العضو</th>
+                                        <th className="text-right p-4 text-sm font-semibold text-slate-600">البريد الإلكتروني</th>
+                                        <th className="text-right p-4 text-sm font-semibold text-slate-600">الدور</th>
+                                        <th className="text-right p-4 text-sm font-semibold text-slate-600">تاريخ الإنضمام</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {teamMembers.map((member, index) => (
+                                        <tr key={member.id} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-25'}>
+                                            <td className="p-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-brand-blue to-indigo-500 flex items-center justify-center text-white font-bold">
+                                                        {member.name?.charAt(0)?.toUpperCase() || member.email?.charAt(0)?.toUpperCase()}
+                                                    </div>
+                                                    <span className="font-medium text-slate-800">{member.name || 'بدون اسم'}</span>
+                                                </div>
+                                            </td>
+                                            <td className="p-4 text-slate-600">{member.email}</td>
+                                            <td className="p-4">
+                                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${member.role === 'admin'
+                                                        ? 'bg-red-100 text-red-700'
+                                                        : member.role === 'supervisor'
+                                                            ? 'bg-orange-100 text-orange-700'
+                                                            : member.role === 'moderator'
+                                                                ? 'bg-blue-100 text-blue-700'
+                                                                : 'bg-gray-100 text-gray-700'
+                                                    }`}>
+                                                    {member.role === 'admin' ? '🔑 أدمن'
+                                                        : member.role === 'supervisor' ? '👁️ مشرف'
+                                                            : member.role === 'moderator' ? '💬 مودريتور'
+                                                                : '👤 عضو'}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-slate-500 text-sm">
+                                                {new Date(member.created_at).toLocaleDateString('ar-EG')}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
             </div>
 
