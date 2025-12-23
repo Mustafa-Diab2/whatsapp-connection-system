@@ -104,7 +104,7 @@ app.get("/health", (req, res) => {
 });
 
 // Auth routes
-app.use("/auth", authRoutes);
+app.use("/api/auth", authRoutes);
 app.use("/api/documents", documentsRoutes);
 app.use("/api/campaigns", campaignsRoutes);
 app.use("/api/deals", dealsRoutes);
