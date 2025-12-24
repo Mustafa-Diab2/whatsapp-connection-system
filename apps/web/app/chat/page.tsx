@@ -29,6 +29,15 @@ const statusColors: Record<Status, string> = {
   disconnected: "bg-slate-200 text-slate-700",
 };
 
+// Helper to get auth token
+const getAuthHeaders = () => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+};
+
 export default function ChatPage() {
   const [status, setStatus] = useState<Status>("idle");
   const [chats, setChats] = useState<ChatItem[]>([]);
@@ -136,7 +145,9 @@ export default function ChatPage() {
   const fetchStatus = useCallback(async () => {
     if (clientId === "default") return;
     try {
-      const res = await fetch(`${apiBase}/whatsapp/status/${clientId}`);
+      const res = await fetch(`${apiBase}/whatsapp/status/${clientId}`, {
+        headers: getAuthHeaders()
+      });
       const data = await res.json();
       setStatus(data.status as Status);
     } catch (err) {
@@ -151,7 +162,9 @@ export default function ChatPage() {
     setLoadingChats(true);
     setErrorMsg(null);
     try {
-      const res = await fetch(`${apiBase}/whatsapp/chats/${clientId}`);
+      const res = await fetch(`${apiBase}/whatsapp/chats/${clientId}`, {
+        headers: getAuthHeaders()
+      });
       if (!res.ok) throw new Error("تعذر جلب المحادثات");
       const data = await res.json();
       setChats(data.chats || []);
@@ -172,7 +185,9 @@ export default function ChatPage() {
       setLoadingMessages(true);
       setErrorMsg(null);
       try {
-        const res = await fetch(`${apiBase}/whatsapp/messages/${clientId}/${chatId}`);
+        const res = await fetch(`${apiBase}/whatsapp/messages/${clientId}/${chatId}`, {
+          headers: getAuthHeaders()
+        });
         if (!res.ok) throw new Error("تعذر جلب الرسائل");
         const data = await res.json();
         setMessages(data.messages || []);
@@ -208,7 +223,7 @@ export default function ChatPage() {
     try {
       const res = await fetch(`${apiBase}/whatsapp/send`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ clientId, chatId: selectedChat, message: messageInput.trim() }),
       });
       if (!res.ok) {
@@ -245,7 +260,7 @@ export default function ChatPage() {
 
         const res = await fetch(`${apiBase}/whatsapp/send-media`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             clientId,
             chatId: selectedChat,
