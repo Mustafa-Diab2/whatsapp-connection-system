@@ -81,7 +81,13 @@ export default function SettingsPage() {
 
     const fetchSettings = useCallback(async () => {
         try {
-            const res = await fetch(`${apiBase}/api/settings`);
+            const token = localStorage.getItem("token");
+            if (!token) return;
+
+            const res = await fetch(`${apiBase}/api/settings`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error("Failed to fetch settings");
             const data = await res.json();
             setSettings(data);
         } catch (err) {
@@ -223,9 +229,13 @@ export default function SettingsPage() {
         setSaving(true);
         setMsg(null);
         try {
+            const token = localStorage.getItem("token");
             const res = await fetch(`${apiBase}/api/settings`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
                 body: JSON.stringify(settings),
             });
             if (res.ok) {
