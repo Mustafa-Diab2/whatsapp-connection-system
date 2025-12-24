@@ -12,7 +12,6 @@ type WaState = {
   updatedAt?: string;
 };
 
-const clientId = "default";
 const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 const statusLabels: Record<Status, string> = {
@@ -46,10 +45,27 @@ export default function WhatsAppConnectPage() {
   const [state, setState] = useState<WaState>({ status: "idle" });
   const [connectDisabled, setConnectDisabled] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [clientId, setClientId] = useState<string>("default");
+
+  // Get organizationId from user data on mount
+  useEffect(() => {
+    const userStr = localStorage.getItem("user");
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        if (user.organizationId) {
+          setClientId(user.organizationId);
+        }
+      } catch (e) {
+        console.error("Failed to parse user data", e);
+      }
+    }
+  }, []);
 
   const statusBadge = useMemo(() => statusLabels[state.status], [state.status]);
 
   const fetchStatus = useCallback(async () => {
+    if (clientId === "default") return; // Wait for real clientId
     try {
       const res = await fetch(`${apiBase}/whatsapp/status/${clientId}`, {
         headers: getAuthHeaders()
@@ -69,13 +85,17 @@ export default function WhatsAppConnectPage() {
       console.error("Failed to fetch status", err);
       setState((prev) => ({ ...prev, status: "error", lastError: "تعذر جلب الحالة الحالية" }));
     }
-  }, []);
+  }, [clientId]);
 
   useEffect(() => {
-    void fetchStatus();
-  }, [fetchStatus]);
+    if (clientId !== "default") {
+      void fetchStatus();
+    }
+  }, [fetchStatus, clientId]);
 
   useEffect(() => {
+    if (clientId === "default") return; // Wait for real clientId
+
     const s = io(apiBase, { transports: ["websocket"] });
     s.on("connect", () => {
       s.emit("wa:subscribe", { clientId });
@@ -93,7 +113,7 @@ export default function WhatsAppConnectPage() {
     return () => {
       s.disconnect();
     };
-  }, []);
+  }, [clientId]);
 
   const handleConnect = useCallback(async () => {
     if (state.status === "initializing" || state.status === "waiting_qr") return;
