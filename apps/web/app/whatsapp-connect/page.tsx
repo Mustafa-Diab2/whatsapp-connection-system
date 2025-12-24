@@ -53,8 +53,11 @@ export default function WhatsAppConnectPage() {
     if (userStr) {
       try {
         const user = JSON.parse(userStr);
-        if (user.organizationId) {
-          setClientId(user.organizationId);
+        // API returns organization_id (snake_case)
+        const orgId = user.organization_id || user.organizationId;
+        if (orgId) {
+          setClientId(orgId);
+          console.log("[WhatsApp] Using organizationId:", orgId);
         }
       } catch (e) {
         console.error("Failed to parse user data", e);
