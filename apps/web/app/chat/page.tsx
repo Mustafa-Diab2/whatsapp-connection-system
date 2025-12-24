@@ -8,7 +8,6 @@ type Status = "idle" | "initializing" | "waiting_qr" | "ready" | "error" | "disc
 type ChatItem = { id: string; name: string; isGroup: boolean; unreadCount: number };
 type MessageItem = { id: string; body: string; fromMe: boolean; timestamp: number; author?: string; type?: string; from?: string; to?: string };
 
-const clientId = "default";
 const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || apiBase;
 
@@ -40,6 +39,7 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [messageInput, setMessageInput] = useState("");
+  const [clientId, setClientId] = useState<string>("default"); // Start with default, update on mount
   const socketRef = useRef<Socket | null>(null);
   const selectedChatRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -48,6 +48,23 @@ export default function ChatPage() {
   useEffect(() => {
     selectedChatRef.current = selectedChat;
   }, [selectedChat]);
+
+  // Load Organization ID
+  useEffect(() => {
+    const userStr = localStorage.getItem("user");
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        const orgId = user.organization_id || user.organizationId;
+        if (orgId) {
+          setClientId(orgId);
+          console.log("[Chat] Using Organization ID:", orgId);
+        }
+      } catch (e) {
+        console.error("Failed to parse user", e);
+      }
+    }
+  }, []);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -58,6 +75,8 @@ export default function ChatPage() {
 
   // Socket.io connection for real-time updates
   useEffect(() => {
+    if (clientId === "default") return;
+
     const socket = io(socketUrl, {
       transports: ["websocket", "polling"],
     });
@@ -112,20 +131,23 @@ export default function ChatPage() {
     return () => {
       socket.disconnect();
     };
-  }, []);
+  }, [clientId]);
 
   const fetchStatus = useCallback(async () => {
+    if (clientId === "default") return;
     try {
       const res = await fetch(`${apiBase}/whatsapp/status/${clientId}`);
       const data = await res.json();
       setStatus(data.status as Status);
     } catch (err) {
+      console.error("Fetch status error", err);
       setStatus("error");
-      setErrorMsg("تعذر جلب حالة الاتصال");
+      // setErrorMsg("تعذر جلب حالة الاتصال"); // Don't show error immediately on init
     }
-  }, []);
+  }, [clientId]);
 
   const fetchChats = useCallback(async () => {
+    if (clientId === "default") return;
     setLoadingChats(true);
     setErrorMsg(null);
     try {
@@ -137,14 +159,16 @@ export default function ChatPage() {
         setSelectedChat(data.chats[0].id);
       }
     } catch (err: any) {
+      console.error(err);
       setErrorMsg(err?.message || "فشل تحميل المحادثات");
     } finally {
       setLoadingChats(false);
     }
-  }, [selectedChat]);
+  }, [selectedChat, clientId]);
 
   const fetchMessages = useCallback(
     async (chatId: string) => {
+      if (clientId === "default") return;
       setLoadingMessages(true);
       setErrorMsg(null);
       try {
@@ -158,7 +182,7 @@ export default function ChatPage() {
         setLoadingMessages(false);
       }
     },
-    []
+    [clientId]
   );
 
   useEffect(() => {
@@ -178,7 +202,7 @@ export default function ChatPage() {
   }, [selectedChat, fetchMessages]);
 
   const handleSend = useCallback(async () => {
-    if (!selectedChat || !messageInput.trim()) return;
+    if (!selectedChat || !messageInput.trim() || clientId === "default") return;
     setSending(true);
     setErrorMsg(null);
     try {
@@ -198,7 +222,7 @@ export default function ChatPage() {
     } finally {
       setSending(false);
     }
-  }, [selectedChat, messageInput]);
+  }, [selectedChat, messageInput, clientId]);
 
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -208,7 +232,7 @@ export default function ChatPage() {
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !selectedChat) return;
+    if (!file || !selectedChat || clientId === "default") return;
 
     setSending(true);
     setErrorMsg(null);
