@@ -294,8 +294,10 @@ export default class WhatsAppManager {
       await this.sendWebhook(payload);
 
       // Add delay to prevent immediate reply overlap
+      // Add delay to prevent immediate reply overlap
       setTimeout(() => {
         void this.handleBotReply(clientId, message);
+        void this.handleAutoAssign(clientId, message);
       }, 1000);
     });
 
@@ -795,6 +797,48 @@ export default class WhatsAppManager {
       console.error(`[${clientId}] Bot failed to reply:`, err);
     } finally {
       await chat.clearState();
+    }
+  }
+
+  // Handle auto-assignment of conversations
+  private async handleAutoAssign(clientId: string, message: Message) {
+    // Logic: clientId here is treated as organizationId because we connect using orgId
+    if (message.fromMe || message.from.includes("@g.us")) return; // Skip groups and self
+
+    try {
+      // Get config (clientId is orgId here)
+      const settings = await db.getOrganizationSettings(clientId);
+      if (!settings?.auto_assign_enabled) return;
+
+      // 1. Get or create conversation in DB
+      const conversation = await db.getOrCreateConversation(message.from, clientId);
+
+      // 2. If already assigned, do nothing
+      if (conversation.assigned_to) return;
+
+      // 3. Round robin assignment
+      const team = await db.getTeamMembers(clientId);
+      if (team.length === 0) return;
+
+      let nextIndex = (settings.last_assigned_index + 1) % team.length;
+      const nextUser = team[nextIndex];
+
+      // 4. Assign
+      await db.assignConversation(conversation.id, nextUser.id);
+      await db.updateOrganizationLastIndex(clientId, nextIndex);
+
+      console.log(`[AutoAssign] Assigned chat ${message.from} to ${nextUser.name} (${nextUser.email})`);
+
+      // 5. Notify frontend (via socket)
+      this.io.to(clientId).emit("wa:assigned", {
+        chatId: conversation.id,
+        waChatId: message.from,
+        userId: nextUser.id,
+        userName: nextUser.name
+      });
+
+    } catch (err) {
+      console.error(`[${clientId}] Auto assign error:`, err);
     }
   }
 

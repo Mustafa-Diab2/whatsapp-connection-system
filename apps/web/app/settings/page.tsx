@@ -39,6 +39,46 @@ export default function SettingsPage() {
     const [addingMember, setAddingMember] = useState(false);
     const [teamMsg, setTeamMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+    // Auto Assign State
+    const [autoAssignEnabled, setAutoAssignEnabled] = useState(false);
+
+    // Fetch Auto Assign Settings
+    const fetchAutoAssign = useCallback(async () => {
+        try {
+            const token = localStorage.getItem("token");
+            if (!token) return;
+            const res = await fetch(`${apiBase}/api/settings/auto-assign`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const data = await res.json();
+            setAutoAssignEnabled(!!data.auto_assign_enabled);
+        } catch (err) {
+            console.error("Failed to fetch auto-assign:", err);
+        }
+    }, []);
+
+    const toggleAutoAssign = async (enabled: boolean) => {
+        const oldVal = autoAssignEnabled;
+        setAutoAssignEnabled(enabled);
+        try {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${apiBase}/api/settings/auto-assign`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ enabled })
+            });
+            if (!res.ok) throw new Error("Failed");
+        } catch (err) {
+            console.error(err);
+            // Revert on error
+            setAutoAssignEnabled(oldVal);
+            setMsg({ type: "error", text: "فشل تحديث إعداد التوزيع" });
+        }
+    };
+
     const fetchSettings = useCallback(async () => {
         try {
             const res = await fetch(`${apiBase}/api/settings`);
@@ -176,7 +216,8 @@ export default function SettingsPage() {
     useEffect(() => {
         fetchSettings();
         fetchTeamMembers();
-    }, [fetchSettings, fetchTeamMembers]);
+        fetchAutoAssign();
+    }, [fetchSettings, fetchTeamMembers, fetchAutoAssign]);
 
     const handleSave = async () => {
         setSaving(true);
@@ -297,6 +338,34 @@ export default function SettingsPage() {
                         <option value="light">فاتح</option>
                         <option value="dark">داكن</option>
                     </select>
+                </div>
+            </div>
+
+            {/* Automation Settings */}
+            <div className="card p-6 space-y-4 border-l-4 border-l-purple-500 bg-purple-50/30">
+                <h2 className="text-lg font-semibold text-slate-800 border-b pb-2 flex items-center gap-2">
+                    🤖 الأتمتة والتوزيع
+                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">جديد</span>
+                </h2>
+
+                <div className="flex items-center justify-between py-2">
+                    <div>
+                        <p className="font-medium text-slate-700">التوزيع التلقائي للمحادثات (Round Robin)</p>
+                        <p className="text-sm text-slate-500">
+                            عند تفعيل هذا الخيار، سيتم توزيع الرسائل الواردة من عملاء جدد تلقائيًا على الموظفين بالتتابع.
+                            <br />
+                            <span className="text-xs text-orange-600">⚠ تأكد من إضافة أعضاء للفريق أولاً.</span>
+                        </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={autoAssignEnabled}
+                            onChange={(e) => toggleAutoAssign(e.target.checked)}
+                        />
+                        <div className="w-14 h-7 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-purple-600"></div>
+                    </label>
                 </div>
             </div>
 

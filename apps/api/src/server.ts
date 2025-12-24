@@ -593,6 +593,28 @@ app.post("/api/agents", verifyToken, async (req, res) => {
   }
 });
 
+// ========== AUTO ASSIGN SETTINGS ==========
+app.get("/api/settings/auto-assign", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  try {
+    const settings = await db.getOrganizationSettings(orgId);
+    res.json(settings || { auto_assign_enabled: false });
+  } catch (err: any) {
+    res.status(500).json({ message: err?.message || "Failed to get settings" });
+  }
+});
+
+app.post("/api/settings/auto-assign", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  const { enabled } = req.body;
+  try {
+    await db.toggleAutoAssign(orgId, enabled);
+    res.json({ ok: true, enabled });
+  } catch (err: any) {
+    res.status(500).json({ message: err?.message || "Failed to update settings" });
+  }
+});
+
 // ========== 404 ==========
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });

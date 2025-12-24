@@ -560,6 +560,57 @@ export const db = {
             .single();
         if (error) throw error;
         return data;
+    },
+
+    // ========== AUTO ASSIGNMENT ==========
+    async getOrganizationSettings(organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
+        const { data, error } = await supabase
+            .from('organizations')
+            .select('auto_assign_enabled, last_assigned_index')
+            .eq('id', organizationId)
+            .single();
+        if (error) return null;
+        return data;
+    },
+
+    async toggleAutoAssign(organizationId: string, enabled: boolean) {
+        if (!organizationId) throw new Error("Organization ID required");
+        const { data, error } = await supabase
+            .from('organizations')
+            .update({ auto_assign_enabled: enabled })
+            .eq('id', organizationId)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async getTeamMembers(organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
+        const { data, error } = await supabase
+            .from('users')
+            .select('id, name, email')
+            .eq('organization_id', organizationId)
+            .order('created_at', { ascending: true }); // Keep consistent order
+        if (error) throw error;
+        return data || [];
+    },
+
+    async updateOrganizationLastIndex(organizationId: string, index: number) {
+        const { error } = await supabase
+            .from('organizations')
+            .update({ last_assigned_index: index })
+            .eq('id', organizationId);
+        if (error) console.error("Failed to update last index", error);
+    },
+
+    async assignConversation(conversationId: string, userId: string) {
+        const { error } = await supabase
+            .from('conversations')
+            .update({ assigned_to: userId })
+            .eq('id', conversationId);
+        if (error) throw error;
     }
 };
 
