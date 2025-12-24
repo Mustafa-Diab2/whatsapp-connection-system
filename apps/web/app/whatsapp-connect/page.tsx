@@ -33,6 +33,15 @@ const statusColors: Record<Status, string> = {
   disconnected: "bg-slate-200 text-slate-700",
 };
 
+// Helper to get auth token
+const getAuthHeaders = () => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+};
+
 export default function WhatsAppConnectPage() {
   const [state, setState] = useState<WaState>({ status: "idle" });
   const [connectDisabled, setConnectDisabled] = useState(false);
@@ -42,11 +51,15 @@ export default function WhatsAppConnectPage() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${apiBase}/whatsapp/status/${clientId}`);
+      const res = await fetch(`${apiBase}/whatsapp/status/${clientId}`, {
+        headers: getAuthHeaders()
+      });
       const data = await res.json();
       setState((prev) => ({ ...prev, ...data }));
       if (data.status === "waiting_qr") {
-        const qrRes = await fetch(`${apiBase}/whatsapp/qr/${clientId}`);
+        const qrRes = await fetch(`${apiBase}/whatsapp/qr/${clientId}`, {
+          headers: getAuthHeaders()
+        });
         const qr = await qrRes.json();
         if (qr?.qrDataUrl) {
           setState((prev) => ({ ...prev, qrDataUrl: qr.qrDataUrl }));
@@ -90,7 +103,7 @@ export default function WhatsAppConnectPage() {
     try {
       await fetch(`${apiBase}/whatsapp/connect`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ clientId }),
       });
     } catch (err) {
@@ -103,7 +116,10 @@ export default function WhatsAppConnectPage() {
   const handleReset = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${apiBase}/whatsapp/session/${clientId}`, { method: "DELETE" });
+      const res = await fetch(`${apiBase}/whatsapp/session/${clientId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders()
+      });
       const data = await res.json();
       setState(data);
       setConnectDisabled(false);
