@@ -162,7 +162,8 @@ export default function ChatPage() {
     setLoadingChats(true);
     setErrorMsg(null);
     try {
-      const res = await fetch(`${apiBase}/whatsapp/chats/${clientId}`, {
+      // API endpoints now use token for auth/orgId
+      const res = await fetch(`${apiBase}/whatsapp/chats`, {
         headers: getAuthHeaders()
       });
       if (!res.ok) throw new Error("تعذر جلب المحادثات");
@@ -185,7 +186,8 @@ export default function ChatPage() {
       setLoadingMessages(true);
       setErrorMsg(null);
       try {
-        const res = await fetch(`${apiBase}/whatsapp/messages/${clientId}/${chatId}`, {
+        // API endpoints now use token for auth/orgId
+        const res = await fetch(`${apiBase}/whatsapp/messages/${chatId}`, {
           headers: getAuthHeaders()
         });
         if (!res.ok) throw new Error("تعذر جلب الرسائل");
