@@ -621,6 +621,18 @@ export const db = {
         if (error) throw error;
     },
 
+    async logAudit(orgId: string, userId: string | null, action: string, details: any, ip?: string) {
+        supabase.from("audit_logs").insert({
+            organization_id: orgId,
+            user_id: userId,
+            action,
+            details,
+            ip_address: ip
+        }).then(({ error }) => {
+            if (error) console.error("Audit Log Error:", error);
+        });
+    },
+
 };
 
 export default supabase;

@@ -4,6 +4,8 @@ import { verifyToken } from "./auth";
 import WhatsAppManager from "../wa/WhatsAppManager";
 
 const router = Router();
+import { validate } from "../middleware/validate";
+import { createCampaignSchema, sendCampaignSchema } from "../schemas/crmSchemas";
 
 // Get campaigns
 router.get("/", verifyToken, async (req: Request, res: Response) => {
@@ -17,7 +19,7 @@ router.get("/", verifyToken, async (req: Request, res: Response) => {
 });
 
 // Create Campaign
-router.post("/", verifyToken, async (req: Request, res: Response) => {
+router.post("/", verifyToken, validate(createCampaignSchema), async (req: Request, res: Response) => {
     try {
         const orgId = (req as any).user.organizationId;
         const { name, messageTemplate, targetGroup, action } = req.body;
@@ -45,7 +47,7 @@ router.post("/", verifyToken, async (req: Request, res: Response) => {
 });
 
 // Send Campaign (Manual Trigger)
-router.post("/:id/send", verifyToken, async (req: Request, res: Response) => {
+router.post("/:id/send", verifyToken, validate(sendCampaignSchema), async (req: Request, res: Response) => {
     try {
         const orgId = (req as any).user.organizationId;
         const { id } = req.params;

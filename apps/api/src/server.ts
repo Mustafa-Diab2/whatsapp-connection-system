@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import cookieParser from "cookie-parser";
 import { Server } from "socket.io";
 import WhatsAppManager from "./wa/WhatsAppManager";
 import { db } from "./lib/supabase";
@@ -12,6 +13,8 @@ import authRoutes, { verifyToken } from "./routes/auth";
 import documentsRoutes from "./routes/documents";
 import campaignsRoutes from "./routes/campaigns";
 import dealsRoutes from "./routes/deals";
+import { validate } from "./middleware/validate";
+import { createCustomerSchema, updateCustomerSchema } from "./schemas/customerSchemas";
 
 dotenv.config();
 
@@ -79,6 +82,7 @@ app.use(cors({
 // 4. Body Parser with size limits
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: true, limit: "5mb" }));
+app.use(cookieParser());
 
 // 5. Security logging middleware
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -422,7 +426,7 @@ app.get("/api/customers", verifyToken, async (req, res) => {
   }
 });
 
-app.post("/api/customers", verifyToken, async (req, res) => {
+app.post("/api/customers", verifyToken, validate(createCustomerSchema), async (req, res) => {
   const orgId = getOrgId(req);
   const { name, phone, email, status, notes } = req.body;
   try {
@@ -433,7 +437,7 @@ app.post("/api/customers", verifyToken, async (req, res) => {
   }
 });
 
-app.put("/api/customers/:id", verifyToken, async (req, res) => {
+app.put("/api/customers/:id", verifyToken, validate(updateCustomerSchema), async (req, res) => {
   const orgId = getOrgId(req);
   const { id } = req.params;
   const updates = req.body;

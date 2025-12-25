@@ -1,9 +1,11 @@
 import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { supabase } from "../lib/supabase";
+import { supabase, db } from "../lib/supabase";
 
 const router = Router();
+import { validate } from "../middleware/validate";
+import { registerSchema, loginSchema } from "../schemas/authSchemas";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -11,8 +13,17 @@ if (!JWT_SECRET) {
 }
 const JWT_EXPIRES_IN = "7d";
 
+const setAuthCookie = (res: Response, token: string) => {
+    res.cookie("token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax", // Better for redirect flows, strict might block some links
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+};
+
 // Register
-router.post("/register", async (req: Request, res: Response) => {
+router.post("/register", validate(registerSchema), async (req: Request, res: Response) => {
     try {
         const { email, password, name } = req.body;
 
@@ -67,9 +78,11 @@ router.post("/register", async (req: Request, res: Response) => {
             expiresIn: JWT_EXPIRES_IN,
         });
 
+        setAuthCookie(res, token);
+
         res.status(201).json({
             message: "تم إنشاء الحساب بنجاح",
-            token,
+            token, // Keep sending token for backward compatibility
             user,
         });
     } catch (error: any) {
@@ -79,7 +92,7 @@ router.post("/register", async (req: Request, res: Response) => {
 });
 
 // Login
-router.post("/login", async (req: Request, res: Response) => {
+router.post("/login", validate(loginSchema), async (req: Request, res: Response) => {
     try {
         const { email, password } = req.body;
 
@@ -116,6 +129,10 @@ router.post("/login", async (req: Request, res: Response) => {
         // Remove password from response
         const { password: _, ...userWithoutPassword } = user;
 
+        setAuthCookie(res, token);
+
+        db.logAudit(user.organization_id, user.id, "login_success", { email }, req.ip);
+
         res.json({
             message: "تم تسجيل الدخول بنجاح",
             token,
@@ -129,8 +146,12 @@ router.post("/login", async (req: Request, res: Response) => {
 
 // Verify token middleware
 export const verifyToken = (req: Request, res: Response, next: Function) => {
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.split(" ")[1];
+    let token = req.cookies?.token;
+
+    if (!token) {
+        const authHeader = req.headers.authorization;
+        token = authHeader?.split(" ")[1];
+    }
 
     if (!token) {
         return res.status(401).json({ error: "غير مصرح - لا يوجد توكن" });

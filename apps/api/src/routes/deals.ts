@@ -3,6 +3,8 @@ import { db } from "../lib/supabase";
 import { verifyToken } from "./auth";
 
 const router = Router();
+import { validate } from "../middleware/validate";
+import { createDealSchema, updateDealStageSchema } from "../schemas/crmSchemas";
 
 // Get Kanban Board Data
 router.get("/", verifyToken, async (req: Request, res: Response) => {
@@ -22,7 +24,7 @@ router.get("/", verifyToken, async (req: Request, res: Response) => {
 });
 
 // Create Deal
-router.post("/", verifyToken, async (req: Request, res: Response) => {
+router.post("/", verifyToken, validate(createDealSchema), async (req: Request, res: Response) => {
     try {
         const orgId = (req as any).user.organizationId;
         const { title, value, customerId, stageId, priority, notes } = req.body;
@@ -48,7 +50,7 @@ router.post("/", verifyToken, async (req: Request, res: Response) => {
 });
 
 // Update Deal (Move Stage)
-router.put("/:id", verifyToken, async (req: Request, res: Response) => {
+router.put("/:id", verifyToken, validate(updateDealStageSchema), async (req: Request, res: Response) => {
     try {
         const orgId = (req as any).user.organizationId;
         const { id } = req.params;
