@@ -38,7 +38,10 @@ export default function BotPage() {
     // Fetch config
     const fetchConfig = useCallback(async () => {
         try {
-            const res = await fetch(`${apiBase}/bot/config/${clientId}`);
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${apiBase}/bot/config`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
             if (res.ok) {
                 const data = await res.json();
                 setPrompt(data.system_prompt || data.systemPrompt || "");
@@ -53,7 +56,10 @@ export default function BotPage() {
     // Fetch activities
     const fetchActivities = useCallback(async () => {
         try {
-            const res = await fetch(`${apiBase}/bot/activity/${clientId}?limit=20`);
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${apiBase}/bot/activity?limit=20`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
             if (res.ok) {
                 const data = await res.json();
                 setActivities(data.activities || []);
@@ -68,8 +74,14 @@ export default function BotPage() {
         fetchActivities();
 
         // Setup socket for real-time updates
-        const socketInstance = io(apiBase, { transports: ["websocket", "polling"] });
-        socketInstance.emit("wa:subscribe", { clientId });
+        const token = localStorage.getItem("token");
+        const socketInstance = io(apiBase, {
+            transports: ["websocket", "polling"],
+            auth: { token }
+        });
+
+        // No need to manually subscribe, socket connects with token containing orgId
+        socketInstance.emit("wa:subscribe");
 
         socketInstance.on("bot:activity", (data: { activity: BotActivity }) => {
             setActivities((prev) => [data.activity, ...prev].slice(0, 20));
@@ -86,10 +98,14 @@ export default function BotPage() {
         setLoading(true);
         setMsg(null);
         try {
+            const token = localStorage.getItem("token");
             const res = await fetch(`${apiBase}/bot/config`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ clientId, systemPrompt: prompt, apiKey, enabled }),
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({ systemPrompt: prompt, apiKey, enabled }),
             });
             if (res.ok) {
                 setMsg({ type: "success", text: "تم حفظ الإعدادات بنجاح!" });

@@ -99,7 +99,11 @@ export default function WhatsAppConnectPage() {
   useEffect(() => {
     if (clientId === "default") return; // Wait for real clientId
 
-    const s = io(apiBase, { transports: ["websocket"] });
+    const token = localStorage.getItem("token");
+    const s = io(apiBase, {
+      transports: ["websocket"],
+      auth: { token }
+    });
     s.on("connect", () => {
       s.emit("wa:subscribe", { clientId });
     });

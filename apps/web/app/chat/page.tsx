@@ -86,8 +86,10 @@ export default function ChatPage() {
   useEffect(() => {
     if (clientId === "default") return;
 
+    const token = localStorage.getItem("token");
     const socket = io(socketUrl, {
       transports: ["websocket", "polling"],
+      auth: { token }
     });
     socketRef.current = socket;
 
