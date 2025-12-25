@@ -50,12 +50,13 @@ router.post("/", verifyToken, async (req: Request, res: Response) => {
 // Update Deal (Move Stage)
 router.put("/:id", verifyToken, async (req: Request, res: Response) => {
     try {
+        const orgId = (req as any).user.organizationId;
         const { id } = req.params;
         const { stageId } = req.body;
 
         if (!stageId) return res.status(400).json({ error: "Stage ID required" });
 
-        const deal = await db.updateDealStage(id, stageId);
+        const deal = await db.updateDealStage(id, stageId, orgId);
         res.json({ message: "Deal moved", deal });
     } catch (error: any) {
         res.status(500).json({ error: error.message || "Failed to move deal" });

@@ -56,20 +56,26 @@ export const db = {
         return data;
     },
 
-    async updateCustomer(id: string, updates: any) {
-        // Warning: Should verify org_id ownership in real app, but relying on controller auth for now
+    async updateCustomer(id: string, updates: any, organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
         const { data, error } = await supabase
             .from('customers')
             .update({ ...updates, last_contact_at: new Date().toISOString() })
             .eq('id', id)
+            .eq('organization_id', organizationId)
             .select()
             .single();
         if (error) throw error;
         return data;
     },
 
-    async deleteCustomer(id: string) {
-        const { error } = await supabase.from('customers').delete().eq('id', id);
+    async deleteCustomer(id: string, organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
+        const { error } = await supabase
+            .from('customers')
+            .delete()
+            .eq('id', id)
+            .eq('organization_id', organizationId);
         if (error) throw error;
     },
 
@@ -551,11 +557,13 @@ export const db = {
         return data;
     },
 
-    async updateDealStage(id: string, stageId: string) {
+    async updateDealStage(id: string, stageId: string, organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
         const { data, error } = await supabase
             .from('deals')
             .update({ stage_id: stageId, updated_at: new Date().toISOString() })
             .eq('id', id)
+            .eq('organization_id', organizationId) // Security Fix
             .select()
             .single();
         if (error) throw error;
@@ -611,7 +619,8 @@ export const db = {
             .update({ assigned_to: userId })
             .eq('id', conversationId);
         if (error) throw error;
-    }
+    },
+
 };
 
 export default supabase;

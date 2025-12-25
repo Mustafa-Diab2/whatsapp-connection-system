@@ -2,6 +2,7 @@ import http from "http";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import jwt from "jsonwebtoken";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { Server } from "socket.io";
@@ -106,11 +107,31 @@ const httpServer = http.createServer(app);
 // Socket.io with proper CORS
 const io = new Server(httpServer, {
   cors: {
-    origin: "*",
+    origin: ALLOWED_ORIGINS, // Use specific origins instead of *
     methods: ["GET", "POST"],
     credentials: true,
   },
   transports: ["websocket", "polling"],
+});
+
+// Socket.io Security Middleware
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.split(" ")[1];
+
+  if (!token) {
+    return next(new Error("Authentication error: No token provided"));
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) return next(new Error("Server error: JWT config missing"));
+
+  try {
+    const decoded = jwt.verify(token, secret) as any;
+    (socket as any).user = decoded; // Store user info in socket
+    next();
+  } catch (err) {
+    next(new Error("Authentication error: Invalid token"));
+  }
 });
 
 // Initialize WhatsAppManager
@@ -133,12 +154,15 @@ app.use((req, res, next) => {
 io.on("connection", (socket) => {
   console.log(`Socket connected: ${socket.id}`);
 
-  // Authentication for socket needs to be handled
-  // For now we assume client sends organizationId as clientId
+  // Use organizationId from authenticated token
+  // The client might request a clientId, but we MUST ensure it matches their Org
+  const userOrgId = (socket as any).user.organizationId;
+  console.log(`Socket authenticated for Org: ${userOrgId}`);
 
   socket.on("wa:subscribe", (payload?: { clientId?: string }) => {
-    // SECURITY: Should verify token here in production
-    const clientId = payload?.clientId || "default";
+    // FORCE usage of user's orgId as clientId to prevent IDOR
+    const clientId = userOrgId;
+
     socket.join(clientId);
 
     try {
@@ -146,14 +170,14 @@ io.on("connection", (socket) => {
       // manager.ensureReadyClient(clientId); --> No, don't auto connect, just get state
       const state = manager.getState(clientId);
       socket.emit("wa:state", state);
-      console.log(`[${clientId}] Socket subscribed`);
+      console.log(`[${clientId}] Socket subscribed by user ${(socket as any).user.email}`);
     } catch (e) {
       console.error(`Status check failed for ${clientId}`, e);
     }
   });
 
   socket.on("wa:unsubscribe", (payload?: { clientId?: string }) => {
-    const clientId = payload?.clientId || "default";
+    const clientId = userOrgId;
     socket.leave(clientId);
     console.log(`[${clientId}] Socket unsubscribed`);
   });
@@ -193,10 +217,11 @@ const getOrgId = (req: Request): string => {
 // Status - Public/Protected?
 app.get("/whatsapp/status/:clientId", verifyToken, (req, res) => {
   const clientId = req.params.clientId || "default";
-  // Verify access? clientId should match orgId basically
+
+  // Strict matching to prevent IDOR
   const orgId = getOrgId(req);
-  if (clientId !== orgId && clientId !== 'default') {
-    // In strict mode we deny, but for migration allow mismatch or 'default'
+  if (clientId !== orgId) {
+    return res.status(403).json({ message: "Access denied: Organization mismatch" });
   }
 
   const state = manager.getState(clientId);
@@ -409,11 +434,11 @@ app.post("/api/customers", verifyToken, async (req, res) => {
 });
 
 app.put("/api/customers/:id", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
   const { id } = req.params;
   const updates = req.body;
   try {
-    // TODO: Verify ownership
-    const customer = await db.updateCustomer(id, updates);
+    const customer = await db.updateCustomer(id, updates, orgId);
     res.json({ ok: true, customer });
   } catch (err: any) {
     res.status(500).json({ message: err?.message || "Failed to update customer" });
@@ -421,10 +446,10 @@ app.put("/api/customers/:id", verifyToken, async (req, res) => {
 });
 
 app.delete("/api/customers/:id", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
   const { id } = req.params;
   try {
-    // TODO: Verify ownership
-    await db.deleteCustomer(id);
+    await db.deleteCustomer(id, orgId);
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ message: err?.message || "Failed to delete customer" });
