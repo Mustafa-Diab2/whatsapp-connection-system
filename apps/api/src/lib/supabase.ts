@@ -633,6 +633,56 @@ export const db = {
         });
     },
 
+    // ========== QUICK REPLIES ==========
+    async getQuickReplies(organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
+        const { data, error } = await supabase
+            .from('quick_replies')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    },
+
+    async createQuickReply(reply: {
+        title: string;
+        body: string;
+        shortcut?: string;
+        organization_id: string;
+    }) {
+        const { data, error } = await supabase
+            .from('quick_replies')
+            .insert(reply)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async updateQuickReply(id: string, updates: any, organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
+        const { data, error } = await supabase
+            .from('quick_replies')
+            .update(updates)
+            .eq('id', id)
+            .eq('organization_id', organizationId)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async deleteQuickReply(id: string, organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
+        const { error } = await supabase
+            .from('quick_replies')
+            .delete()
+            .eq('id', id)
+            .eq('organization_id', organizationId);
+        if (error) throw error;
+    },
+
 };
 
 export default supabase;

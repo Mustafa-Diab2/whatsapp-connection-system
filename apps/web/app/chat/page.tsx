@@ -5,8 +5,9 @@ import { io, Socket } from "socket.io-client";
 
 type Status = "idle" | "initializing" | "waiting_qr" | "ready" | "error" | "disconnected";
 
-type ChatItem = { id: string; name: string; isGroup: boolean; unreadCount: number };
+type ChatItem = { id: string; name: string; isGroup: boolean; unreadCount: number; customer_id?: string; customer?: any };
 type MessageItem = { id: string; body: string; fromMe: boolean; timestamp: number; author?: string; type?: string; from?: string; to?: string; ack?: number; hasMedia?: boolean };
+type QuickReply = { id: string; title: string; body: string; shortcut?: string };
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || apiBase;
@@ -75,7 +76,7 @@ const formatFriendlyTime = (timestamp: number) => {
 
 // Component to render media
 function WhatsAppMedia({ clientId, messageId, type }: { clientId: string, messageId: string, type?: string }) {
-  const [mediaData, setMediaData] = useState<{ mimetype: string; data: string } | null>(null);
+  const [mediaData, setMediaData] = useState<{ mimetype: string; data: string; filename?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -109,7 +110,23 @@ function WhatsAppMedia({ clientId, messageId, type }: { clientId: string, messag
     return <video src={`data:${mediaData.mimetype};base64,${mediaData.data}`} controls className="max-h-64 w-full rounded-lg" />;
   }
 
-  return <div className="flex items-center gap-2 rounded-lg bg-slate-100 p-2 text-xs"><span className="text-xl">📄</span> {mediaData.mimetype}</div>;
+  if (mediaData.mimetype.startsWith('audio/')) {
+    return <audio src={`data:${mediaData.mimetype};base64,${mediaData.data}`} controls className="w-full max-w-[200px]" />;
+  }
+
+  return (
+    <a
+      href={`data:${mediaData.mimetype};base64,${mediaData.data}`}
+      download={mediaData.filename || 'document'}
+      className="flex items-center gap-2 rounded-lg bg-slate-100 p-2 text-xs transition-colors hover:bg-slate-200"
+    >
+      <span className="text-xl">📄</span>
+      <div className="overflow-hidden">
+        <p className="truncate font-medium">{mediaData.filename || 'ملف مستند'}</p>
+        <p className="text-[10px] text-slate-500 uppercase">{mediaData.mimetype.split('/')[1]}</p>
+      </div>
+    </a>
+  );
 }
 
 export default function ChatPage() {
@@ -127,6 +144,17 @@ export default function ChatPage() {
   const selectedChatRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
+  const [showCustomerPanel, setShowCustomerPanel] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [newTag, setNewTag] = useState("");
+  const [updatingCustomer, setUpdatingCustomer] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const recordingTimerRef = useRef<any>(null);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   // Keep ref in sync with state for socket callback
   useEffect(() => {
@@ -219,6 +247,43 @@ export default function ChatPage() {
       socket.disconnect();
     };
   }, [clientId]);
+
+  const fetchQuickReplies = useCallback(async () => {
+    if (clientId === "default") return;
+    try {
+      const res = await fetch(`${apiBase}/api/quick-replies`, {
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      setQuickReplies(data.replies || []);
+    } catch (e) {
+      console.error("Failed to fetch quick replies", e);
+    }
+  }, [clientId]);
+
+  useEffect(() => {
+    fetchQuickReplies();
+  }, [fetchQuickReplies]);
+
+  const updateCustomerTags = async (tags: string[]) => {
+    if (!selectedCustomer) return;
+    setUpdatingCustomer(true);
+    try {
+      const res = await fetch(`${apiBase}/api/customers/${selectedCustomer.id}`, {
+        method: "PUT",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ tags })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedCustomer(data.customer);
+      }
+    } catch (e) {
+      console.error("Failed to update tags", e);
+    } finally {
+      setUpdatingCustomer(false);
+    }
+  };
 
   const fetchStatus = useCallback(async () => {
     if (clientId === "default") return;
@@ -315,8 +380,15 @@ export default function ChatPage() {
   useEffect(() => {
     if (selectedChat && status === "ready") {
       void fetchMessages(selectedChat);
+      // Find customer info
+      const chat = chats.find(c => c.id === selectedChat);
+      if (chat?.customer) {
+        setSelectedCustomer(chat.customer);
+      } else {
+        setSelectedCustomer(null);
+      }
     }
-  }, [selectedChat, status, fetchMessages]);
+  }, [selectedChat, status, fetchMessages, chats]);
 
   const handleSend = useCallback(async () => {
     if (!selectedChat || !messageInput.trim() || clientId === "default") return;
@@ -340,6 +412,98 @@ export default function ChatPage() {
       setSending(false);
     }
   }, [selectedChat, messageInput, clientId]);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => audioChunksRef.current.push(e.data);
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/ogg' });
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = (reader.result as string).split(',')[1];
+          await fetch(`${apiBase}/whatsapp/send-media`, {
+            method: "POST",
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              clientId,
+              chatId: selectedChat,
+              base64,
+              mimetype: 'audio/ogg',
+              filename: 'voice-message.ogg'
+            })
+          });
+        };
+        reader.readAsDataURL(audioBlob);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setIsRecording(true);
+      setRecordingSeconds(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds(prev => prev + 1);
+      }, 1000);
+    } catch (e) {
+      console.error("Mic access denied", e);
+      setErrorMsg("يجب السماح بالوصول للميكروفون لتسجيل الرسائل الصوتية");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      clearInterval(recordingTimerRef.current);
+    }
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.onstop = null; // Don't send
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      clearInterval(recordingTimerRef.current);
+      audioChunksRef.current = [];
+    }
+  };
+
+  const sendLocation = () => {
+    if (!navigator.geolocation) {
+      setErrorMsg("متصفحك لا يدعم مشاركة الموقع");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const { latitude, longitude } = pos.coords;
+      const googleMapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+
+      try {
+        await fetch(`${apiBase}/whatsapp/send`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            clientId,
+            chatId: selectedChat,
+            message: `📍 موقعي الحالي: ${googleMapsUrl}`
+          })
+        });
+      } catch (e) {
+        setErrorMsg("فشل إرسال الموقع");
+      }
+    }, () => {
+      setErrorMsg("تم رفض الوصول للموقع");
+    });
+  };
+
+  const useQuickReply = (body: string) => {
+    setMessageInput(body);
+    setShowQuickReplies(false);
+  };
 
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -499,6 +663,13 @@ export default function ChatPage() {
                 <span>تحديث</span>
                 <span className="text-slate-400">🔄</span>
               </button>
+              <button
+                className={`flex items-center justify-center rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${showCustomerPanel ? 'bg-brand-blue text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                onClick={() => setShowCustomerPanel(!showCustomerPanel)}
+                title="تفاصيل العميل"
+              >
+                👤
+              </button>
             </div>
           </div>
 
@@ -576,49 +747,226 @@ export default function ChatPage() {
             </div>
           )}
 
-          <div className="border-t border-slate-200 p-4">
+          <div className="border-t border-slate-200 p-4 relative">
             {errorMsg && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMsg}</div>}
-            <div className="flex items-center gap-3">
-              <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                onChange={handleFileSelect}
-              />
-              <button
-                className="btn bg-slate-100 text-slate-500 p-2 rounded-full hover:bg-slate-200"
-                onClick={() => fileInputRef.current?.click()}
-                title="إرفاق ملف"
-                disabled={!selectedChat || status !== "ready"}
-              >
-                📎
-              </button>
-              <button
-                className="btn bg-slate-100 text-slate-500 p-2 rounded-full hover:bg-slate-200"
-                onClick={() => setShowEmojis(!showEmojis)}
-                title="إيموجي"
-                disabled={!selectedChat || status !== "ready"}
-              >
-                😊
-              </button>
 
-              <input
-                className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-blue/50"
-                placeholder="اكتب رسالتك..."
-                value={messageInput}
-                onChange={(e) => setMessageInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-                disabled={!selectedChat || status !== "ready"}
-              />
-              <button
-                className="btn bg-brand-blue px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-                onClick={handleSend}
-                disabled={!selectedChat || !messageInput.trim() || sending || status !== "ready"}
-              >
-                إرسال
-              </button>
+            {/* Quick Replies Picker */}
+            {showQuickReplies && (
+              <div className="absolute bottom-full left-4 right-4 mb-2 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-2xl z-20">
+                <div className="flex items-center justify-between border-b pb-2 mb-2 px-2">
+                  <span className="text-xs font-bold text-slate-500 text-right w-full">الردود السريعة</span>
+                </div>
+                {quickReplies.length === 0 ? (
+                  <p className="py-4 text-center text-xs text-slate-400">لا توجد ردود سريعة مضافة</p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-1">
+                    {quickReplies.map(qr => (
+                      <button
+                        key={qr.id}
+                        onClick={() => useQuickReply(qr.body)}
+                        className="flex flex-col items-start rounded-lg p-2 text-right transition-colors hover:bg-slate-50"
+                      >
+                        <span className="text-xs font-bold text-brand-blue">{qr.title}</span>
+                        <span className="truncate text-[10px] text-slate-500">{qr.body}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center gap-3">
+              {isRecording ? (
+                <div className="flex flex-1 items-center gap-3 rounded-2xl bg-red-50 px-4 py-2 text-red-600 animate-pulse">
+                  <div className="h-2 w-2 rounded-full bg-red-500 animate-ping"></div>
+                  <span className="text-xs font-bold font-mono">
+                    {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
+                  </span>
+                  <div className="flex-1 text-[10px] font-medium">جاري التسجيل...</div>
+                  <button onClick={cancelRecording} className="text-xs font-bold text-slate-400 hover:text-red-500">إلغاء</button>
+                  <button onClick={stopRecording} className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white shadow-md">
+                    ⏹️
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button
+                    className={`btn h-10 w-10 flex items-center justify-center rounded-full transition-all ${showQuickReplies ? 'bg-brand-blue text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    onClick={() => setShowQuickReplies(!showQuickReplies)}
+                    title="الردود السريعة"
+                    disabled={!selectedChat || status !== "ready"}
+                  >
+                    ⚡
+                  </button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
+                  <button
+                    className="btn bg-slate-100 text-slate-500 h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-200"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="إرفاق ملف"
+                    disabled={!selectedChat || status !== "ready"}
+                  >
+                    📎
+                  </button>
+                  <button
+                    className="btn bg-slate-100 text-slate-500 h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-200"
+                    onClick={sendLocation}
+                    title="مشاركة الموقع"
+                    disabled={!selectedChat || status !== "ready"}
+                  >
+                    📍
+                  </button>
+                  <button
+                    className={`btn h-10 w-10 flex items-center justify-center rounded-full transition-all ${showEmojis ? 'bg-yellow-100 text-orange-500 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    onClick={() => setShowEmojis(!showEmojis)}
+                    title="إيموجي"
+                    disabled={!selectedChat || status !== "ready"}
+                  >
+                    😊
+                  </button>
+
+                  <textarea
+                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-blue/50 resize-none max-h-32"
+                    rows={1}
+                    placeholder="اكتب رسالتك..."
+                    value={messageInput}
+                    onChange={(e) => setMessageInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        void handleSend();
+                      }
+                    }}
+                    disabled={!selectedChat || status !== "ready"}
+                  />
+
+                  {messageInput.trim() ? (
+                    <button
+                      className="btn bg-brand-blue h-10 w-10 flex items-center justify-center rounded-full text-white shadow-md hover:bg-blue-700 transition-all hover:scale-105 active:scale-95"
+                      onClick={handleSend}
+                    >
+                      🚀
+                    </button>
+                  ) : (
+                    <button
+                      className="btn bg-slate-100 text-slate-500 h-10 w-10 flex items-center justify-center rounded-full hover:bg-brand-blue hover:text-white transition-all active:scale-95"
+                      onClick={startRecording}
+                      title="سجل رسالة صوتية"
+                      disabled={!selectedChat || status !== "ready"}
+                    >
+                      🎙️
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           </div>
+        </div>
+
+        {/* Customer Sidebar (Right) */}
+        <div className={`${showCustomerPanel ? 'w-80 border-r' : 'w-0'} flex flex-col overflow-hidden bg-white transition-all duration-300 h-[70vh] rounded-l-2xl shadow-sm mr-2 border-slate-100`}>
+          {selectedCustomer ? (
+            <div className="flex h-full flex-col p-6 overflow-y-auto">
+              <div className="mb-6 flex flex-col items-center text-center">
+                <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-slate-100 text-3xl shadow-inner border-2 border-white ring-4 ring-slate-50">
+                  {selectedCustomer.avatar || "👤"}
+                </div>
+                <h3 className="text-lg font-bold text-slate-800 leading-tight">{selectedCustomer.name}</h3>
+                <p dir="ltr" className="text-sm font-medium text-slate-400 mt-1">{selectedCustomer.phone}</p>
+                <div className="mt-3">
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${selectedCustomer.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
+                    }`}>
+                    {selectedCustomer.status === 'active' ? 'نشط' : 'غير نشط'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div>
+                  <h4 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">الأوسمة (Tags)</h4>
+                  <div className="flex flex-wrap gap-1.5 justify-end">
+                    {selectedCustomer.tags?.map((tag: string) => (
+                      <span key={tag} className="flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-[10px] font-bold text-brand-blue border border-blue-100/50">
+                        {tag}
+                        <button
+                          onClick={() => updateCustomerTags(selectedCustomer.tags.filter((t: string) => t !== tag))}
+                          className="hover:text-red-500 text-[8px]"
+                        >✕</button>
+                      </span>
+                    ))}
+                    <div className="mt-2 w-full">
+                      <input
+                        type="text"
+                        placeholder="إضافة وسم..."
+                        value={newTag}
+                        onChange={(e) => setNewTag(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] focus:ring-2 focus:ring-brand-blue/30 outline-none"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && newTag.trim()) {
+                            updateCustomerTags([...(selectedCustomer.tags || []), newTag.trim()]);
+                            setNewTag("");
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">ملاحظات</h4>
+                  <textarea
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:ring-2 focus:ring-brand-blue/30 outline-none min-h-[100px]"
+                    placeholder="أضف ملاحظاتك عن هذا العميل..."
+                    defaultValue={selectedCustomer.notes}
+                    onBlur={async (e) => {
+                      if (e.target.value !== selectedCustomer.notes) {
+                        const res = await fetch(`${apiBase}/api/customers/${selectedCustomer.id}`, {
+                          method: "PUT",
+                          headers: getAuthHeaders(),
+                          body: JSON.stringify({ notes: e.target.value })
+                        });
+                        if (res.ok) {
+                          const data = await res.json();
+                          setSelectedCustomer(data.customer);
+                        }
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
+                  <h4 className="mb-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">معلومات تقنية</h4>
+                  <div className="space-y-2 text-[10px]">
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-slate-800">{selectedCustomer.source}</span>
+                      <span className="text-slate-400">المصدر</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-slate-800">{selectedCustomer.last_contact_at ? new Date(selectedCustomer.last_contact_at).toLocaleDateString() : 'لا يوجد'}</span>
+                      <span className="text-slate-400">آخر تواصل</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center p-8 text-center bg-slate-50/50">
+              <div className="max-w-[200px]">
+                <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-2xl shadow-inner">🔎</div>
+                <h4 className="text-sm font-bold text-slate-700 mb-2">عميل غير مسجل</h4>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  هذه المحادثة غير مرتبطة بملف عميل في النظام. يمكنك إنشاء ملف للعميل لتتبع طلباته وملاحظاته.
+                </p>
+                <button className="mt-6 w-full rounded-xl bg-brand-blue py-2 text-[10px] font-bold text-white shadow-md hover:bg-blue-700 transition-all active:scale-95">
+                  إضافة عميل جديد
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

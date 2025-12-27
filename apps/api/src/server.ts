@@ -313,11 +313,16 @@ app.get("/whatsapp/chats", verifyToken, async (req, res) => {
   try {
     const client = manager.ensureReadyClient(orgId);
     const chats = await client.getChats();
-    const simplified = chats.slice(0, 50).map((c) => ({
-      id: c.id._serialized,
-      name: c.name || c.id.user,
-      isGroup: c.isGroup,
-      unreadCount: c.unreadCount,
+    const simplified = await Promise.all(chats.slice(0, 50).map(async (c) => {
+      const waChatId = c.id._serialized;
+      const customer = await db.getCustomerByPhone(waChatId.split('@')[0], orgId);
+      return {
+        id: waChatId,
+        name: c.name || c.id.user,
+        isGroup: c.isGroup,
+        unreadCount: c.unreadCount,
+        customer,
+      };
     }));
     res.json({ chats: simplified });
   } catch (err: any) {
@@ -349,7 +354,7 @@ app.get("/whatsapp/messages/:chatId", verifyToken, async (req, res) => {
       author: m.author,
       ack: m.ack,
       hasMedia: m.hasMedia,
-    })).reverse();
+    }));
     res.json({ messages: simplified });
   } catch (err: any) {
     console.error(`[${orgId}] Get messages error:`, err);
@@ -680,6 +685,51 @@ app.post("/api/settings/auto-assign", verifyToken, async (req, res) => {
     res.json({ ok: true, enabled });
   } catch (err: any) {
     res.status(500).json({ message: err?.message || "Failed to update settings" });
+  }
+});
+
+// ========== QUICK REPLIES ==========
+app.get("/api/quick-replies", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  try {
+    const replies = await db.getQuickReplies(orgId);
+    res.json({ replies });
+  } catch (err: any) {
+    res.status(500).json({ message: err?.message || "Failed to get quick replies" });
+  }
+});
+
+app.post("/api/quick-replies", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  const { title, body, shortcut } = req.body;
+  try {
+    const reply = await db.createQuickReply({ title, body, shortcut, organization_id: orgId });
+    res.json({ ok: true, reply });
+  } catch (err: any) {
+    res.status(500).json({ message: err?.message || "Failed to create quick reply" });
+  }
+});
+
+app.put("/api/quick-replies/:id", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  const { id } = req.params;
+  const updates = req.body;
+  try {
+    const reply = await db.updateQuickReply(id, updates, orgId);
+    res.json({ ok: true, reply });
+  } catch (err: any) {
+    res.status(500).json({ message: err?.message || "Failed to update quick reply" });
+  }
+});
+
+app.delete("/api/quick-replies/:id", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  const { id } = req.params;
+  try {
+    await db.deleteQuickReply(id, orgId);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ message: err?.message || "Failed to delete quick reply" });
   }
 });
 
