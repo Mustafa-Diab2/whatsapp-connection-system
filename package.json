@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"npm --prefix apps/api run dev\" \"npm --prefix apps/web run dev\"",
     "dev:api": "npm --prefix apps/api run dev",
-    "dev:web": "npm --prefix apps/web run dev"
+    "dev:web": "npm --prefix apps/web run dev",
+    "build": "npm --prefix apps/web run build"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
