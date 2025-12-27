@@ -6,7 +6,7 @@ import { io, Socket } from "socket.io-client";
 type Status = "idle" | "initializing" | "waiting_qr" | "ready" | "error" | "disconnected";
 
 type ChatItem = { id: string; name: string; isGroup: boolean; unreadCount: number; customer_id?: string; customer?: any };
-type MessageItem = { id: string; body: string; fromMe: boolean; timestamp: number; author?: string; type?: string; from?: string; to?: string; ack?: number; hasMedia?: boolean };
+type MessageItem = { id: string; body: string; fromMe: boolean; timestamp: number; author?: string; senderName?: string | null; type?: string; from?: string; to?: string; ack?: number; hasMedia?: boolean };
 type QuickReply = { id: string; title: string; body: string; shortcut?: string };
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -244,6 +244,9 @@ export default function ChatPage() {
               from: msg.from,
               to: msg.to,
               author: msg.author,
+              senderName: msg.senderName,
+              ack: msg.ack,
+              hasMedia: msg.hasMedia,
             }];
           });
         }
@@ -700,34 +703,39 @@ export default function ChatPage() {
               {messages.map((msg) => (
                 <div
                   key={msg.id}
-                  className={`group relative flex flex-col ${msg.fromMe ? "items-end" : "items-start"}`}
+                  className={`group relative flex w-full ${msg.fromMe ? "justify-start flex-row-reverse" : "justify-start flex-row"}`}
                 >
-                  <div
-                    className={`relative max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm transition-shadow hover:shadow-md ${msg.fromMe
-                      ? "bg-brand-blue text-white rounded-tr-none"
-                      : "bg-white text-slate-800 rounded-tl-none border border-slate-100"
-                      }`}
-                  >
-                    {msg.author && !msg.fromMe && (
-                      <div className={`mb-1 text-[11px] font-bold ${getAuthorColor(msg.author)}`}>
-                        {msg.author.split('@')[0]}
-                      </div>
-                    )}
-
-                    {msg.hasMedia && (
-                      <div className="mb-2">
-                        <WhatsAppMedia clientId={clientId} messageId={msg.id} type={msg.type} />
-                      </div>
-                    )}
-
-                    <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
-                    <div className={`mt-1 flex items-center gap-1 text-[9px] ${msg.fromMe ? "text-blue-100" : "text-slate-400"}`}>
-                      <span>{formatFriendlyTime(msg.timestamp)}</span>
-                      {msg.fromMe && (
-                        <span className={`text-[11px] font-bold ${msg.ack === 3 ? "text-blue-400" : ""}`}>
-                          {msg.ack === 0 ? "🕒" : msg.ack === 1 ? "✓" : (msg.ack === 2 || msg.ack === 3) ? "✓✓" : "✓✓"}
-                        </span>
+                  <div className={`flex flex-col max-w-[85%] ${msg.fromMe ? "items-end" : "items-start"}`}>
+                    <div
+                      className={`relative rounded-2xl px-4 py-2.5 text-sm shadow-md transition-shadow hover:shadow-lg ${msg.fromMe
+                        ? "bg-brand-blue text-white rounded-tr-none"
+                        : "bg-white text-slate-800 rounded-tl-none border border-slate-200"
+                        }`}
+                    >
+                      {msg.author && !msg.fromMe && (
+                        <div className={`mb-1.5 flex items-center gap-1`}>
+                          <span className={`text-[11px] font-extrabold tracking-tight ${getAuthorColor(msg.author)}`}>
+                            {msg.senderName || msg.author.split('@')[0]}
+                          </span>
+                        </div>
                       )}
+                      {msg.hasMedia && (
+                        <div className="mb-2">
+                          <WhatsAppMedia clientId={clientId} messageId={msg.id} type={msg.type} />
+                        </div>
+                      )}
+
+                      <p className="whitespace-pre-wrap leading-relaxed">
+                        {msg.body || (msg.hasMedia ? "" : <span className="text-[10px] opacity-60">رسالة غير مدعومة</span>)}
+                      </p>
+                      <div className={`mt-1 flex items-center gap-1 text-[9px] ${msg.fromMe ? "text-blue-100" : "text-slate-400"}`}>
+                        <span>{formatFriendlyTime(msg.timestamp)}</span>
+                        {msg.fromMe && (
+                          <span className={`text-[11px] font-bold ${msg.ack === 3 ? "text-blue-400" : ""}`}>
+                            {msg.ack === 0 ? "🕒" : msg.ack === 1 ? "✓" : (msg.ack === 2 || msg.ack === 3) ? "✓✓" : "✓✓"}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

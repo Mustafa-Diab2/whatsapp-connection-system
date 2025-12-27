@@ -355,17 +355,28 @@ app.get("/whatsapp/messages/:chatId", verifyToken, async (req, res) => {
     const client = manager.ensureReadyClient(orgId);
     const chat = await client.getChatById(chatId);
     const messages = await chat.fetchMessages({ limit });
-    const simplified = messages.map((m) => ({
-      id: m.id._serialized,
-      body: m.body,
-      fromMe: m.fromMe,
-      timestamp: m.timestamp,
-      type: m.type,
-      author: m.author,
-      ack: m.ack,
-      hasMedia: m.hasMedia,
-    })).reverse();
-    res.json({ messages: simplified });
+    const simplified = await Promise.all(messages.map(async (m) => {
+      let senderName = null;
+      try {
+        if (m.author && !m.fromMe) {
+          const contact = await m.getContact();
+          senderName = contact.name || contact.pushname || contact.number;
+        }
+      } catch (e) { }
+
+      return {
+        id: m.id._serialized,
+        body: m.body || (m as any).caption || "",
+        fromMe: m.fromMe,
+        timestamp: m.timestamp,
+        type: m.type,
+        author: m.author,
+        senderName,
+        ack: m.ack,
+        hasMedia: m.hasMedia,
+      };
+    }));
+    res.json({ messages: simplified.reverse() });
   } catch (err: any) {
     console.error(`[${orgId}] Get messages error:`, err);
     res.status(400).json({ message: err?.message || "Failed to get messages" });

@@ -264,15 +264,24 @@ export default class WhatsAppManager {
     client.on("message", async (message: Message) => {
       console.log(`[${clientId}] Message received from ${message.from}`);
 
+      let senderName = null;
+      try {
+        if (message.author && !message.fromMe) {
+          const contact = await message.getContact();
+          senderName = contact.name || contact.pushname || contact.number;
+        }
+      } catch (e) { }
+
       const messageData = {
         id: message.id._serialized,
         from: message.from,
         to: message.to,
-        body: message.body,
+        body: message.body || (message as any).caption || "",
         timestamp: message.timestamp,
         fromMe: message.fromMe,
         type: message.type,
         author: message.author,
+        senderName,
         ack: message.ack,
         hasMedia: message.hasMedia,
       };
