@@ -12,7 +12,8 @@ import { db } from "./lib/supabase";
 import authRoutes, { verifyToken } from "./routes/auth";
 import documentsRoutes from "./routes/documents";
 import campaignsRoutes from "./routes/campaigns";
-import dealsRoutes from "./routes/deals";
+import dealsRouter from "./routes/deals";
+import trainingRouter from "./routes/training";
 import { validate } from "./middleware/validate";
 import { createCustomerSchema, updateCustomerSchema } from "./schemas/customerSchemas";
 
@@ -205,7 +206,8 @@ app.use("/auth", authLimiter, authRoutes);
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/documents", documentsRoutes);
 app.use("/api/campaigns", campaignsRoutes);
-app.use("/api/deals", dealsRoutes);
+app.use("/api/deals", dealsRouter);
+app.use("/api/training", trainingRouter);
 
 // Helper to extract orgId
 const getOrgId = (req: Request): string => {
@@ -220,7 +222,7 @@ const getOrgId = (req: Request): string => {
 
 // Status - Public/Protected?
 app.get("/whatsapp/status/:clientId", verifyToken, (req, res) => {
-  const clientId = req.params.clientId || "default";
+  const clientId = req.params.clientId;
 
   // Strict matching to prevent IDOR
   const orgId = getOrgId(req);
@@ -559,6 +561,7 @@ app.post("/api/contacts", verifyToken, async (req, res) => {
 });
 
 app.put("/api/contacts/:id", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
   const { id } = req.params;
   const updates = req.body;
   // Handle group format mismatch
@@ -567,7 +570,7 @@ app.put("/api/contacts/:id", verifyToken, async (req, res) => {
     delete updates.group;
   }
   try {
-    const contact = await db.updateContact(id, updates);
+    const contact = await db.updateContact(id, updates, orgId);
     res.json({ ok: true, contact });
   } catch (err: any) {
     res.status(500).json({ message: err?.message || "Failed to update contact" });
@@ -575,9 +578,10 @@ app.put("/api/contacts/:id", verifyToken, async (req, res) => {
 });
 
 app.delete("/api/contacts/:id", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
   const { id } = req.params;
   try {
-    await db.deleteContact(id);
+    await db.deleteContact(id, orgId);
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ message: err?.message || "Failed to delete contact" });
@@ -667,6 +671,16 @@ app.get("/api/reports/daily", verifyToken, async (req, res) => {
     res.json({ analytics });
   } catch (err: any) {
     res.status(500).json({ message: err?.message || "Failed to get analytics" });
+  }
+});
+
+app.get("/api/reports/activity", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  try {
+    const activity = await db.getActivityLogs(orgId);
+    res.json({ activity });
+  } catch (err: any) {
+    res.status(500).json({ message: err?.message || "Failed to get activity" });
   }
 });
 

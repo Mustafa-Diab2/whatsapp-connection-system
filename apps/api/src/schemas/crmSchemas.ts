@@ -5,10 +5,12 @@ export const createDealSchema = z.object({
     body: z.object({
         title: z.string().min(1, "عنوان الصفقة مطلوب"),
         value: z.number().min(0).optional(),
-        customerId: z.string().uuid("رقم العميل غير صالح"),
+        customerId: z.string().uuid("رقم العميل غير صالح").optional().nullable(),
         stageId: z.string().uuid("المرحلة مطلوبة"),
         priority: z.enum(['low', 'medium', 'high']).optional(),
-        notes: z.string().optional()
+        notes: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+        expectedCloseDate: z.string().optional().nullable()
     })
 });
 

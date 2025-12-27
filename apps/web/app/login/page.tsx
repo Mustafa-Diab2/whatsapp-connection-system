@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export default function LoginPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const callback = searchParams.get("callback") || "/whatsapp-connect";
+
     const [isLogin, setIsLogin] = useState(true);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
@@ -45,6 +48,7 @@ export default function LoginPage() {
             const res = await fetch(`${apiBase}${endpoint}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: "include",
                 body: JSON.stringify(body)
             });
 
@@ -58,8 +62,8 @@ export default function LoginPage() {
             localStorage.setItem("token", data.token);
             localStorage.setItem("user", JSON.stringify(data.user));
 
-            // Redirect to dashboard
-            router.push("/whatsapp-connect");
+            // Redirect to callback or dashboard
+            router.push(callback);
         } catch (err: any) {
             setError(err.message || "حدث خطأ في الاتصال");
         } finally {
@@ -89,8 +93,8 @@ export default function LoginPage() {
                         <button
                             onClick={() => setIsLogin(true)}
                             className={`flex-1 py-3 rounded-lg font-medium transition-all ${isLogin
-                                    ? "bg-white text-blue-600 shadow-lg"
-                                    : "text-white/80 hover:text-white"
+                                ? "bg-white text-blue-600 shadow-lg"
+                                : "text-white/80 hover:text-white"
                                 }`}
                         >
                             تسجيل الدخول
@@ -98,8 +102,8 @@ export default function LoginPage() {
                         <button
                             onClick={() => setIsLogin(false)}
                             className={`flex-1 py-3 rounded-lg font-medium transition-all ${!isLogin
-                                    ? "bg-white text-blue-600 shadow-lg"
-                                    : "text-white/80 hover:text-white"
+                                ? "bg-white text-blue-600 shadow-lg"
+                                : "text-white/80 hover:text-white"
                                 }`}
                         >
                             حساب جديد
@@ -167,8 +171,8 @@ export default function LoginPage() {
                             type="submit"
                             disabled={loading}
                             className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${loading
-                                    ? "bg-white/50 text-white/70 cursor-not-allowed"
-                                    : "bg-white text-blue-600 hover:bg-white/90 hover:shadow-lg hover:scale-[1.02]"
+                                ? "bg-white/50 text-white/70 cursor-not-allowed"
+                                : "bg-white text-blue-600 hover:bg-white/90 hover:shadow-lg hover:scale-[1.02]"
                                 }`}
                         >
                             {loading ? (

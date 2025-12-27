@@ -27,7 +27,7 @@ router.get("/", verifyToken, async (req: Request, res: Response) => {
 router.post("/", verifyToken, validate(createDealSchema), async (req: Request, res: Response) => {
     try {
         const orgId = (req as any).user.organizationId;
-        const { title, value, customerId, stageId, priority, notes } = req.body;
+        const { title, value, customerId, stageId, priority, notes, tags, expectedCloseDate } = req.body;
 
         if (!title || !stageId) {
             return res.status(400).json({ error: "Title and Stage ID required" });
@@ -40,7 +40,9 @@ router.post("/", verifyToken, validate(createDealSchema), async (req: Request, r
             customer_id: customerId,
             stage_id: stageId,
             priority: priority || 'medium',
-            notes
+            notes,
+            tags: tags || [],
+            expected_close_date: expectedCloseDate
         });
 
         res.status(201).json({ message: "Deal created", deal });

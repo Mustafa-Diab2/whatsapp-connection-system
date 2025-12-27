@@ -17,12 +17,74 @@ export default function AIPage() {
     const [config, setConfig] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
-    // Form State
     const [agentForm, setAgentForm] = useState({
         name: "",
         description: "",
         systemPrompt: "",
     });
+
+    // Training State
+    const [documents, setDocuments] = useState<any[]>([]);
+    const [trainingLoading, setTrainingLoading] = useState(false);
+
+    const fetchDocuments = async () => {
+        try {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${apiBase}/api/training/documents`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setDocuments(data.documents || []);
+            }
+        } catch (err) {
+            console.error("Failed to fetch documents", err);
+        }
+    };
+
+    const handleFileUpload = async (file: File) => {
+        setTrainingLoading(true);
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${apiBase}/api/training/upload`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData
+            });
+
+            if (res.ok) {
+                alert("تم التدريب بنجاح!");
+                fetchDocuments();
+            } else {
+                const data = await res.json();
+                alert(`Error: ${data.error}`);
+            }
+        } catch (err) {
+            console.error("Upload error", err);
+            alert("فشل في رفع الملف");
+        } finally {
+            setTrainingLoading(false);
+        }
+    };
+
+    const handleDeleteDocument = async (id: string) => {
+        if (!confirm("هل أنت متأكد من حذف هذا المستند؟ سيفقد البوت القدرة على الوصول لهذه المعلومات.")) return;
+        try {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${apiBase}/api/training/documents/${id}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                setDocuments(prev => prev.filter(d => d.id !== id));
+            }
+        } catch (err) {
+            console.error("Delete error", err);
+        }
+    };
 
     const fetchConfig = async () => {
         try {
@@ -55,6 +117,7 @@ export default function AIPage() {
     useEffect(() => {
         fetchConfig();
         fetchAgents();
+        fetchDocuments();
         setLoading(false);
     }, []);
 
@@ -223,10 +286,77 @@ export default function AIPage() {
 
             {/* Training Tab */}
             {activeTab === "training" && (
-                <div className="card p-6 space-y-6">
-                    <h3 className="font-semibold text-slate-800">تدريب الوكيل</h3>
-                    <div className="bg-yellow-50 p-4 rounded-xl text-yellow-800 text-sm">
-                        هذه الميزة قيد التطوير. قريباً ستتمكن من رفع ملفات PDF لتدريب البوت.
+                <div className="space-y-6">
+                    <div className="card p-8 bg-white shadow-xl shadow-slate-200/50 rounded-[2rem] border-none group">
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <h3 className="text-xl font-black text-slate-800 tracking-tight">تدريب الوكيل (Knowledge Base)</h3>
+                                <p className="text-xs text-slate-400 font-bold mt-1">ارفع ملفات PDF أو نصوص ليتمكن البوت من الرد بناءً عليها</p>
+                            </div>
+                            <div className="h-12 w-12 rounded-2xl bg-brand-blue/10 flex items-center justify-center text-xl">📚</div>
+                        </div>
+
+                        <div className="grid md:grid-cols-1 gap-6">
+                            <div className="p-8 border-4 border-dashed border-slate-100 rounded-[2rem] bg-slate-50/50 flex flex-col items-center justify-center text-center transition-all hover:border-brand-blue/20 hover:bg-blue-50/20 group/upload relative overflow-hidden">
+                                <input
+                                    type="file"
+                                    accept=".pdf,.txt"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) handleFileUpload(file);
+                                    }}
+                                    className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                                    disabled={trainingLoading}
+                                />
+                                <div className="h-16 w-16 rounded-full bg-white shadow-sm flex items-center justify-center mb-4 text-2xl group-hover/upload:scale-110 transition-transform">
+                                    {trainingLoading ? '⏳' : '📤'}
+                                </div>
+                                <p className="text-sm font-black text-slate-700">اضغط لرفع ملف تدريبي</p>
+                                <p className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest">يدعم PDF و TXT فقط (حتى 5 ميجابايت)</p>
+
+                                {trainingLoading && (
+                                    <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-20">
+                                        <div className="flex flex-col items-center gap-3">
+                                            <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-blue border-t-transparent"></div>
+                                            <p className="text-xs font-black text-brand-blue">جاري التحليل والتدريب...</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="card p-8 bg-white shadow-xl shadow-slate-200/50 rounded-[2rem] border-none">
+                        <div className="flex justify-between items-center mb-6 px-1">
+                            <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest">الملفات المدربة ({documents.length})</h4>
+                            <button onClick={fetchDocuments} className="text-[10px] font-bold text-brand-blue hover:underline">تحديث القائمة</button>
+                        </div>
+
+                        <div className="space-y-3">
+                            {documents.length === 0 ? (
+                                <div className="text-center py-12 border border-slate-100 rounded-3xl bg-slate-50/30">
+                                    <p className="text-slate-400 text-sm font-medium italic">لا توجد ملفات مدربة حالياً</p>
+                                </div>
+                            ) : (
+                                documents.map((doc: any) => (
+                                    <div key={doc.id} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl group/item hover:bg-white hover:shadow-md transition-all">
+                                        <div className="flex items-center gap-4">
+                                            <div className="h-10 w-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-lg">📄</div>
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-800">{doc.metadata?.filename || "ملف غير معروف"}</p>
+                                                <p className="text-[10px] font-bold text-slate-400">{new Date(doc.created_at).toLocaleDateString('ar-EG')}</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => handleDeleteDocument(doc.id)}
+                                            className="h-8 w-8 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover/item:opacity-100"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

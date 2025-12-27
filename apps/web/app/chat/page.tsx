@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { io, Socket } from "socket.io-client";
+import { encodeId, decodeId } from "../../lib/obfuscator";
 
 type Status = "idle" | "initializing" | "waiting_qr" | "ready" | "error" | "disconnected";
 
@@ -139,6 +141,10 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [messageInput, setMessageInput] = useState("");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const initialChatEncoded = searchParams.get("c");
   const [clientId, setClientId] = useState<string>("default"); // Start with default, update on mount
   const socketRef = useRef<Socket | null>(null);
   const selectedChatRef = useRef<string | null>(null);
@@ -187,6 +193,30 @@ export default function ChatPage() {
       }
     }
   }, []);
+
+  // Handle Initial Chat from URL
+  useEffect(() => {
+    if (initialChatEncoded) {
+      const decoded = decodeId(initialChatEncoded);
+      if (decoded) {
+        setSelectedChat(decoded);
+      }
+    }
+  }, [initialChatEncoded]);
+
+  // Update URL when selectedChat changes
+  useEffect(() => {
+    if (selectedChat) {
+      const encoded = encodeId(selectedChat);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("c", encoded);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    } else if (searchParams.has("c")) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("c");
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    }
+  }, [selectedChat, pathname, router, searchParams]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -722,326 +752,331 @@ export default function ChatPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {selectedChat && (
+                <button
+                  onClick={() => {
+                    const url = `${window.location.origin}${pathname}?c=${encodeId(selectedChat)}`;
+                    navigator.clipboard.writeText(url);
+                    alert("تم نسخ رابط المحادثة المشفر! يمكنك إرساله الآن.");
+                  }}
+                  className="h-8 px-3 rounded-lg text-[10px] font-bold flex items-center gap-2 bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all border border-slate-200 shadow-sm"
+                  title="نسخ رابط المحادثة المشفر"
+                >
+                  🔗 نسخ الرابط المشفر
+                </button>
+              )}
               <button
-                className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 active:scale-95 disabled:opacity-50"
-                onClick={() => selectedChat && fetchMessages(selectedChat)}
-                disabled={!selectedChat || loadingMessages || status !== "ready"}
-              >
-                <span>تحديث</span>
-                <span className="text-slate-400">🔄</span>
-              </button>
-              <button
-                className={`flex items-center justify-center rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${showCustomerPanel ? 'bg-brand-blue text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all ${showCustomerPanel ? 'bg-brand-blue text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'}`}
                 onClick={() => setShowCustomerPanel(!showCustomerPanel)}
                 title="تفاصيل العميل"
+                disabled={!selectedChat}
               >
                 👤
               </button>
             </div>
           </div>
+        </div>
 
-          <div className="flex-1 overflow-y-auto bg-slate-50 p-4">
-            {loadingMessages && <p className="text-sm text-slate-500">...جاري التحميل</p>}
-            {!loadingMessages && messages.length === 0 && (
-              <p className="text-sm text-slate-500">لا توجد رسائل للعرض</p>
-            )}
-            <div className="space-y-3">
-              {messages.length >= 50 && (
-                <div className="flex justify-center pb-2">
-                  <button
-                    onClick={loadMore}
-                    disabled={loadingMessages}
-                    className="text-[10px] font-bold text-brand-blue hover:underline bg-blue-50 px-3 py-1 rounded-full"
-                  >
-                    عرض الرسائل القديمة
-                  </button>
-                </div>
-              )}
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`group relative flex w-full ${msg.fromMe ? "justify-start flex-row-reverse" : "justify-start flex-row"}`}
+        <div className="flex-1 overflow-y-auto bg-slate-50 p-4">
+          {loadingMessages && <p className="text-sm text-slate-500">...جاري التحميل</p>}
+          {!loadingMessages && messages.length === 0 && (
+            <p className="text-sm text-slate-500">لا توجد رسائل للعرض</p>
+          )}
+          <div className="space-y-3">
+            {messages.length >= 50 && (
+              <div className="flex justify-center pb-2">
+                <button
+                  onClick={loadMore}
+                  disabled={loadingMessages}
+                  className="text-[10px] font-bold text-brand-blue hover:underline bg-blue-50 px-3 py-1 rounded-full"
                 >
-                  <div className={`flex flex-col max-w-[85%] ${msg.fromMe ? "items-end" : "items-start"}`}>
-                    <div
-                      className={`relative rounded-2xl px-4 py-2.5 text-sm shadow-md transition-shadow hover:shadow-lg ${msg.fromMe
-                        ? "bg-brand-blue text-white rounded-tr-none"
-                        : "bg-white text-slate-800 rounded-tl-none border border-slate-200"
-                        }`}
-                    >
-                      {msg.author && !msg.fromMe && (
-                        <div className={`mb-1.5 flex items-center gap-1`}>
-                          <span className={`text-[11px] font-extrabold tracking-tight ${getAuthorColor(msg.author)}`}>
-                            {msg.senderName || msg.author.split('@')[0]}
-                          </span>
-                        </div>
-                      )}
-                      {msg.hasMedia && (
-                        <div className="mb-2">
-                          <WhatsAppMedia clientId={clientId} messageId={msg.id} type={msg.type} />
-                        </div>
-                      )}
-
-                      <p className="whitespace-pre-wrap leading-relaxed">
-                        {msg.body || (msg.hasMedia ? "" : <span className="text-[10px] opacity-60">رسالة غير مدعومة</span>)}
-                      </p>
-                      <div className={`mt-1 flex items-center gap-1 text-[9px] ${msg.fromMe ? "text-blue-100" : "text-slate-400"}`}>
-                        <span>{formatFriendlyTime(msg.timestamp)}</span>
-                        {msg.fromMe && (
-                          <span className={`text-[11px] font-bold ${msg.ack === 3 ? "text-blue-400" : ""}`}>
-                            {msg.ack === 0 ? "🕒" : msg.ack === 1 ? "✓" : (msg.ack === 2 || msg.ack === 3) ? "✓✓" : "✓✓"}
-                          </span>
-                        )}
+                  عرض الرسائل القديمة
+                </button>
+              </div>
+            )}
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`group relative flex w-full ${msg.fromMe ? "justify-start flex-row-reverse" : "justify-start flex-row"}`}
+              >
+                <div className={`flex flex-col max-w-[85%] ${msg.fromMe ? "items-end" : "items-start"}`}>
+                  <div
+                    className={`relative rounded-2xl px-4 py-2.5 text-sm shadow-md transition-shadow hover:shadow-lg ${msg.fromMe
+                      ? "bg-brand-blue text-white rounded-tr-none"
+                      : "bg-white text-slate-800 rounded-tl-none border border-slate-200"
+                      }`}
+                  >
+                    {msg.author && !msg.fromMe && (
+                      <div className={`mb-1.5 flex items-center gap-1`}>
+                        <span className={`text-[11px] font-extrabold tracking-tight ${getAuthorColor(msg.author)}`}>
+                          {msg.senderName || msg.author.split('@')[0]}
+                        </span>
                       </div>
+                    )}
+                    {msg.hasMedia && (
+                      <div className="mb-2">
+                        <WhatsAppMedia clientId={clientId} messageId={msg.id} type={msg.type} />
+                      </div>
+                    )}
+
+                    <p className="whitespace-pre-wrap leading-relaxed">
+                      {msg.body || (msg.hasMedia ? "" : <span className="text-[10px] opacity-60">رسالة غير مدعومة</span>)}
+                    </p>
+                    <div className={`mt-1 flex items-center gap-1 text-[9px] ${msg.fromMe ? "text-blue-100" : "text-slate-400"}`}>
+                      <span>{formatFriendlyTime(msg.timestamp)}</span>
+                      {msg.fromMe && (
+                        <span className={`text-[11px] font-bold ${msg.ack === 3 ? "text-blue-400" : ""}`}>
+                          {msg.ack === 0 ? "🕒" : msg.ack === 1 ? "✓" : (msg.ack === 2 || msg.ack === 3) ? "✓✓" : "✓✓"}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
-              ))}
-              <div ref={messagesEndRef} />
-            </div>
-          </div>
-
-          {/* Emoji Picker Popover */}
-          {showEmojis && (
-            <div className="absolute bottom-20 left-4 bg-white shadow-xl border border-slate-200 rounded-xl p-3 grid grid-cols-5 gap-2 z-10 w-64">
-              {emojis.map(e => (
-                <button
-                  key={e}
-                  className="text-xl hover:bg-slate-100 p-1 rounded"
-                  onClick={() => {
-                    setMessageInput(prev => prev + e);
-                    setShowEmojis(false);
-                  }}
-                >
-                  {e}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="border-t border-slate-200 p-4 relative">
-            {errorMsg && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMsg}</div>}
-
-            {/* Quick Replies Picker */}
-            {showQuickReplies && (
-              <div className="absolute bottom-full left-4 right-4 mb-2 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-2xl z-20">
-                <div className="flex items-center justify-between border-b pb-2 mb-2 px-2">
-                  <span className="text-xs font-bold text-slate-500 text-right w-full">الردود السريعة</span>
-                </div>
-                {quickReplies.length === 0 ? (
-                  <p className="py-4 text-center text-xs text-slate-400">لا توجد ردود سريعة مضافة</p>
-                ) : (
-                  <div className="grid grid-cols-1 gap-1">
-                    {quickReplies.map(qr => (
-                      <button
-                        key={qr.id}
-                        onClick={() => useQuickReply(qr.body)}
-                        className="flex flex-col items-start rounded-lg p-2 text-right transition-colors hover:bg-slate-50"
-                      >
-                        <span className="text-xs font-bold text-brand-blue">{qr.title}</span>
-                        <span className="truncate text-[10px] text-slate-500">{qr.body}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
-            )}
-
-            <div className="flex items-center gap-3">
-              {isRecording ? (
-                <div className="flex flex-1 items-center gap-3 rounded-2xl bg-red-50 px-4 py-2 text-red-600 animate-pulse">
-                  <div className="h-2 w-2 rounded-full bg-red-500 animate-ping"></div>
-                  <span className="text-xs font-bold font-mono">
-                    {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
-                  </span>
-                  <div className="flex-1 text-[10px] font-medium">جاري التسجيل...</div>
-                  <button onClick={cancelRecording} className="text-xs font-bold text-slate-400 hover:text-red-500">إلغاء</button>
-                  <button onClick={stopRecording} className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white shadow-md">
-                    ⏹️
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <button
-                    className={`btn h-10 w-10 flex items-center justify-center rounded-full transition-all ${showQuickReplies ? 'bg-brand-blue text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                    onClick={() => setShowQuickReplies(!showQuickReplies)}
-                    title="الردود السريعة"
-                    disabled={!selectedChat || status !== "ready"}
-                  >
-                    ⚡
-                  </button>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    className="hidden"
-                    onChange={handleFileSelect}
-                  />
-                  <button
-                    className="btn bg-slate-100 text-slate-500 h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-200"
-                    onClick={() => fileInputRef.current?.click()}
-                    title="إرفاق ملف"
-                    disabled={!selectedChat || status !== "ready"}
-                  >
-                    📎
-                  </button>
-                  <button
-                    className="btn bg-slate-100 text-slate-500 h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-200"
-                    onClick={sendLocation}
-                    title="مشاركة الموقع"
-                    disabled={!selectedChat || status !== "ready"}
-                  >
-                    📍
-                  </button>
-                  <button
-                    className={`btn h-10 w-10 flex items-center justify-center rounded-full transition-all ${showEmojis ? 'bg-yellow-100 text-orange-500 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                    onClick={() => setShowEmojis(!showEmojis)}
-                    title="إيموجي"
-                    disabled={!selectedChat || status !== "ready"}
-                  >
-                    😊
-                  </button>
-
-                  <textarea
-                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-blue/50 resize-none max-h-32"
-                    rows={1}
-                    placeholder="اكتب رسالتك..."
-                    value={messageInput}
-                    onChange={(e) => setMessageInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        void handleSend();
-                      }
-                    }}
-                    disabled={!selectedChat || status !== "ready"}
-                  />
-
-                  {messageInput.trim() ? (
-                    <button
-                      className="btn bg-brand-blue h-10 w-10 flex items-center justify-center rounded-full text-white shadow-md hover:bg-blue-700 transition-all hover:scale-105 active:scale-95"
-                      onClick={handleSend}
-                    >
-                      🚀
-                    </button>
-                  ) : (
-                    <button
-                      className="btn bg-slate-100 text-slate-500 h-10 w-10 flex items-center justify-center rounded-full hover:bg-brand-blue hover:text-white transition-all active:scale-95"
-                      onClick={startRecording}
-                      title="سجل رسالة صوتية"
-                      disabled={!selectedChat || status !== "ready"}
-                    >
-                      🎙️
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
+            ))}
+            <div ref={messagesEndRef} />
           </div>
         </div>
 
-        {/* Customer Sidebar (Right) */}
-        <div className={`${showCustomerPanel ? 'w-80 border-r' : 'w-0'} flex flex-col overflow-hidden bg-white transition-all duration-300 h-[70vh] rounded-l-2xl shadow-sm mr-2 border-slate-100`}>
-          {selectedCustomer ? (
-            <div className="flex h-full flex-col p-6 overflow-y-auto">
-              <div className="mb-6 flex flex-col items-center text-center">
-                <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-slate-100 text-3xl shadow-inner border-2 border-white ring-4 ring-slate-50">
-                  {selectedCustomer.avatar || "👤"}
-                </div>
-                <h3 className="text-lg font-bold text-slate-800 leading-tight">{selectedCustomer.name}</h3>
-                <p dir="ltr" className="text-sm font-medium text-slate-400 mt-1">{selectedCustomer.phone}</p>
-                <div className="mt-3">
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${selectedCustomer.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
-                    }`}>
-                    {selectedCustomer.status === 'active' ? 'نشط' : 'غير نشط'}
-                  </span>
-                </div>
-              </div>
+        {/* Emoji Picker Popover */}
+        {showEmojis && (
+          <div className="absolute bottom-20 left-4 bg-white shadow-xl border border-slate-200 rounded-xl p-3 grid grid-cols-5 gap-2 z-10 w-64">
+            {emojis.map(e => (
+              <button
+                key={e}
+                className="text-xl hover:bg-slate-100 p-1 rounded"
+                onClick={() => {
+                  setMessageInput(prev => prev + e);
+                  setShowEmojis(false);
+                }}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        )}
 
-              <div className="space-y-6">
-                <div>
-                  <h4 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">الأوسمة (Tags)</h4>
-                  <div className="flex flex-wrap gap-1.5 justify-end">
-                    {selectedCustomer.tags?.map((tag: string) => (
-                      <span key={tag} className="flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-[10px] font-bold text-brand-blue border border-blue-100/50">
-                        {tag}
-                        <button
-                          onClick={() => updateCustomerTags(selectedCustomer.tags.filter((t: string) => t !== tag))}
-                          className="hover:text-red-500 text-[8px]"
-                        >✕</button>
-                      </span>
-                    ))}
-                    <div className="mt-2 w-full">
-                      <input
-                        type="text"
-                        placeholder="إضافة وسم..."
-                        value={newTag}
-                        onChange={(e) => setNewTag(e.target.value)}
-                        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] focus:ring-2 focus:ring-brand-blue/30 outline-none"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && newTag.trim()) {
-                            updateCustomerTags([...(selectedCustomer.tags || []), newTag.trim()]);
-                            setNewTag("");
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
+        <div className="border-t border-slate-200 p-4 relative">
+          {errorMsg && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMsg}</div>}
 
-                <div>
-                  <h4 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">ملاحظات</h4>
-                  <textarea
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:ring-2 focus:ring-brand-blue/30 outline-none min-h-[100px]"
-                    placeholder="أضف ملاحظاتك عن هذا العميل..."
-                    defaultValue={selectedCustomer.notes}
-                    onBlur={async (e) => {
-                      if (e.target.value !== selectedCustomer.notes) {
-                        const res = await fetch(`${apiBase}/api/customers/${selectedCustomer.id}`, {
-                          method: "PUT",
-                          headers: getAuthHeaders(),
-                          body: JSON.stringify({ notes: e.target.value })
-                        });
-                        if (res.ok) {
-                          const data = await res.json();
-                          setSelectedCustomer(data.customer);
-                        }
-                      }
-                    }}
-                  />
-                </div>
-
-                <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
-                  <h4 className="mb-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">معلومات تقنية</h4>
-                  <div className="space-y-2 text-[10px]">
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold text-slate-800">{selectedCustomer.source}</span>
-                      <span className="text-slate-400">المصدر</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold text-slate-800">{selectedCustomer.last_contact_at ? new Date(selectedCustomer.last_contact_at).toLocaleDateString() : 'لا يوجد'}</span>
-                      <span className="text-slate-400">آخر تواصل</span>
-                    </div>
-                  </div>
-                </div>
+          {/* Quick Replies Picker */}
+          {showQuickReplies && (
+            <div className="absolute bottom-full left-4 right-4 mb-2 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-2xl z-20">
+              <div className="flex items-center justify-between border-b pb-2 mb-2 px-2">
+                <span className="text-xs font-bold text-slate-500 text-right w-full">الردود السريعة</span>
               </div>
-            </div>
-          ) : (
-            <div className="flex h-full items-center justify-center p-8 text-center bg-slate-50/50">
-              <div className="max-w-[200px]">
-                <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-2xl shadow-inner">🔎</div>
-                <h4 className="text-sm font-bold text-slate-700 mb-2">عميل غير مسجل</h4>
-                <p className="text-[10px] text-slate-400 leading-relaxed">
-                  هذه المحادثة غير مرتبطة بملف عميل في النظام. يمكنك إنشاء ملف للعميل لتتبع طلباته وملاحظاته.
-                </p>
-                <button className="mt-6 w-full rounded-xl bg-brand-blue py-2 text-[10px] font-bold text-white shadow-md hover:bg-blue-700 transition-all active:scale-95">
-                  إضافة عميل جديد
-                </button>
-              </div>
+              {quickReplies.length === 0 ? (
+                <p className="py-4 text-center text-xs text-slate-400">لا توجد ردود سريعة مضافة</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-1">
+                  {quickReplies.map(qr => (
+                    <button
+                      key={qr.id}
+                      onClick={() => useQuickReply(qr.body)}
+                      className="flex flex-col items-start rounded-lg p-2 text-right transition-colors hover:bg-slate-50"
+                    >
+                      <span className="text-xs font-bold text-brand-blue">{qr.title}</span>
+                      <span className="truncate text-[10px] text-slate-500">{qr.body}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
+
+          <div className="flex items-center gap-3">
+            {isRecording ? (
+              <div className="flex flex-1 items-center gap-3 rounded-2xl bg-red-50 px-4 py-2 text-red-600 animate-pulse">
+                <div className="h-2 w-2 rounded-full bg-red-500 animate-ping"></div>
+                <span className="text-xs font-bold font-mono">
+                  {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
+                </span>
+                <div className="flex-1 text-[10px] font-medium">جاري التسجيل...</div>
+                <button onClick={cancelRecording} className="text-xs font-bold text-slate-400 hover:text-red-500">إلغاء</button>
+                <button onClick={stopRecording} className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white shadow-md">
+                  ⏹️
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  className={`btn h-10 w-10 flex items-center justify-center rounded-full transition-all ${showQuickReplies ? 'bg-brand-blue text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                  onClick={() => setShowQuickReplies(!showQuickReplies)}
+                  title="الردود السريعة"
+                  disabled={!selectedChat || status !== "ready"}
+                >
+                  ⚡
+                </button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+                <button
+                  className="btn bg-slate-100 text-slate-500 h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-200"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="إرفاق ملف"
+                  disabled={!selectedChat || status !== "ready"}
+                >
+                  📎
+                </button>
+                <button
+                  className="btn bg-slate-100 text-slate-500 h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-200"
+                  onClick={sendLocation}
+                  title="مشاركة الموقع"
+                  disabled={!selectedChat || status !== "ready"}
+                >
+                  📍
+                </button>
+                <button
+                  className={`btn h-10 w-10 flex items-center justify-center rounded-full transition-all ${showEmojis ? 'bg-yellow-100 text-orange-500 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                  onClick={() => setShowEmojis(!showEmojis)}
+                  title="إيموجي"
+                  disabled={!selectedChat || status !== "ready"}
+                >
+                  😊
+                </button>
+
+                <textarea
+                  className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-blue/50 resize-none max-h-32"
+                  rows={1}
+                  placeholder="اكتب رسالتك..."
+                  value={messageInput}
+                  onChange={(e) => setMessageInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void handleSend();
+                    }
+                  }}
+                  disabled={!selectedChat || status !== "ready"}
+                />
+
+                {messageInput.trim() ? (
+                  <button
+                    className="btn bg-brand-blue h-10 w-10 flex items-center justify-center rounded-full text-white shadow-md hover:bg-blue-700 transition-all hover:scale-105 active:scale-95"
+                    onClick={handleSend}
+                  >
+                    🚀
+                  </button>
+                ) : (
+                  <button
+                    className="btn bg-slate-100 text-slate-500 h-10 w-10 flex items-center justify-center rounded-full hover:bg-brand-blue hover:text-white transition-all active:scale-95"
+                    onClick={startRecording}
+                    title="سجل رسالة صوتية"
+                    disabled={!selectedChat || status !== "ready"}
+                  >
+                    🎙️
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
 
+      {/* Customer Sidebar (Right) */}
+      <div className={`${showCustomerPanel ? 'w-80 border-r' : 'w-0'} flex flex-col overflow-hidden bg-white transition-all duration-300 h-[70vh] rounded-l-2xl shadow-sm mr-2 border-slate-100`}>
+        {selectedCustomer ? (
+          <div className="flex h-full flex-col p-6 overflow-y-auto">
+            <div className="mb-6 flex flex-col items-center text-center">
+              <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-slate-100 text-3xl shadow-inner border-2 border-white ring-4 ring-slate-50">
+                {selectedCustomer.avatar || "👤"}
+              </div>
+              <h3 className="text-lg font-bold text-slate-800 leading-tight">{selectedCustomer.name}</h3>
+              <p dir="ltr" className="text-sm font-medium text-slate-400 mt-1">{selectedCustomer.phone}</p>
+              <div className="mt-3">
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${selectedCustomer.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                  {selectedCustomer.status === 'active' ? 'نشط' : 'غير نشط'}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <h4 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">الأوسمة (Tags)</h4>
+                <div className="flex flex-wrap gap-1.5 justify-end">
+                  {selectedCustomer.tags?.map((tag: string) => (
+                    <span key={tag} className="flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-[10px] font-bold text-brand-blue border border-blue-100/50">
+                      {tag}
+                      <button
+                        onClick={() => updateCustomerTags(selectedCustomer.tags.filter((t: string) => t !== tag))}
+                        className="hover:text-red-500 text-[8px]"
+                      >✕</button>
+                    </span>
+                  ))}
+                  <div className="mt-2 w-full">
+                    <input
+                      type="text"
+                      placeholder="إضافة وسم..."
+                      value={newTag}
+                      onChange={(e) => setNewTag(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] focus:ring-2 focus:ring-brand-blue/30 outline-none"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && newTag.trim()) {
+                          updateCustomerTags([...(selectedCustomer.tags || []), newTag.trim()]);
+                          setNewTag("");
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">ملاحظات</h4>
+                <textarea
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:ring-2 focus:ring-brand-blue/30 outline-none min-h-[100px]"
+                  placeholder="أضف ملاحظاتك عن هذا العميل..."
+                  defaultValue={selectedCustomer.notes}
+                  onBlur={async (e) => {
+                    if (e.target.value !== selectedCustomer.notes) {
+                      const res = await fetch(`${apiBase}/api/customers/${selectedCustomer.id}`, {
+                        method: "PUT",
+                        headers: getAuthHeaders(),
+                        body: JSON.stringify({ notes: e.target.value })
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        setSelectedCustomer(data.customer);
+                      }
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
+                <h4 className="mb-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">معلومات تقنية</h4>
+                <div className="space-y-2 text-[10px]">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-slate-800">{selectedCustomer.source}</span>
+                    <span className="text-slate-400">المصدر</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-slate-800">{selectedCustomer.last_contact_at ? new Date(selectedCustomer.last_contact_at).toLocaleDateString() : 'لا يوجد'}</span>
+                    <span className="text-slate-400">آخر تواصل</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex h-full items-center justify-center p-8 text-center bg-slate-50/50">
+            <div className="max-w-[200px]">
+              <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-2xl shadow-inner">🔎</div>
+              <h4 className="text-sm font-bold text-slate-700 mb-2">عميل غير مسجل</h4>
+              <p className="text-[10px] text-slate-400 leading-relaxed">
+                هذه المحادثة غير مرتبطة بملف عميل في النظام. يمكنك إنشاء ملف للعميل لتتبع طلباته وملاحظاته.
+              </p>
+              <button className="mt-6 w-full rounded-xl bg-brand-blue py-2 text-[10px] font-bold text-white shadow-md hover:bg-blue-700 transition-all active:scale-95">
+                إضافة عميل جديد
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
       {/* Story Viewer Modal */}
       {selectedStory && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm p-4 animate-in fade-in duration-300">
@@ -1084,6 +1119,6 @@ export default function ChatPage() {
           </div>
         </div>
       )}
-    </div>
+    </div >
   );
 }

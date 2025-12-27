@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { encodeId } from "../../lib/obfuscator";
 
 type Contact = {
     id: string;
@@ -95,7 +96,8 @@ export default function ContactsPage() {
     };
 
     const sendMessage = (phone: string) => {
-        window.open(`/chat?phone=${phone}`, "_self");
+        const fullId = phone.includes('@') ? phone : `${phone}@c.us`;
+        window.open(`/chat?c=${encodeId(fullId)}`, "_self");
     };
 
     if (loading) {

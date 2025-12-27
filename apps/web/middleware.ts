@@ -5,18 +5,22 @@ export function middleware(request: NextRequest) {
     // Get the path
     const path = request.nextUrl.pathname;
 
-    // Define public paths that don't need authentication
     const isPublicPath = path === '/login' || path === '/register';
 
-    // Get the token from cookies (Authentication relies on cookies for middleware usually)
-    // Since we rely on localStorage in client, middleware can't fully protect standard JWT in localStorage
-    // BUT: We can fix the crash first.
+    // Get the token from cookies
+    const token = request.cookies.get('token')?.value;
 
-    // For now, to allow the app to load without crashing, we will pass through.
-    // The client-side check in AppShell will still handle redirects but we made it safer.
-    // If we want real middleware protection, we must store token in Cookies upon login.
+    // If it's a private path and there's no token, redirect to login with callback URL
+    if (!isPublicPath && !token) {
+        const url = new URL('/login', request.url);
+        url.searchParams.set('callback', path);
+        return NextResponse.redirect(url);
+    }
 
-    // Let's keep it simple: Just allow headers adjustment if needed or simple redirects.
+    // If it's an auth page and there's a token, redirect to connection page (unless it's the connect page itself)
+    if (isPublicPath && token) {
+        return NextResponse.redirect(new URL('/whatsapp-connect', request.url));
+    }
 
     return NextResponse.next();
 }

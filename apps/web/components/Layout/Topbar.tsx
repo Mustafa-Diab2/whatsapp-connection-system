@@ -20,7 +20,15 @@ const Topbar = ({ onMenuClick }: { onMenuClick?: () => void }) => {
 
   const handleLogout = useCallback(() => {
     if (typeof window !== "undefined") {
-      window.location.href = "/";
+      // Clear localStorage
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+
+      // Clear cookie (by setting expiry to past)
+      document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+
+      // Redirect to login
+      window.location.href = "/login";
     }
   }, []);
 

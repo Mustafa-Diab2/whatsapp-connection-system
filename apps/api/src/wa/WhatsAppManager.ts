@@ -63,19 +63,21 @@ export default class WhatsAppManager {
     this.loadConfigs();
   }
 
-  private async loadConfigs() {
+  private async loadConfigs(organizationId?: string) {
+    if (!organizationId) return;
     try {
-      const config = await db.getBotConfig("default");
+      const config = await db.getBotConfig(organizationId);
       if (config) {
-        this.botConfigs.set("default", {
+        this.botConfigs.set(organizationId, {
           systemPrompt: config.system_prompt || "",
           apiKey: config.api_key || "",
-          enabled: config.enabled || false
+          enabled: config.enabled || false,
+          organizationId
         });
-        console.log("[WhatsAppManager] Loaded default bot config from Supabase");
+        console.log(`[WhatsAppManager] Loaded bot config for Org ${organizationId}`);
       }
     } catch (err) {
-      console.error("[WhatsAppManager] Failed to load bot config:", err);
+      console.error(`[WhatsAppManager] Failed to load bot config for ${organizationId}:`, err);
     }
   }
 

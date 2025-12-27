@@ -107,19 +107,26 @@ export const db = {
         return data;
     },
 
-    async updateContact(id: string, updates: any) {
+    async updateContact(id: string, updates: any, organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
         const { data, error } = await supabase
             .from('contacts')
             .update(updates)
             .eq('id', id)
+            .eq('organization_id', organizationId)
             .select()
             .single();
         if (error) throw error;
         return data;
     },
 
-    async deleteContact(id: string) {
-        const { error } = await supabase.from('contacts').delete().eq('id', id);
+    async deleteContact(id: string, organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
+        const { error } = await supabase
+            .from('contacts')
+            .delete()
+            .eq('id', id)
+            .eq('organization_id', organizationId);
         if (error) throw error;
     },
 
@@ -187,11 +194,13 @@ export const db = {
         return data;
     },
 
-    async getMessagesByConversation(conversationId: string, limit = 50) {
+    async getMessagesByConversation(conversationId: string, organizationId: string, limit = 50) {
+        if (!organizationId) throw new Error("Organization ID required");
         const { data, error } = await supabase
             .from('messages')
             .select('*')
             .eq('conversation_id', conversationId)
+            .eq('organization_id', organizationId)
             .order('created_at', { ascending: true })
             .limit(limit);
         if (error) throw error;
@@ -226,19 +235,26 @@ export const db = {
         return data;
     },
 
-    async updateThread(id: string, updates: any) {
+    async updateThread(id: string, updates: any, organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
         const { data, error } = await supabase
             .from('threads')
             .update(updates)
             .eq('id', id)
+            .eq('organization_id', organizationId)
             .select()
             .single();
         if (error) throw error;
         return data;
     },
 
-    async deleteThread(id: string) {
-        const { error } = await supabase.from('threads').delete().eq('id', id);
+    async deleteThread(id: string, organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
+        const { error } = await supabase
+            .from('threads')
+            .delete()
+            .eq('id', id)
+            .eq('organization_id', organizationId);
         if (error) throw error;
     },
 
@@ -330,12 +346,19 @@ export const db = {
             .select('status')
             .eq('organization_id', organizationId);
 
+        const { data: deals } = await supabase
+            .from('deals')
+            .select('value')
+            .eq('organization_id', organizationId);
+
         return {
             totalCustomers: customers?.length || 0,
             activeCustomers: customers?.filter((c) => c.status === 'active').length || 0,
             totalContacts: contacts?.length || 0,
             openThreads: threads?.filter((t) => t.status === 'open').length || 0,
             pendingThreads: threads?.filter((t) => t.status === 'pending').length || 0,
+            totalDealsValue: deals?.reduce((sum, d) => sum + Number(d.value), 0) || 0,
+            totalDealsCount: deals?.length || 0
         };
     },
 
@@ -442,6 +465,42 @@ export const db = {
 
         if (error) throw error;
         return data || [];
+    },
+
+    async createDocument(doc: {
+        content: string;
+        metadata: any;
+        embedding: number[];
+        organization_id: string;
+    }) {
+        const { data, error } = await supabase
+            .from('documents')
+            .insert(doc)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async getDocuments(organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
+        const { data, error } = await supabase
+            .from('documents')
+            .select('id, metadata, created_at')
+            .eq('organization_id', organizationId)
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        return data;
+    },
+
+    async deleteDocument(id: string, organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
+        const { error } = await supabase
+            .from('documents')
+            .delete()
+            .eq('id', id)
+            .eq('organization_id', organizationId);
+        if (error) throw error;
     },
 
     // ========== CAMPAIGNS ==========
@@ -683,6 +742,17 @@ export const db = {
         if (error) throw error;
     },
 
+    async getActivityLogs(organizationId: string, limit = 10) {
+        if (!organizationId) throw new Error("Organization ID required");
+        const { data, error } = await supabase
+            .from('audit_logs')
+            .select('*, user:users(name)')
+            .eq('organization_id', organizationId)
+            .order('created_at', { ascending: false })
+            .limit(limit);
+        if (error) throw error;
+        return data || [];
+    },
 };
 
 export default supabase;
