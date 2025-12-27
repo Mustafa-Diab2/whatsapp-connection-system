@@ -68,16 +68,25 @@ app.use(generalLimiter);
 // 3. CORS - Allow all origins with vercel.app
 app.use(cors({
   origin: (origin, callback) => {
+    // Return early if no origin (e.g. server-to-server or Postman)
     if (!origin) return callback(null, true);
-    if (ALLOWED_ORIGINS.includes(origin) || origin.includes('vercel.app') || origin.includes('localhost')) {
+
+    // Allow Vercel deployments (any subdomain), localhost, or explicitly allowed domains
+    const isAllowed =
+      ALLOWED_ORIGINS.includes(origin) ||
+      origin.endsWith('.vercel.app') ||
+      origin.includes('localhost');
+
+    if (isAllowed) {
       callback(null, true);
     } else {
       console.warn(`⚠️ Blocked CORS request from: ${origin}`);
-      callback(null, true); // Allow but log
+      callback(null, false);
     }
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
 }));
 
 // 4. Body Parser with size limits
