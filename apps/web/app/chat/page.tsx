@@ -273,7 +273,7 @@ export default function ChatPage() {
 
   const fetchMessages = useCallback(
     async (chatId: string) => {
-      if (clientId === "default") return;
+      if (clientId === "default" || status !== "ready") return;
       setLoadingMessages(true);
       setErrorMsg(null);
       try {
@@ -304,10 +304,10 @@ export default function ChatPage() {
   }, [status, fetchChats]);
 
   useEffect(() => {
-    if (selectedChat) {
+    if (selectedChat && status === "ready") {
       void fetchMessages(selectedChat);
     }
-  }, [selectedChat, fetchMessages]);
+  }, [selectedChat, status, fetchMessages]);
 
   const handleSend = useCallback(async () => {
     if (!selectedChat || !messageInput.trim() || clientId === "default") return;
@@ -483,9 +483,9 @@ export default function ChatPage() {
             </div>
             <div className="flex items-center gap-2">
               <button
-                className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 active:scale-95"
+                className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 active:scale-95 disabled:opacity-50"
                 onClick={() => selectedChat && fetchMessages(selectedChat)}
-                disabled={!selectedChat || loadingMessages}
+                disabled={!selectedChat || loadingMessages || status !== "ready"}
               >
                 <span>تحديث</span>
                 <span className="text-slate-400">🔄</span>

@@ -854,7 +854,15 @@ export default class WhatsAppManager {
   ensureReadyClient(clientId: string): Client {
     const client = this.clients.get(clientId);
     const state = this.getState(clientId);
+
     if (!client || state.status !== "ready") {
+      console.warn(`[${clientId}] ensureReadyClient failed - ClientExists: ${!!client}, Status: ${state.status}`);
+
+      if (!client && (state.status === "ready" || state.status === "waiting_qr")) {
+        // This is a weird state, maybe server restarted
+        this.setState(clientId, { status: "idle", lastError: "يجب إعادة الاتصال بعد إعادة تشغيل الخادم" });
+      }
+
       throw new Error("العميل غير جاهز، تأكد من الاتصال أولاً");
     }
     return client;
