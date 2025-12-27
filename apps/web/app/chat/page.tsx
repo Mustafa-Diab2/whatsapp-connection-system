@@ -158,6 +158,7 @@ export default function ChatPage() {
   const [loadingStories, setLoadingStories] = useState(false);
   const [selectedStory, setSelectedStory] = useState<any>(null);
   const [newTag, setNewTag] = useState("");
+  const [newNotes, setNewNotes] = useState("");
   const [updatingCustomer, setUpdatingCustomer] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const recordingTimerRef = useRef<any>(null);
@@ -291,6 +292,64 @@ export default function ChatPage() {
     };
   }, [clientId]);
 
+  const fetchCustomerData = async (phone: string) => {
+    try {
+      const res = await fetch(`${apiBase}/api/customers/phone/${phone}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedCustomer(data.customer);
+        setNewNotes(data.customer.notes || "");
+      } else {
+        setSelectedCustomer(null);
+        setNewNotes("");
+      }
+    } catch (e) {
+      console.error("Failed to fetch customer", e);
+      setSelectedCustomer(null);
+    }
+  };
+
+  const updateCustomerTags = async (tags: string[]) => {
+    if (!selectedCustomer) return;
+    setUpdatingCustomer(true);
+    try {
+      const res = await fetch(`${apiBase}/api/customers/${selectedCustomer.id}`, {
+        method: "PUT",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ tags })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedCustomer(data.customer);
+      }
+    } catch (e) {
+      console.error("Failed to update tags", e);
+    } finally {
+      setUpdatingCustomer(false);
+    }
+  };
+
+  const updateCustomerNotes = async (notes: string) => {
+    if (!selectedCustomer) return;
+    setUpdatingCustomer(true);
+    try {
+      const res = await fetch(`${apiBase}/api/customers/${selectedCustomer.id}`, {
+        method: "PUT",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ notes })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedCustomer(data.customer || data);
+        alert("تم حفظ الملاحظات بنجاح");
+      }
+    } finally {
+      setUpdatingCustomer(false);
+    }
+  };
+
   const fetchStories = useCallback(async () => {
     if (clientId === "default" || status !== "ready") return;
     setLoadingStories(true);
@@ -323,26 +382,6 @@ export default function ChatPage() {
   useEffect(() => {
     fetchQuickReplies();
   }, [fetchQuickReplies]);
-
-  const updateCustomerTags = async (tags: string[]) => {
-    if (!selectedCustomer) return;
-    setUpdatingCustomer(true);
-    try {
-      const res = await fetch(`${apiBase}/api/customers/${selectedCustomer.id}`, {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ tags })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSelectedCustomer(data.customer);
-      }
-    } catch (e) {
-      console.error("Failed to update tags", e);
-    } finally {
-      setUpdatingCustomer(false);
-    }
-  };
 
   const fetchStatus = useCallback(async () => {
     if (clientId === "default") return;
@@ -610,28 +649,28 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-slate-500">المحادثات</p>
-          <h1 className="text-2xl font-extrabold text-slate-900">صندوق الرسائل</h1>
-        </div>
-        <div className={`badge ${statusColors[status]}`}>{statusBadge}</div>
-      </div>
-
+    <div className="flex flex-col gap-4 p-0 md:p-2 h-full">
+      {/* Connection Warning */}
       {status !== "ready" && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          حالة الاتصال: {statusBadge}. تأكد من إتمام الاتصال في صفحة واتساب ثم عد للمحادثات.
+        <div className="mx-4 md:mx-0 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 font-bold flex items-center gap-2 shadow-sm shrink-0">
+          <span>⚠️</span>
+          حالة الاتصال: {statusLabels[status]}. تأكد من إتمام الاتصال في صفحة واتساب.
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-[320px_1fr]">
-        <div className="card h-[70vh] overflow-hidden">
-          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-            <h3 className="font-semibold text-slate-800">المحادثات</h3>
+      {/* Main Layout Context */}
+      <div className="flex h-[calc(100vh-140px)] min-h-[450px] gap-4 relative overflow-hidden">
+
+        {/* 1. Chat List Column */}
+        <div className={`
+          flex-col card overflow-hidden transition-all duration-300 bg-white
+          ${selectedChat ? 'hidden lg:flex lg:w-[350px]' : 'flex w-full lg:w-[380px]'}
+        `}>
+          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4 shrink-0 bg-slate-50/50">
+            <h3 className="font-black text-slate-800 text-lg">المحادثات</h3>
             <div className="flex gap-2">
               <button
-                className="btn bg-slate-100 px-3 py-2 text-xs text-slate-700 hover:bg-slate-200"
+                className="h-9 w-9 flex items-center justify-center rounded-xl bg-white border border-slate-100 text-slate-500 hover:text-brand-blue hover:shadow-md transition-all"
                 onClick={fetchStories}
                 disabled={loadingStories || status !== "ready"}
                 title="تحديث الحالات"
@@ -639,7 +678,7 @@ export default function ChatPage() {
                 🎥
               </button>
               <button
-                className="btn bg-slate-100 px-3 py-2 text-xs text-slate-700 hover:bg-slate-200"
+                className="h-9 px-4 text-xs font-black bg-brand-blue text-white rounded-xl shadow-sm hover:shadow-md hover:bg-blue-700 transition-all disabled:opacity-50"
                 onClick={fetchChats}
                 disabled={loadingChats || status !== "ready"}
               >
@@ -650,15 +689,15 @@ export default function ChatPage() {
 
           {/* Stories Horizontal List */}
           {stories.length > 0 && (
-            <div className="flex items-center gap-3 overflow-x-auto border-b border-slate-100 bg-slate-50/50 p-3 no-scrollbar scroll-smooth">
+            <div className="flex items-center gap-4 overflow-x-auto border-b border-slate-100 bg-white p-4 no-scrollbar scroll-smooth shrink-0 min-h-[100px]">
               {stories.map((story) => (
                 <button
                   key={story.id}
                   onClick={() => setSelectedStory(story)}
-                  className="flex shrink-0 flex-col items-center gap-1 group"
+                  className="flex shrink-0 flex-col items-center gap-2 group w-14"
                 >
-                  <div className="relative rounded-full border-2 border-brand-blue p-[2px] shadow-sm transition-all group-hover:scale-110 group-active:scale-95 group-hover:shadow-md">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[11px] font-extrabold text-brand-blue border border-white">
+                  <div className="relative rounded-full border-2 border-brand-blue p-[2px] transition-all group-hover:scale-110 group-active:scale-95 ring-offset-2 ring-transparent group-hover:ring-blue-100 ring-2">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-50 text-[11px] font-black text-brand-blue border border-white overflow-hidden">
                       {story.senderName?.split(' ')[0]?.slice(0, 2).toUpperCase() || "WA"}
                     </div>
                     {story.hasMedia && (
@@ -667,30 +706,52 @@ export default function ChatPage() {
                       </span>
                     )}
                   </div>
-                  <span className="max-w-[64px] truncate text-[10px] font-extrabold text-slate-800 mt-1 block">
+                  <span className="w-full truncate text-[10px] font-black text-slate-600 text-center">
                     {story.senderName || "حالة"}
                   </span>
                 </button>
               ))}
             </div>
           )}
-          <div className="px-4 py-2 border-b border-slate-100">
-            <input
-              type="text"
-              placeholder="بحث في المحادثات..."
-              className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-brand-blue/50"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+
+          {/* Search Area */}
+          <div className="px-4 py-4 border-b border-slate-100 shrink-0">
+            <div className="relative group">
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-blue transition-colors">🔍</span>
+              <input
+                type="text"
+                placeholder="ابحث عن المحادثات أو الأرقام..."
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 pl-4 pr-11 py-3 text-sm outline-none focus:ring-4 focus:ring-brand-blue/10 focus:border-brand-blue/30 focus:bg-white transition-all font-bold"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
           </div>
-          <div className="h-full overflow-y-auto">
-            {loadingChats && <p className="p-4 text-sm text-slate-500">...جاري التحميل</p>}
-            {!loadingChats && filteredChats.length === 0 && (
-              <p className="p-4 text-sm text-slate-500">
-                {searchQuery ? "لا توجد نتائج للبحث" : "لا توجد محادثات متاحة"}
-              </p>
+
+          {/* Chat Items List */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar bg-white">
+            {loadingChats && (
+              <div className="space-y-4 p-6">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="flex gap-3 animate-pulse">
+                    <div className="h-12 w-12 rounded-full bg-slate-100 shrink-0"></div>
+                    <div className="flex-1 space-y-2 py-1">
+                      <div className="h-3 w-1/3 bg-slate-100 rounded"></div>
+                      <div className="h-2 w-1/2 bg-slate-50 rounded"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
-            <ul className="divide-y divide-slate-100 pb-20">
+            {!loadingChats && filteredChats.length === 0 && (
+              <div className="p-12 text-center flex flex-col items-center gap-3">
+                <div className="text-4xl opacity-20">🏝️</div>
+                <p className="text-xs text-slate-400 font-black">
+                  {searchQuery ? "لم نعثر على أي نتائج" : "لا يوجد محادثات حالياً"}
+                </p>
+              </div>
+            )}
+            <ul className="divide-y divide-slate-50">
               {filteredChats.map((chat) => {
                 const active = chat.id === selectedChat;
                 const initials = chat.name.slice(0, 2).toUpperCase();
@@ -698,28 +759,28 @@ export default function ChatPage() {
                 return (
                   <li
                     key={chat.id}
-                    className={`group relative cursor-pointer px-4 py-4 transition-all duration-200 ${active ? "bg-blue-50/80 border-r-4 border-brand-blue" : "hover:bg-slate-50 border-r-4 border-transparent"}`}
+                    className={`group relative cursor-pointer px-5 py-4 transition-all duration-200 ${active ? "bg-blue-50/60 border-r-4 border-brand-blue" : "hover:bg-slate-50 border-r-4 border-transparent"}`}
                     onClick={() => setSelectedChat(chat.id)}
                   >
-                    <div className="flex items-center gap-3">
-                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-white shadow-sm transition-transform group-hover:scale-105 ${active ? "bg-brand-blue" : "bg-slate-300"}`}>
+                    <div className="flex items-center gap-4">
+                      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl font-black text-white shadow-sm transition-all group-hover:rounded-xl ${active ? "bg-brand-blue shadow-blue-200" : "bg-slate-200"}`}>
                         {initials}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <p className={`truncate font-semibold transition-colors ${active ? "text-brand-blue" : "text-slate-800"}`}>
+                          <p className={`truncate text-sm font-black transition-colors ${active ? "text-brand-blue" : "text-slate-800"}`}>
                             {chat.name}
                           </p>
                           {chat.unreadCount > 0 && (
-                            <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-blue px-1.5 text-[10px] font-bold text-white shadow-sm">
+                            <span className="flex h-5 min-w-[20px] items-center justify-center rounded-lg bg-red-500 px-1.5 text-[9px] font-black text-white shadow-sm animate-bounce">
                               {chat.unreadCount}
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-1">
-                          <span className={`inline-block h-2 w-2 rounded-full ${chat.isGroup ? "bg-amber-400" : "bg-green-400"}`}></span>
-                          <p className="truncate text-xs text-slate-500">
-                            {chat.isGroup ? "مجموعة" : "محادثة خاصة"}
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`h-2 w-2 rounded-full ${chat.isGroup ? "bg-amber-400" : "bg-emerald-400"}`}></span>
+                          <p className="truncate text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                            {chat.isGroup ? "Group" : "Personal"}
                           </p>
                         </div>
                       </div>
@@ -731,394 +792,376 @@ export default function ChatPage() {
           </div>
         </div>
 
-        <div className="card flex h-[70vh] flex-col relative overflow-hidden">
-          <div className="flex items-center justify-between border-b border-slate-100 bg-white/50 px-4 py-3 backdrop-blur-md">
-            <div className="flex items-center gap-3">
+        {/* 2. Chat Area Column */}
+        <div className={`
+          flex-1 flex-col card overflow-hidden relative bg-white border-0 shadow-2xl transition-all duration-300
+          ${!selectedChat ? 'hidden lg:flex' : 'flex'}
+        `}>
+          {/* Messages Header */}
+          <div className="flex items-center justify-between border-b border-slate-100 bg-white/95 px-5 py-4 backdrop-blur-md shrink-0 z-20">
+            <div className="flex items-center gap-4 min-w-0">
+              <button
+                onClick={() => setSelectedChat(null)}
+                className="lg:hidden h-10 w-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-200 active:scale-95 transition-all"
+              >
+                ➡️
+              </button>
+
               {selectedChat && (
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 font-bold text-brand-blue">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 font-black text-brand-blue border border-blue-200/50 shadow-sm">
                   {selectedChatName.slice(0, 1).toUpperCase()}
                 </div>
               )}
-              <div>
-                <p className="text-sm font-bold text-slate-800">
-                  {selectedChat ? selectedChatName : "اختر محادثة للبدء"}
+              <div className="min-w-0">
+                <p className="truncate text-[15px] font-black text-slate-900 leading-tight">
+                  {selectedChat ? selectedChatName : "مرحبا بك في المحادثات"}
                 </p>
-                <div className="flex items-center gap-1.5">
-                  <span className={`h-2 w-2 rounded-full ${status === 'ready' ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`}></span>
-                  <p className="text-[10px] font-medium text-slate-500">
-                    {status === 'ready' ? "متصل الآن" : "غير متصل"}
-                  </p>
-                </div>
+                {selectedChat && (
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className={`h-2 w-2 rounded-full ${status === 'ready' ? 'bg-green-500' : 'bg-slate-300'}`}></span>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">
+                      {status === 'ready' ? "Online now" : "Offline"}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
+
+            <div className="flex items-center gap-3 shrink-0">
               {selectedChat && (
                 <button
                   onClick={() => {
                     const url = `${window.location.origin}${pathname}?c=${encodeId(selectedChat)}`;
                     navigator.clipboard.writeText(url);
-                    alert("تم نسخ رابط المحادثة المشفر! يمكنك إرساله الآن.");
+                    alert("تم نسخ رابط المحادثة المشفر بنجاح!");
                   }}
-                  className="h-8 px-3 rounded-lg text-[10px] font-bold flex items-center gap-2 bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all border border-slate-200 shadow-sm"
-                  title="نسخ رابط المحادثة المشفر"
+                  className="hidden sm:flex h-9 px-4 rounded-xl text-[11px] font-black items-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100 transition-all border border-slate-200"
                 >
-                  🔗 نسخ الرابط المشفر
+                  🔗 رابط مشفر
                 </button>
               )}
               <button
-                className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all ${showCustomerPanel ? 'bg-brand-blue text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'}`}
+                className={`h-11 w-11 flex items-center justify-center rounded-2xl transition-all ${showCustomerPanel ? 'bg-brand-blue text-white shadow-lg shadow-blue-200' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 border border-slate-200/50'}`}
                 onClick={() => setShowCustomerPanel(!showCustomerPanel)}
-                title="تفاصيل العميل"
                 disabled={!selectedChat}
               >
                 👤
               </button>
             </div>
           </div>
-        </div>
 
-        <div className="flex-1 overflow-y-auto bg-slate-50 p-4">
-          {loadingMessages && <p className="text-sm text-slate-500">...جاري التحميل</p>}
-          {!loadingMessages && messages.length === 0 && (
-            <p className="text-sm text-slate-500">لا توجد رسائل للعرض</p>
-          )}
-          <div className="space-y-3">
-            {messages.length >= 50 && (
-              <div className="flex justify-center pb-2">
-                <button
-                  onClick={loadMore}
-                  disabled={loadingMessages}
-                  className="text-[10px] font-bold text-brand-blue hover:underline bg-blue-50 px-3 py-1 rounded-full"
-                >
-                  عرض الرسائل القديمة
-                </button>
+          {/* Messages Feed Area */}
+          <div className="flex-1 overflow-y-auto bg-[#fafbfc] p-4 md:p-6 custom-scrollbar relative">
+            <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#005cf7 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
+
+            {loadingMessages && (
+              <div className="flex flex-col items-center justify-center h-full gap-4">
+                <div className="h-10 w-10 border-4 border-brand-blue border-t-transparent animate-spin rounded-full"></div>
+                <p className="text-sm font-black text-slate-400 italic">جاري تحميل صندوق الرسائل...</p>
               </div>
             )}
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`group relative flex w-full ${msg.fromMe ? "justify-start flex-row-reverse" : "justify-start flex-row"}`}
-              >
-                <div className={`flex flex-col max-w-[85%] ${msg.fromMe ? "items-end" : "items-start"}`}>
-                  <div
-                    className={`relative rounded-2xl px-4 py-2.5 text-sm shadow-md transition-shadow hover:shadow-lg ${msg.fromMe
-                      ? "bg-brand-blue text-white rounded-tr-none"
-                      : "bg-white text-slate-800 rounded-tl-none border border-slate-200"
-                      }`}
-                  >
-                    {msg.author && !msg.fromMe && (
-                      <div className={`mb-1.5 flex items-center gap-1`}>
-                        <span className={`text-[11px] font-extrabold tracking-tight ${getAuthorColor(msg.author)}`}>
-                          {msg.senderName || msg.author.split('@')[0]}
-                        </span>
-                      </div>
-                    )}
-                    {msg.hasMedia && (
-                      <div className="mb-2">
-                        <WhatsAppMedia clientId={clientId} messageId={msg.id} type={msg.type} />
-                      </div>
-                    )}
 
-                    <p className="whitespace-pre-wrap leading-relaxed">
-                      {msg.body || (msg.hasMedia ? "" : <span className="text-[10px] opacity-60">رسالة غير مدعومة</span>)}
-                    </p>
-                    <div className={`mt-1 flex items-center gap-1 text-[9px] ${msg.fromMe ? "text-blue-100" : "text-slate-400"}`}>
-                      <span>{formatFriendlyTime(msg.timestamp)}</span>
-                      {msg.fromMe && (
-                        <span className={`text-[11px] font-bold ${msg.ack === 3 ? "text-blue-400" : ""}`}>
-                          {msg.ack === 0 ? "🕒" : msg.ack === 1 ? "✓" : (msg.ack === 2 || msg.ack === 3) ? "✓✓" : "✓✓"}
-                        </span>
+            {!loadingMessages && !selectedChat && (
+              <div className="flex flex-col items-center justify-center h-full text-center p-10 space-y-6">
+                <div className="text-8xl animate-bounce">💬</div>
+                <div className="max-w-xs space-y-2">
+                  <h4 className="text-xl font-black text-slate-800">ابدأ الدردشة الآن</h4>
+                  <p className="text-xs font-bold text-slate-400 leading-relaxed">قم باختيار أحد المحادثات من القائمة الجانبية لبدء التواصل مع عملائك عبر الواتساب</p>
+                </div>
+              </div>
+            )}
+
+            {!loadingMessages && selectedChat && messages.length === 0 && (
+              <div className="flex flex-col items-center justify-center h-full opacity-30 gap-3">
+                <div className="text-6xl">📥</div>
+                <p className="text-[11px] font-black uppercase tracking-widest">No messages found here</p>
+              </div>
+            )}
+
+            <div className="space-y-6 max-w-4xl mx-auto">
+              {messages.length >= 50 && (
+                <div className="flex justify-center py-4">
+                  <button
+                    onClick={loadMore}
+                    disabled={loadingMessages}
+                    className="text-[11px] font-black text-brand-blue bg-white border-2 border-blue-50 px-6 py-2 rounded-2xl shadow-sm hover:shadow-md hover:border-blue-100 transition-all active:scale-95"
+                  >
+                    🔄 تحميل الرسائل السابقة
+                  </button>
+                </div>
+              )}
+
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex w-full ${msg.fromMe ? "justify-start flex-row-reverse" : "justify-start flex-row"}`}
+                >
+                  <div className={`flex flex-col max-w-[88%] sm:max-w-[75%] ${msg.fromMe ? "items-end text-right" : "items-start text-left"}`}>
+                    <div
+                      className={`relative rounded-3xl px-5 py-3.5 text-sm shadow-sm transition-all hover:shadow-md ${msg.fromMe
+                        ? "bg-brand-blue text-white rounded-tr-none"
+                        : "bg-white text-slate-800 rounded-tl-none border border-slate-100"
+                        }`}
+                    >
+                      {msg.author && !msg.fromMe && (
+                        <div className="mb-1.5">
+                          <span className={`text-[10px] font-black tracking-widest uppercase ${getAuthorColor(msg.author)}`}>
+                            {msg.senderName || msg.author.split('@')[0]}
+                          </span>
+                        </div>
                       )}
+
+                      {msg.hasMedia && (
+                        <div className="mb-3 overflow-hidden rounded-2xl border border-black/5 shadow-inner">
+                          <WhatsAppMedia clientId={clientId} messageId={msg.id} type={msg.type} />
+                        </div>
+                      )}
+
+                      <p className="whitespace-pre-wrap leading-relaxed text-[13px] font-medium selection:bg-blue-200">
+                        {msg.body || (msg.hasMedia ? "" : <span className="text-[10px] opacity-40 italic">رسالة غير مدعومة</span>)}
+                      </p>
+
+                      <div className={`mt-2 flex items-center justify-end gap-2 text-[9px] ${msg.fromMe ? "text-blue-100" : "text-slate-400"}`}>
+                        <span className="font-black tracking-tight">{formatFriendlyTime(msg.timestamp)}</span>
+                        {msg.fromMe && (
+                          <span className={`${msg.ack === 3 ? "text-blue-300" : "text-slate-300"}`}>
+                            {msg.ack === 0 ? "🕒" : msg.ack === 1 ? "✓" : "✓✓"}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+
+          {/* Messages Input Area */}
+          <div className="bg-white border-t border-slate-100 p-4 md:p-6 shrink-0 relative z-10">
+            {errorMsg && (
+              <div className="absolute bottom-full left-6 right-6 mb-4 rounded-xl border-l-4 border-red-500 bg-red-50/80 backdrop-blur-sm px-4 py-3 text-xs text-red-800 font-black shadow-xl animate-in slide-in-from-bottom-4 duration-300">
+                {errorMsg}
               </div>
-            ))}
-            <div ref={messagesEndRef} />
+            )}
+
+            {/* Floating Popovers */}
+            {showEmojis && (
+              <div className="absolute bottom-[calc(100%-8px)] left-6 bg-white shadow-2xl border border-slate-100 rounded-2xl p-4 grid grid-cols-6 gap-2 z-30 w-72 animate-in zoom-in-90 slide-in-from-bottom-2 duration-200">
+                {emojis.map(e => (
+                  <button key={e} onClick={() => { setMessageInput(p => p + e); setShowEmojis(false); }} className="text-xl hover:bg-slate-50 p-2 rounded-xl transition-all hover:scale-125 active:scale-90">{e}</button>
+                ))}
+              </div>
+            )}
+
+            {showQuickReplies && (
+              <div className="absolute bottom-[calc(100%-8px)] right-6 w-[300px] sm:w-[350px] bg-white shadow-2xl border border-slate-100 rounded-2xl overflow-hidden z-30 animate-in zoom-in-90 slide-in-from-bottom-2 duration-200">
+                <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 text-right">
+                  <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest">الردود السريعة</span>
+                </div>
+                <div className="max-h-60 overflow-y-auto p-2 custom-scrollbar">
+                  {quickReplies.length === 0 ? (
+                    <p className="p-8 text-center text-xs text-slate-400 font-bold italic">لا يوجد ردود مضافة بعد</p>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-1">
+                      {quickReplies.map(qr => (
+                        <button key={qr.id} onClick={() => useQuickReply(qr.body)} className="flex flex-col items-start gap-1 rounded-xl p-3 text-right bg-white hover:bg-blue-50 border border-transparent hover:border-blue-100 transition-all">
+                          <span className="text-xs font-black text-brand-blue">{qr.title}</span>
+                          <span className="line-clamp-2 text-[10px] font-bold text-slate-500 leading-normal">{qr.body}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+                <button onClick={() => setShowQuickReplies(!showQuickReplies)} className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black transition-all ${showQuickReplies ? 'bg-brand-blue text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>⚡ الردود</button>
+                <button onClick={() => fileInputRef.current?.click()} className="shrink-0 px-4 py-1.5 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 text-[10px] font-black">📎 ملفات</button>
+                <button onClick={sendLocation} className="shrink-0 px-4 py-1.5 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 text-[10px] font-black">📍 الموقع</button>
+                <button onClick={() => setShowEmojis(!showEmojis)} className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black transition-all ${showEmojis ? 'bg-amber-400 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>😊 فيسات</button>
+              </div>
+
+              <div className="flex items-end gap-3">
+                <div className="relative flex-1 group">
+                  <textarea
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-3.5 text-sm outline-none focus:ring-4 focus:ring-brand-blue/5 focus:border-brand-blue/30 focus:bg-white transition-all font-bold resize-none custom-scrollbar min-h-[56px] max-h-32"
+                    rows={1}
+                    placeholder="اكتب رسالتك للعميل هنا..."
+                    value={messageInput}
+                    onChange={(e) => setMessageInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); } }}
+                    disabled={!selectedChat || status !== "ready"}
+                  />
+                  <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
+                </div>
+
+                {isRecording ? (
+                  <div className="flex items-center gap-3 h-[56px] px-4 rounded-2xl bg-red-50 border-2 border-red-100 text-red-600 animate-pulse transition-all">
+                    <span className="font-mono font-black text-sm">{Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}</span>
+                    <button onClick={cancelRecording} className="h-8 px-3 rounded-lg hover:bg-red-100 text-[10px] font-black uppercase">إلغاء</button>
+                    <button onClick={stopRecording} className="h-10 w-10 flex items-center justify-center rounded-xl bg-red-600 text-white shadow-lg shadow-red-200 hover:scale-110 active:scale-90 transition-all">⏹️</button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    {messageInput.trim() ? (
+                      <button onClick={handleSend} className="h-[56px] w-[56px] flex items-center justify-center rounded-2xl bg-brand-blue text-white shadow-xl shadow-blue-200 hover:scale-105 active:scale-95 transition-all">
+                        <span className="text-xl">🚀</span>
+                      </button>
+                    ) : (
+                      <button onClick={startRecording} disabled={!selectedChat || status !== "ready"} className="h-[56px] w-[56px] flex items-center justify-center rounded-2xl bg-slate-100 text-slate-400 hover:bg-blue-50 hover:text-brand-blue transition-all active:scale-95">
+                        <span className="text-xl">🎤</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Emoji Picker Popover */}
-        {showEmojis && (
-          <div className="absolute bottom-20 left-4 bg-white shadow-xl border border-slate-200 rounded-xl p-3 grid grid-cols-5 gap-2 z-10 w-64">
-            {emojis.map(e => (
-              <button
-                key={e}
-                className="text-xl hover:bg-slate-100 p-1 rounded"
-                onClick={() => {
-                  setMessageInput(prev => prev + e);
-                  setShowEmojis(false);
-                }}
-              >
-                {e}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <div className="border-t border-slate-200 p-4 relative">
-          {errorMsg && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMsg}</div>}
-
-          {/* Quick Replies Picker */}
-          {showQuickReplies && (
-            <div className="absolute bottom-full left-4 right-4 mb-2 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-2xl z-20">
-              <div className="flex items-center justify-between border-b pb-2 mb-2 px-2">
-                <span className="text-xs font-bold text-slate-500 text-right w-full">الردود السريعة</span>
+        {/* 3. Customer Sidebar Component */}
+        <div className={`
+          fixed inset-y-0 left-0 z-[60] flex h-full flex-col overflow-hidden bg-white shadow-[0_0_60px_-15px_rgba(0,0,0,0.3)] transition-all duration-500 ease-in-out
+          ${showCustomerPanel ? 'w-full sm:w-[400px] translate-x-0' : 'w-0 -translate-x-full'}
+          border-r border-slate-100
+        `}>
+          {showCustomerPanel && (
+            <div className="flex h-full flex-col">
+              <div className="flex items-center justify-between px-6 py-6 border-b border-slate-50 bg-white sticky top-0 z-10">
+                <h3 className="text-xl font-black text-slate-800">بيانات العميل</h3>
+                <button
+                  onClick={() => setShowCustomerPanel(false)}
+                  className="h-10 w-10 flex items-center justify-center rounded-2xl bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all"
+                >✕</button>
               </div>
-              {quickReplies.length === 0 ? (
-                <p className="py-4 text-center text-xs text-slate-400">لا توجد ردود سريعة مضافة</p>
-              ) : (
-                <div className="grid grid-cols-1 gap-1">
-                  {quickReplies.map(qr => (
-                    <button
-                      key={qr.id}
-                      onClick={() => useQuickReply(qr.body)}
-                      className="flex flex-col items-start rounded-lg p-2 text-right transition-colors hover:bg-slate-50"
-                    >
-                      <span className="text-xs font-bold text-brand-blue">{qr.title}</span>
-                      <span className="truncate text-[10px] text-slate-500">{qr.body}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-10">
+                {selectedCustomer ? (
+                  <>
+                    <div className="flex flex-col items-center text-center">
+                      <div className="mb-6 relative">
+                        <div className="flex h-28 w-28 items-center justify-center rounded-[40px] bg-slate-50 text-5xl shadow-inner border-2 border-white ring-[12px] ring-slate-50/30">
+                          {selectedCustomer.avatar || "👤"}
+                        </div>
+                        <span className={`absolute -bottom-1 -right-1 h-6 w-6 rounded-xl border-4 border-white ${selectedCustomer.status === 'active' ? 'bg-green-500' : 'bg-slate-300'}`}></span>
+                      </div>
+                      <h3 className="text-2xl font-black text-slate-900 tracking-tight">{selectedCustomer.name}</h3>
+                      <p dir="ltr" className="text-[13px] font-black text-slate-400 mt-2 tracking-widest">{selectedCustomer.phone}</p>
+                    </div>
+
+                    <div className="space-y-8">
+                      {/* Tags Section */}
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-50 pb-2">
+                          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Tags / الأوسمة</span>
+                          <span className="text-[10px] font-black text-slate-300">#{selectedCustomer.tags?.length || 0}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 justify-end">
+                          {selectedCustomer.tags?.map((tag: string) => (
+                            <span key={tag} className="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-[10px] font-black text-brand-blue border border-blue-100">
+                              {tag}
+                              <button onClick={() => updateCustomerTags(selectedCustomer.tags.filter((t: string) => t !== tag))} className="text-xs hover:text-red-500">✕</button>
+                            </span>
+                          ))}
+                          <div className="w-full mt-2">
+                            <input
+                              type="text"
+                              placeholder="إضافة وسم جديد..."
+                              value={newTag}
+                              onChange={(e) => setNewTag(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter' && newTag.trim()) { updateCustomerTags([...(selectedCustomer.tags || []), newTag.trim()]); setNewTag(''); } }}
+                              className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-3 text-xs font-black focus:ring-4 focus:ring-brand-blue/5 outline-none transition-all"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Notes Section */}
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-50 pb-2">
+                          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Notes / ملاحظات</span>
+                          <button onClick={() => updateCustomerNotes(newNotes)} className="text-[9px] font-black text-brand-blue hover:underline">حفظ التغييرات</button>
+                        </div>
+                        <textarea
+                          className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-xs font-bold focus:ring-4 focus:ring-brand-blue/5 outline-none transition-all min-h-[120px]"
+                          placeholder="اكتب ملاحظاتك عن العميل هنا..."
+                          value={newNotes}
+                          onChange={(e) => setNewNotes(e.target.value)}
+                        />
+                      </div>
+
+                      {/* Technical Info */}
+                      <div className="space-y-4 bg-slate-50/50 rounded-3xl p-6 border border-slate-100">
+                        <div className="flex justify-between items-center text-[11px] font-black uppercase tracking-tight">
+                          <span className="text-slate-800">{selectedCustomer.source || "غير محدد"}</span>
+                          <span className="text-slate-400">Source</span>
+                        </div>
+                        <div className="flex justify-between items-center text-[11px] font-black uppercase tracking-tight">
+                          <span className="text-slate-800">{selectedCustomer.last_contact_at ? new Date(selectedCustomer.last_contact_at).toLocaleDateString() : 'لا يوجد'}</span>
+                          <span className="text-slate-400">Last contact</span>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-center space-y-6 pt-10">
+                    <div className="h-20 w-20 flex items-center justify-center rounded-3xl bg-slate-50 text-3xl">🧩</div>
+                    <div className="space-y-2 px-6">
+                      <h4 className="text-lg font-black text-slate-800">عميل غير متعرف عليه</h4>
+                      <p className="text-xs font-bold text-slate-400 leading-relaxed">لم نتمكن من العثور على ملف تعريف لهذا الرقم في نظام CRM الخاص بك. يمكنك إنشاء ملف جديد الآن.</p>
+                      <button className="w-full mt-6 rounded-2xl bg-brand-blue py-4 text-xs font-black text-white shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all hover:scale-105 active:scale-95">إنشاء ملف عميل جديد</button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
-
-          <div className="flex items-center gap-3">
-            {isRecording ? (
-              <div className="flex flex-1 items-center gap-3 rounded-2xl bg-red-50 px-4 py-2 text-red-600 animate-pulse">
-                <div className="h-2 w-2 rounded-full bg-red-500 animate-ping"></div>
-                <span className="text-xs font-bold font-mono">
-                  {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
-                </span>
-                <div className="flex-1 text-[10px] font-medium">جاري التسجيل...</div>
-                <button onClick={cancelRecording} className="text-xs font-bold text-slate-400 hover:text-red-500">إلغاء</button>
-                <button onClick={stopRecording} className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white shadow-md">
-                  ⏹️
-                </button>
-              </div>
-            ) : (
-              <>
-                <button
-                  className={`btn h-10 w-10 flex items-center justify-center rounded-full transition-all ${showQuickReplies ? 'bg-brand-blue text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                  onClick={() => setShowQuickReplies(!showQuickReplies)}
-                  title="الردود السريعة"
-                  disabled={!selectedChat || status !== "ready"}
-                >
-                  ⚡
-                </button>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  onChange={handleFileSelect}
-                />
-                <button
-                  className="btn bg-slate-100 text-slate-500 h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-200"
-                  onClick={() => fileInputRef.current?.click()}
-                  title="إرفاق ملف"
-                  disabled={!selectedChat || status !== "ready"}
-                >
-                  📎
-                </button>
-                <button
-                  className="btn bg-slate-100 text-slate-500 h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-200"
-                  onClick={sendLocation}
-                  title="مشاركة الموقع"
-                  disabled={!selectedChat || status !== "ready"}
-                >
-                  📍
-                </button>
-                <button
-                  className={`btn h-10 w-10 flex items-center justify-center rounded-full transition-all ${showEmojis ? 'bg-yellow-100 text-orange-500 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                  onClick={() => setShowEmojis(!showEmojis)}
-                  title="إيموجي"
-                  disabled={!selectedChat || status !== "ready"}
-                >
-                  😊
-                </button>
-
-                <textarea
-                  className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-blue/50 resize-none max-h-32"
-                  rows={1}
-                  placeholder="اكتب رسالتك..."
-                  value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      void handleSend();
-                    }
-                  }}
-                  disabled={!selectedChat || status !== "ready"}
-                />
-
-                {messageInput.trim() ? (
-                  <button
-                    className="btn bg-brand-blue h-10 w-10 flex items-center justify-center rounded-full text-white shadow-md hover:bg-blue-700 transition-all hover:scale-105 active:scale-95"
-                    onClick={handleSend}
-                  >
-                    🚀
-                  </button>
-                ) : (
-                  <button
-                    className="btn bg-slate-100 text-slate-500 h-10 w-10 flex items-center justify-center rounded-full hover:bg-brand-blue hover:text-white transition-all active:scale-95"
-                    onClick={startRecording}
-                    title="سجل رسالة صوتية"
-                    disabled={!selectedChat || status !== "ready"}
-                  >
-                    🎙️
-                  </button>
-                )}
-              </>
-            )}
-          </div>
         </div>
       </div>
 
-      {/* Customer Sidebar (Right) */}
-      <div className={`${showCustomerPanel ? 'w-80 border-r' : 'w-0'} flex flex-col overflow-hidden bg-white transition-all duration-300 h-[70vh] rounded-l-2xl shadow-sm mr-2 border-slate-100`}>
-        {selectedCustomer ? (
-          <div className="flex h-full flex-col p-6 overflow-y-auto">
-            <div className="mb-6 flex flex-col items-center text-center">
-              <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-slate-100 text-3xl shadow-inner border-2 border-white ring-4 ring-slate-50">
-                {selectedCustomer.avatar || "👤"}
-              </div>
-              <h3 className="text-lg font-bold text-slate-800 leading-tight">{selectedCustomer.name}</h3>
-              <p dir="ltr" className="text-sm font-medium text-slate-400 mt-1">{selectedCustomer.phone}</p>
-              <div className="mt-3">
-                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${selectedCustomer.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
-                  }`}>
-                  {selectedCustomer.status === 'active' ? 'نشط' : 'غير نشط'}
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <div>
-                <h4 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">الأوسمة (Tags)</h4>
-                <div className="flex flex-wrap gap-1.5 justify-end">
-                  {selectedCustomer.tags?.map((tag: string) => (
-                    <span key={tag} className="flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-[10px] font-bold text-brand-blue border border-blue-100/50">
-                      {tag}
-                      <button
-                        onClick={() => updateCustomerTags(selectedCustomer.tags.filter((t: string) => t !== tag))}
-                        className="hover:text-red-500 text-[8px]"
-                      >✕</button>
-                    </span>
-                  ))}
-                  <div className="mt-2 w-full">
-                    <input
-                      type="text"
-                      placeholder="إضافة وسم..."
-                      value={newTag}
-                      onChange={(e) => setNewTag(e.target.value)}
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] focus:ring-2 focus:ring-brand-blue/30 outline-none"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && newTag.trim()) {
-                          updateCustomerTags([...(selectedCustomer.tags || []), newTag.trim()]);
-                          setNewTag("");
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">ملاحظات</h4>
-                <textarea
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:ring-2 focus:ring-brand-blue/30 outline-none min-h-[100px]"
-                  placeholder="أضف ملاحظاتك عن هذا العميل..."
-                  defaultValue={selectedCustomer.notes}
-                  onBlur={async (e) => {
-                    if (e.target.value !== selectedCustomer.notes) {
-                      const res = await fetch(`${apiBase}/api/customers/${selectedCustomer.id}`, {
-                        method: "PUT",
-                        headers: getAuthHeaders(),
-                        body: JSON.stringify({ notes: e.target.value })
-                      });
-                      if (res.ok) {
-                        const data = await res.json();
-                        setSelectedCustomer(data.customer);
-                      }
-                    }
-                  }}
-                />
-              </div>
-
-              <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
-                <h4 className="mb-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">معلومات تقنية</h4>
-                <div className="space-y-2 text-[10px]">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-slate-800">{selectedCustomer.source}</span>
-                    <span className="text-slate-400">المصدر</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-slate-800">{selectedCustomer.last_contact_at ? new Date(selectedCustomer.last_contact_at).toLocaleDateString() : 'لا يوجد'}</span>
-                    <span className="text-slate-400">آخر تواصل</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex h-full items-center justify-center p-8 text-center bg-slate-50/50">
-            <div className="max-w-[200px]">
-              <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-2xl shadow-inner">🔎</div>
-              <h4 className="text-sm font-bold text-slate-700 mb-2">عميل غير مسجل</h4>
-              <p className="text-[10px] text-slate-400 leading-relaxed">
-                هذه المحادثة غير مرتبطة بملف عميل في النظام. يمكنك إنشاء ملف للعميل لتتبع طلباته وملاحظاته.
-              </p>
-              <button className="mt-6 w-full rounded-xl bg-brand-blue py-2 text-[10px] font-bold text-white shadow-md hover:bg-blue-700 transition-all active:scale-95">
-                إضافة عميل جديد
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-      {/* Story Viewer Modal */}
+      {/* 4. Overlay Modals */}
       {selectedStory && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-          <div className="relative w-full max-w-lg overflow-hidden rounded-3xl bg-slate-900 border border-slate-700 shadow-2xl flex flex-col h-[85vh] animate-in zoom-in-95 duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-in fade-in duration-300">
+          <div className="relative w-full max-w-lg overflow-hidden rounded-[40px] bg-[#0f172a] shadow-2xl flex flex-col h-[85vh] border border-white/10">
             <button
               onClick={() => setSelectedStory(null)}
-              className="absolute right-6 top-6 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white transition-all hover:bg-white hover:text-black hover:rotate-90 active:scale-90"
-            >
-              ✕
-            </button>
-            <div className="flex-1 overflow-y-auto p-4 flex items-center justify-center bg-slate-950/50">
+              className="absolute right-6 top-6 z-30 h-12 w-12 flex items-center justify-center rounded-2xl bg-black/40 text-white backdrop-blur-xl border border-white/10 hover:bg-white hover:text-black transition-all active:scale-90"
+            >✕</button>
+
+            <div className="flex-1 overflow-hidden flex items-center justify-center bg-black/20">
               {selectedStory.hasMedia ? (
                 <div className="w-full">
                   <WhatsAppMedia clientId={clientId} messageId={selectedStory.id} type={selectedStory.type} />
                 </div>
               ) : (
-                <div className="text-xl text-white text-center px-10 whitespace-pre-wrap font-medium leading-relaxed drop-shadow-md">
+                <div className="text-2xl text-white text-center p-12 font-black leading-relaxed">
                   {selectedStory.body}
                 </div>
               )}
             </div>
-            <div className="bg-slate-800/80 p-6 border-t border-slate-700/50 backdrop-blur-md">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-brand-blue flex items-center justify-center text-white font-bold ring-2 ring-white/10 shadow-lg">
+
+            <div className="bg-[#1e293b]/80 p-8 border-t border-white/5 backdrop-blur-2xl">
+              <div className="flex items-center gap-4">
+                <div className="h-12 w-12 rounded-2xl bg-brand-blue flex items-center justify-center text-white font-black text-xl shadow-lg ring-4 ring-white/5">
                   {selectedStory.senderName?.slice(0, 1) || "S"}
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-white tracking-tight">{selectedStory.senderName || "حالة"}</p>
-                  <p className="text-[10px] text-slate-400 font-medium">{formatFriendlyTime(selectedStory.timestamp)}</p>
+                  <p className="text-base font-black text-white">{selectedStory.senderName || "حالة جديدة"}</p>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{formatFriendlyTime(selectedStory.timestamp)}</p>
                 </div>
               </div>
               {selectedStory.body && selectedStory.hasMedia && (
-                <div className="mt-4 max-h-32 overflow-y-auto custom-scrollbar">
-                  <p className="text-sm text-slate-200 whitespace-pre-wrap bg-white/5 p-4 rounded-2xl border border-white/10 leading-relaxed shadow-inner">
-                    {selectedStory.body}
-                  </p>
+                <div className="mt-6 max-h-32 overflow-y-auto custom-scrollbar">
+                  <p className="text-sm text-slate-200 font-bold leading-relaxed bg-white/5 p-4 rounded-2xl border border-white/10">{selectedStory.body}</p>
                 </div>
               )}
             </div>
           </div>
         </div>
       )}
-    </div >
+    </div>
   );
 }

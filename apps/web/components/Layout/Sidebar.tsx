@@ -14,17 +14,11 @@ const menuItems: MenuItem[] = [
   { label: "Dashboard", labelAr: "لوحة التحكم", href: "/dashboard", icon: "📊" },
   { label: "WhatsApp Connection", labelAr: "اتصال الواتساب", href: "/whatsapp-connect", icon: "📱" },
   { label: "Chat", labelAr: "المحادثات", href: "/chat", icon: "💬" },
-  { label: "Bot + Survey Bot", labelAr: "البوت + استطلاع", href: "/bot", icon: "🤖" },
-  { label: "Configuration", labelAr: "الإعدادات", href: "/settings", icon: "⚙️" },
   { label: "Mini CRM", labelAr: "إدارة العملاء", href: "/crm", icon: "👥" },
-  { label: "Setting", labelAr: "الضبط", href: "/tuning", icon: "🔧" },
-  { label: "Report", labelAr: "التقارير", href: "/reports", icon: "📈" },
-  { label: "AI / AI Agent", labelAr: "الذكاء الاصطناعي", href: "/ai", icon: "🧠" },
   { label: "Knowledge Base", labelAr: "قاعدة المعرفة", href: "/documents", icon: "📚" },
   { label: "Campaigns", labelAr: "الحملات", href: "/campaigns", icon: "📢" },
-  { label: "Threads", labelAr: "المواضيع", href: "/threads", icon: "📝" },
-  { label: "Add-ons", labelAr: "الإضافات", href: "/addons", icon: "🔌" },
-  { label: "Contacts", labelAr: "جهات الاتصال", href: "/contacts", icon: "📞" }
+  { label: "AI Agent", labelAr: "الذكاء الاصطناعي", href: "/ai", icon: "🧠" },
+  { label: "Configuration", labelAr: "الإعدادات", href: "/settings", icon: "⚙️" },
 ];
 
 type SidebarProps = {
@@ -40,28 +34,29 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       {/* Mobile Overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm md:hidden transition-opacity duration-300"
           onClick={onClose}
         />
       )}
 
       {/* Sidebar Container */}
       <aside className={`
-        fixed inset-y-0 left-0 z-40 w-72 bg-white shadow-xl transform transition-transform duration-300 ease-in-out
-        md:translate-x-0 md:static md:shadow-sm md:border-l md:border-slate-200 md:h-[calc(100vh-72px)]
-        ${isOpen ? "translate-x-0" : "-translate-x-full bg-white"}
+        fixed inset-y-0 right-0 z-50 w-72 bg-white shadow-[0_0_50px_-12px_rgba(0,0,0,0.12)] transform transition-all duration-500 ease-in-out
+        md:translate-x-0 md:static md:shadow-none md:border-r md:border-slate-100 md:h-[calc(100vh-72px)]
+        ${isOpen ? "translate-x-0" : "translate-x-full md:translate-x-0"}
       `}>
-        <div className="h-full overflow-y-auto">
-          <div className="px-5 py-4 flex justify-between items-center md:hidden">
-            <span className="font-bold text-lg text-slate-700">القائمة</span>
-            <button onClick={onClose} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200">
+        <div className="h-full flex flex-col bg-white">
+          {/* Header for Mobile */}
+          <div className="px-6 py-6 flex justify-between items-center md:hidden border-b border-slate-50">
+            <span className="font-black text-xl text-slate-900">القائمة</span>
+            <button onClick={onClose} className="h-10 w-10 flex items-center justify-center bg-slate-50 rounded-2xl hover:bg-red-50 hover:text-red-500 transition-all active:scale-90">
               ✕
             </button>
           </div>
 
-          <div className="px-5 py-6">
-            <p className="mb-4 text-sm font-semibold text-slate-500 hidden md:block">القائمة الرئيسية</p>
-            <nav className="space-y-2">
+          <div className="flex-1 overflow-y-auto px-4 py-8 custom-scrollbar">
+            <p className="px-4 mb-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Main Menu</p>
+            <nav className="space-y-1.5">
               {menuItems.map((item) => {
                 const isActive = pathname === item.href ||
                   (item.href !== "#" && pathname?.startsWith(item.href));
@@ -71,34 +66,45 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
                     key={item.label}
                     href={item.href}
                     onClick={() => {
-                      // Close sidebar on mobile when item clicked
-                      if (window.innerWidth < 768 && onClose) onClose();
+                      if (typeof window !== 'undefined' && window.innerWidth < 768 && onClose) onClose();
                     }}
-                    className={`flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 ${isActive
-                      ? "bg-brand-green text-white shadow-md"
-                      : "bg-slate-50 text-slate-700 hover:bg-slate-100 hover:shadow-sm"
+                    className={`group flex items-center justify-between rounded-2xl px-5 py-3.5 text-sm font-black transition-all duration-300 ${isActive
+                      ? "bg-brand-blue text-white shadow-xl shadow-blue-100 scale-[1.02]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                       }`}
                   >
-                    <div className="flex items-center gap-3">
-                      {item.icon && <span className="text-base">{item.icon}</span>}
-                      <span>{item.labelAr}</span>
+                    <div className="flex items-center gap-3.5">
+                      <span className={`text-lg transition-transform duration-300 group-hover:scale-125 ${isActive ? 'drop-shadow-md' : 'grayscale group-hover:grayscale-0 opacity-70 group-hover:opacity-100'}`}>
+                        {item.icon}
+                      </span>
+                      <span className="tracking-tight">{item.labelAr}</span>
                     </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-md ${isActive
-                      ? "bg-white/20"
-                      : "bg-slate-200 text-slate-600"
-                      }`}>
-                      {isActive ? "نشط" : "انتقل"}
-                    </span>
+                    {isActive && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-white shadow-sm animate-pulse" />
+                    )}
                   </Link>
                 );
               })}
             </nav>
           </div>
 
-          {/* Footer */}
-          <div className="border-t border-slate-100 px-5 py-4 mt-auto">
-            <p className="text-xs text-slate-400 text-center">
-              WhatsApp CRM v1.0.0
+          {/* User Status / Plan Card */}
+          <div className="p-4 mt-auto border-t border-slate-50">
+            <div className="rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 p-5 text-white shadow-xl overflow-hidden relative">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Current Plan</p>
+              <h4 className="font-black text-sm mb-3">Enterprise Suite</h4>
+              <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden mb-2">
+                <div className="h-full w-2/3 bg-brand-blue rounded-full"></div>
+              </div>
+              <p className="text-[9px] font-black text-slate-400">65% of monthly messages used</p>
+            </div>
+          </div>
+
+          {/* Version Footer */}
+          <div className="px-5 py-4 bg-slate-50/30">
+            <p className="text-[9px] font-black text-slate-300 text-center uppercase tracking-widest">
+              Awfar CRM • Version 2.4.0
             </p>
           </div>
         </div>

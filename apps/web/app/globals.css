@@ -2,52 +2,86 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: light;
-  font-family: "Segoe UI", "Cairo", system-ui, sans-serif;
-  background: #f2f4f8;
+@layer base {
+  :root {
+    --brand-blue: 221 83% 53%;
+    --brand-green: 142 71% 45%;
+    --slate-bg: 210 40% 98%;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900;
+    font-family: 'Inter', 'Cairo', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }
 
-body {
-  margin: 0;
-  min-height: 100vh;
-  background: radial-gradient(circle at 20% 20%, #e6f0ff, #f7f9ff 45%, #f7f9ff);
-}
+@layer components {
+  .card {
+    @apply bg-white rounded-[32px] shadow-[0_8px_30px_rgb(0, 0, 0, 0.04)] border border-slate-100 transition-all duration-300;
+  }
 
-.card {
-  @apply bg-white rounded-2xl shadow-lg border border-slate-100;
-}
+  .glass {
+    @apply bg-white/70 backdrop-blur-xl border border-white/20 shadow-xl;
+  }
 
-.btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors;
-}
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl font-black transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none;
+  }
 
-.badge {
-  @apply inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-semibold;
+  .badge {
+    @apply inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm;
+  }
 }
 
 .rtl {
   direction: rtl;
 }
 
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-slate-200 rounded-full;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-300;
+}
+
+/* Hide Scrollbar */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 5px;
+/* Animations */
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+
+  100% {
+    transform: translateY(0px);
+  }
 }
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
 }

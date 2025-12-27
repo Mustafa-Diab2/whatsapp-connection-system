@@ -18,6 +18,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         setMounted(true);
 
         const checkToken = () => {
+            if (typeof window === 'undefined') return;
             const token = localStorage.getItem("token");
             if (!token && !isAuthPage) {
                 router.push(`/login?callback=${pathname}`);
@@ -29,9 +30,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         checkToken();
     }, [pathname, isAuthPage, router]);
 
-    // Optional: Global API Interceptor for 401s
+    // Global Auth Check
     useEffect(() => {
         const checkAuth = async () => {
+            if (typeof window === 'undefined') return;
             const token = localStorage.getItem("token");
             if (token && !isAuthPage) {
                 try {
@@ -49,27 +51,33 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             }
         };
         checkAuth();
-    }, [pathname]);
+    }, [pathname, isAuthPage, router]);
 
+    // Loading State
     if (!mounted || (isLoading && !isAuthPage)) {
         return (
-            <div className="h-screen w-full flex items-center justify-center bg-slate-50">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="h-12 w-12 animate-spin rounded-full border-4 border-brand-blue border-t-transparent"></div>
-                    <p className="text-slate-500 font-bold animate-pulse text-sm">جاري التحقق من الهوية...</p>
+            <div className="h-screen w-full flex items-center justify-center bg-[#fafafa]">
+                <div className="flex flex-col items-center gap-6">
+                    <div className="relative h-16 w-16">
+                        <div className="absolute inset-0 rounded-full border-4 border-slate-100"></div>
+                        <div className="absolute inset-0 rounded-full border-4 border-brand-blue border-t-transparent animate-spin"></div>
+                    </div>
+                    <div className="space-y-2 text-center">
+                        <h2 className="text-xl font-black text-slate-800">Awfar CRM</h2>
+                        <p className="text-slate-400 font-bold text-xs uppercase tracking-widest animate-pulse">Initializing Interface...</p>
+                    </div>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-slate-50">
+        <div className="min-h-screen bg-[#fcfcfc] text-slate-900 selection:bg-blue-100 selection:text-brand-blue">
             {mounted && !isAuthPage && (
                 <Topbar onMenuClick={() => setSidebarOpen(true)} />
             )}
 
-            <div className={mounted && !isAuthPage ? "flex flex-row-reverse min-h-[calc(100vh-72px)]" : "h-screen w-full"}>
-
+            <div className={mounted && !isAuthPage ? "flex min-h-[calc(100vh-72px)]" : "h-screen w-full"}>
                 {mounted && !isAuthPage && (
                     <Sidebar
                         isOpen={sidebarOpen}
@@ -77,8 +85,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     />
                 )}
 
-                <main className={mounted && !isAuthPage ? "flex-1 p-4 md:p-6 overflow-y-auto w-full" : "w-full h-full"}>
-                    {children}
+                <main className={mounted && !isAuthPage
+                    ? "flex-1 p-2 md:p-6 lg:p-8 overflow-y-auto w-full transition-all duration-300"
+                    : "w-full h-full"}>
+                    <div className="max-w-[1600px] mx-auto h-full">
+                        {children}
+                    </div>
                 </main>
             </div>
         </div>
