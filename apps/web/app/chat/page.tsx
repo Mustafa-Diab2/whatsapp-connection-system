@@ -272,16 +272,19 @@ export default function ChatPage() {
   }, [chats, selectedChat]);
 
   const fetchMessages = useCallback(
-    async (chatId: string) => {
+    async (chatId: string, limit = 50) => {
       if (clientId === "default" || status !== "ready") return;
       setLoadingMessages(true);
       setErrorMsg(null);
       try {
         // API endpoints now use token for auth/orgId
-        const res = await fetch(`${apiBase}/whatsapp/messages/${chatId}`, {
+        const res = await fetch(`${apiBase}/whatsapp/messages/${chatId}?limit=${limit}`, {
           headers: getAuthHeaders()
         });
-        if (!res.ok) throw new Error("تعذر جلب الرسائل");
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.message || "تعذر جلب الرسائل");
+        }
         const data = await res.json();
         setMessages(data.messages || []);
       } catch (err: any) {
@@ -290,8 +293,14 @@ export default function ChatPage() {
         setLoadingMessages(false);
       }
     },
-    [clientId]
+    [clientId, status]
   );
+
+  const loadMore = useCallback(() => {
+    if (selectedChat) {
+      fetchMessages(selectedChat, messages.length + 50);
+    }
+  }, [selectedChat, messages.length, fetchMessages]);
 
   useEffect(() => {
     void fetchStatus();
@@ -499,6 +508,17 @@ export default function ChatPage() {
               <p className="text-sm text-slate-500">لا توجد رسائل للعرض</p>
             )}
             <div className="space-y-3">
+              {messages.length >= 50 && (
+                <div className="flex justify-center pb-2">
+                  <button
+                    onClick={loadMore}
+                    disabled={loadingMessages}
+                    className="text-[10px] font-bold text-brand-blue hover:underline bg-blue-50 px-3 py-1 rounded-full"
+                  >
+                    عرض الرسائل القديمة
+                  </button>
+                </div>
+              )}
               {messages.map((msg) => (
                 <div
                   key={msg.id}

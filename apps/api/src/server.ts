@@ -330,6 +330,7 @@ app.get("/whatsapp/chats", verifyToken, async (req, res) => {
 app.get("/whatsapp/messages/:chatId", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
   const chatId = req.params.chatId;
+  const limit = parseInt(req.query.limit as string) || 50;
 
   if (!chatId) {
     return res.status(400).json({ message: "chatId required" });
@@ -338,7 +339,7 @@ app.get("/whatsapp/messages/:chatId", verifyToken, async (req, res) => {
   try {
     const client = manager.ensureReadyClient(orgId);
     const chat = await client.getChatById(chatId);
-    const messages = await chat.fetchMessages({ limit: 50 });
+    const messages = await chat.fetchMessages({ limit });
     const simplified = messages.map((m) => ({
       id: m.id._serialized,
       body: m.body,
