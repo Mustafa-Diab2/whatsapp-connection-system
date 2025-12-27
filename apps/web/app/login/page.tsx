@@ -121,8 +121,9 @@ export default function LoginPage() {
                     <form onSubmit={handleSubmit} className="space-y-4">
                         {!isLogin && (
                             <div>
-                                <label className="block text-white/80 text-sm mb-2">الاسم الكامل</label>
+                                <label htmlFor="name" className="block text-white/80 text-sm mb-2">الاسم الكامل</label>
                                 <input
+                                    id="name"
                                     type="text"
                                     placeholder="أدخل اسمك"
                                     className="w-full p-4 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/50 outline-none focus:border-white/50 transition-colors"
@@ -133,8 +134,9 @@ export default function LoginPage() {
                         )}
 
                         <div>
-                            <label className="block text-white/80 text-sm mb-2">البريد الإلكتروني</label>
+                            <label htmlFor="email" className="block text-white/80 text-sm mb-2">البريد الإلكتروني</label>
                             <input
+                                id="email"
                                 type="email"
                                 placeholder="example@email.com"
                                 className="w-full p-4 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/50 outline-none focus:border-white/50 transition-colors"
@@ -144,8 +146,9 @@ export default function LoginPage() {
                         </div>
 
                         <div>
-                            <label className="block text-white/80 text-sm mb-2">كلمة المرور</label>
+                            <label htmlFor="password" className="block text-white/80 text-sm mb-2">كلمة المرور</label>
                             <input
+                                id="password"
                                 type="password"
                                 placeholder="••••••••"
                                 className="w-full p-4 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/50 outline-none focus:border-white/50 transition-colors"
@@ -156,8 +159,9 @@ export default function LoginPage() {
 
                         {!isLogin && (
                             <div>
-                                <label className="block text-white/80 text-sm mb-2">تأكيد كلمة المرور</label>
+                                <label htmlFor="confirmPassword" className="block text-white/80 text-sm mb-2">تأكيد كلمة المرور</label>
                                 <input
+                                    id="confirmPassword"
                                     type="password"
                                     placeholder="••••••••"
                                     className="w-full p-4 bg-white/10 border border-white/20 rounded-xl text-white placeholder:text-white/50 outline-none focus:border-white/50 transition-colors"
