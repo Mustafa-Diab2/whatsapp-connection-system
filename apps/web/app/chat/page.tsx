@@ -628,17 +628,17 @@ export default function ChatPage() {
                   className="flex shrink-0 flex-col items-center gap-1 group"
                 >
                   <div className="relative rounded-full border-2 border-brand-blue p-[2px] shadow-sm transition-all group-hover:scale-110 group-active:scale-95 group-hover:shadow-md">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-[10px] font-bold text-brand-blue border border-white">
-                      {story.senderName?.slice(0, 2).toUpperCase() || "WA"}
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[11px] font-extrabold text-brand-blue border border-white">
+                      {story.senderName?.split(' ')[0]?.slice(0, 2).toUpperCase() || "WA"}
                     </div>
                     {story.hasMedia && (
-                      <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand-blue text-[8px] text-white ring-2 ring-white">
-                        🖼️
+                      <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand-blue text-[10px] text-white ring-2 ring-white">
+                        🎥
                       </span>
                     )}
                   </div>
-                  <span className="max-w-[50px] truncate text-[8px] font-bold text-slate-600">
-                    {story.senderName || "حالة"}
+                  <span className="max-w-[64px] truncate text-[9px] font-extrabold text-slate-700 mt-1">
+                    {story.senderName}
                   </span>
                 </button>
               ))}

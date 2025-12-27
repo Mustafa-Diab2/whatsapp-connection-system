@@ -943,18 +943,26 @@ export default class WhatsAppManager {
 
       return await Promise.all(messages.map(async (m) => {
         let senderName = null;
+        const authorId = m.author || (m as any).participant || m.from;
+
         try {
           const contact = await m.getContact();
           senderName = contact.name || contact.pushname || contact.number;
-        } catch (e) { }
+        } catch (e) {
+          if (authorId) senderName = authorId.split('@')[0];
+        }
+
+        if (!senderName && authorId) {
+          senderName = authorId.split('@')[0];
+        }
 
         return {
           id: m.id._serialized,
           body: m.body || (m as any).caption || "",
           type: m.type,
           timestamp: m.timestamp,
-          author: m.author || m.from,
-          senderName,
+          author: authorId,
+          senderName: senderName || "حالة",
           hasMedia: m.hasMedia
         };
       }));
