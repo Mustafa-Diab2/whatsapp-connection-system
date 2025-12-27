@@ -637,8 +637,8 @@ export default function ChatPage() {
                       </span>
                     )}
                   </div>
-                  <span className="max-w-[64px] truncate text-[9px] font-extrabold text-slate-700 mt-1">
-                    {story.senderName}
+                  <span className="max-w-[64px] truncate text-[10px] font-extrabold text-slate-800 mt-1 block">
+                    {story.senderName || "حالة"}
                   </span>
                 </button>
               ))}

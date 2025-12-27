@@ -942,19 +942,22 @@ export default class WhatsAppManager {
       const messages = await chat.fetchMessages({ limit: 40 });
 
       return await Promise.all(messages.map(async (m) => {
-        let senderName = null;
         const authorId = m.author || (m as any).participant || m.from;
+        let senderName = null;
 
         try {
-          const contact = await m.getContact();
+          const contact = await client.getContactById(authorId);
           senderName = contact.name || contact.pushname || contact.number;
         } catch (e) {
-          if (authorId) senderName = authorId.split('@')[0];
+          try {
+            const contact = await m.getContact();
+            senderName = contact.name || contact.pushname || contact.number;
+          } catch (e2) {
+            if (authorId) senderName = authorId.split('@')[0];
+          }
         }
 
-        if (!senderName && authorId) {
-          senderName = authorId.split('@')[0];
-        }
+        const finalName = senderName || (authorId ? authorId.split('@')[0] : "حالة");
 
         return {
           id: m.id._serialized,
@@ -962,7 +965,7 @@ export default class WhatsAppManager {
           type: m.type,
           timestamp: m.timestamp,
           author: authorId,
-          senderName: senderName || "حالة",
+          senderName: finalName,
           hasMedia: m.hasMedia
         };
       }));
