@@ -161,6 +161,13 @@ export default function ChatPage() {
     selectedChatRef.current = selectedChat;
   }, [selectedChat]);
 
+  // Scroll to bottom on new messages
+  useEffect(() => {
+    if (messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
+
   // Load Organization ID
   useEffect(() => {
     const userStr = localStorage.getItem("user");

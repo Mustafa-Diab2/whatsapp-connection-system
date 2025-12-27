@@ -403,6 +403,24 @@ export default class WhatsAppManager {
     return nextState;
   }
 
+  async disconnect(clientId: string): Promise<WaState> {
+    console.log(`[${clientId}] Disconnecting client...`);
+    const client = this.clients.get(clientId);
+    if (client) {
+      try {
+        await client.destroy();
+      } catch (err) {
+        console.error(`[${clientId}] Error disconnecting client`, err);
+      }
+    }
+    this.clients.delete(clientId);
+    this.clearQrTimeout(clientId);
+    this.locks.delete(clientId);
+    this.connectInFlight.delete(clientId);
+
+    return this.setState(clientId, { status: "disconnected", qrDataUrl: undefined });
+  }
+
   async connect(clientId: string): Promise<WaState> {
     // Single-flight: If connection is already in progress, return existing promise
     const existingInFlight = this.connectInFlight.get(clientId);

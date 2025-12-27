@@ -138,17 +138,18 @@ export default function WhatsAppConnectPage() {
       setState((prev) => ({ ...prev, status: "error", lastError: "فشل طلب الاتصال، حاول مجددًا" }));
       setLoading(false);
     }
-  }, [state.status]);
+  }, [state.status, clientId]);
 
   const handleReset = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${apiBase}/whatsapp/session/${clientId}`, {
-        method: "DELETE",
-        headers: getAuthHeaders()
+      const res = await fetch(`${apiBase}/whatsapp/reset`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ clientId }),
       });
       const data = await res.json();
-      setState(data);
+      if (data.state) setState(data.state);
       setConnectDisabled(false);
     } catch (err) {
       console.error("Reset failed", err);
@@ -156,7 +157,25 @@ export default function WhatsAppConnectPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [clientId]);
+
+  const handleDisconnect = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/whatsapp/disconnect`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ clientId }),
+      });
+      const data = await res.json();
+      if (data.state) setState(data.state);
+    } catch (err) {
+      console.error("Disconnect failed", err);
+      setState((prev) => ({ ...prev, status: "error", lastError: "تعذر قطع الاتصال" }));
+    } finally {
+      setLoading(false);
+    }
+  }, [clientId]);
 
   return (
     <div className="space-y-6">
@@ -186,26 +205,40 @@ export default function WhatsAppConnectPage() {
               )}
             </div>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-4">
               <button
-                className="btn bg-brand-blue px-4 py-3 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                className="btn bg-brand-blue flex items-center gap-2 px-6 py-3 text-white shadow-lg shadow-blue-200 transition-all hover:bg-blue-700 hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed disabled:bg-blue-300 disabled:shadow-none"
                 onClick={handleConnect}
                 disabled={connectDisabled || state.status === "initializing" || state.status === "waiting_qr"}
               >
+                <span className="text-lg">🔌</span>
                 اتصال بـ WhatsApp
               </button>
+
               <button
-                className="btn bg-red-50 px-4 py-3 text-red-700 hover:bg-red-100 disabled:cursor-not-allowed"
+                className="btn bg-white border border-orange-200 flex items-center gap-2 px-6 py-3 text-orange-600 shadow-sm transition-all hover:bg-orange-50 hover:border-orange-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleDisconnect}
+                disabled={loading || state.status === "idle" || state.status === "disconnected"}
+              >
+                <span className="text-lg">✂️</span>
+                قطع الاتصال
+              </button>
+
+              <button
+                className="btn bg-white border border-red-100 flex items-center gap-2 px-6 py-3 text-red-500 shadow-sm transition-all hover:bg-red-50 hover:border-red-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleReset}
                 disabled={loading}
               >
-                Reset Session
+                <span className="text-lg">♻️</span>
+                إعادة تهيئة
               </button>
+
               <button
-                className="btn bg-slate-100 px-4 py-3 text-slate-700 hover:bg-slate-200"
+                className="btn bg-slate-50 border border-slate-200 flex items-center gap-2 px-4 py-3 text-slate-600 transition-all hover:bg-slate-100 active:scale-95"
                 onClick={fetchStatus}
               >
-                تحديث الحالة يدويًا
+                <span className="text-lg">🔄</span>
+                تحديث
               </button>
             </div>
 

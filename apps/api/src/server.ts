@@ -307,6 +307,16 @@ app.post("/whatsapp/reset", verifyToken, async (req, res) => {
   }
 });
 
+app.post("/whatsapp/disconnect", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  try {
+    const state = await manager.disconnect(orgId);
+    res.json({ ok: true, message: "Disconnected", state });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, message: err?.message || "Failed to disconnect" });
+  }
+});
+
 // Get chats
 app.get("/whatsapp/chats", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
@@ -354,7 +364,7 @@ app.get("/whatsapp/messages/:chatId", verifyToken, async (req, res) => {
       author: m.author,
       ack: m.ack,
       hasMedia: m.hasMedia,
-    }));
+    })).reverse();
     res.json({ messages: simplified });
   } catch (err: any) {
     console.error(`[${orgId}] Get messages error:`, err);
