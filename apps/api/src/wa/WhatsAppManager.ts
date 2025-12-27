@@ -934,6 +934,35 @@ export default class WhatsAppManager {
       throw err;
     }
   }
+
+  async getStories(clientId: string) {
+    const client = this.ensureReadyClient(clientId);
+    try {
+      const chat = await client.getChatById('status@broadcast');
+      const messages = await chat.fetchMessages({ limit: 40 });
+
+      return await Promise.all(messages.map(async (m) => {
+        let senderName = null;
+        try {
+          const contact = await m.getContact();
+          senderName = contact.name || contact.pushname || contact.number;
+        } catch (e) { }
+
+        return {
+          id: m.id._serialized,
+          body: m.body || (m as any).caption || "",
+          type: m.type,
+          timestamp: m.timestamp,
+          author: m.author || m.from,
+          senderName,
+          hasMedia: m.hasMedia
+        };
+      }));
+    } catch (err) {
+      console.error(`[${clientId}] Failed to get stories:`, err);
+      return [];
+    }
+  }
 }
 
 

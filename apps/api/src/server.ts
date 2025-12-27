@@ -341,6 +341,17 @@ app.get("/whatsapp/chats", verifyToken, async (req, res) => {
   }
 });
 
+app.get("/whatsapp/stories", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  try {
+    const stories = await manager.getStories(orgId);
+    res.json({ stories });
+  } catch (err: any) {
+    console.error(`[${orgId}] Get stories error:`, err);
+    res.status(500).json({ message: err?.message || "Failed to get stories" });
+  }
+});
+
 // Get messages for a chat
 app.get("/whatsapp/messages/:chatId", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
@@ -376,7 +387,7 @@ app.get("/whatsapp/messages/:chatId", verifyToken, async (req, res) => {
         hasMedia: m.hasMedia,
       };
     }));
-    res.json({ messages: simplified.reverse() });
+    res.json({ messages: simplified });
   } catch (err: any) {
     console.error(`[${orgId}] Get messages error:`, err);
     res.status(400).json({ message: err?.message || "Failed to get messages" });

@@ -148,6 +148,9 @@ export default function ChatPage() {
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [showCustomerPanel, setShowCustomerPanel] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [stories, setStories] = useState<any[]>([]);
+  const [loadingStories, setLoadingStories] = useState(false);
+  const [selectedStory, setSelectedStory] = useState<any>(null);
   const [newTag, setNewTag] = useState("");
   const [updatingCustomer, setUpdatingCustomer] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -257,6 +260,22 @@ export default function ChatPage() {
       socket.disconnect();
     };
   }, [clientId]);
+
+  const fetchStories = useCallback(async () => {
+    if (clientId === "default" || status !== "ready") return;
+    setLoadingStories(true);
+    try {
+      const res = await fetch(`${apiBase}/whatsapp/stories`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      setStories(data.stories || []);
+    } catch (err) {
+      console.error("Failed to fetch stories", err);
+    } finally {
+      setLoadingStories(false);
+    }
+  }, [clientId, status]);
 
   const fetchQuickReplies = useCallback(async () => {
     if (clientId === "default") return;
@@ -384,8 +403,9 @@ export default function ChatPage() {
   useEffect(() => {
     if (status === "ready") {
       void fetchChats();
+      void fetchStories();
     }
-  }, [status, fetchChats]);
+  }, [status, fetchChats, fetchStories]);
 
   useEffect(() => {
     if (selectedChat && status === "ready") {
@@ -579,14 +599,51 @@ export default function ChatPage() {
         <div className="card h-[70vh] overflow-hidden">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
             <h3 className="font-semibold text-slate-800">المحادثات</h3>
-            <button
-              className="btn bg-slate-100 px-3 py-2 text-sm text-slate-700 hover:bg-slate-200"
-              onClick={fetchChats}
-              disabled={loadingChats || status !== "ready"}
-            >
-              تحديث
-            </button>
+            <div className="flex gap-2">
+              <button
+                className="btn bg-slate-100 px-3 py-2 text-xs text-slate-700 hover:bg-slate-200"
+                onClick={fetchStories}
+                disabled={loadingStories || status !== "ready"}
+                title="تحديث الحالات"
+              >
+                🎥
+              </button>
+              <button
+                className="btn bg-slate-100 px-3 py-2 text-xs text-slate-700 hover:bg-slate-200"
+                onClick={fetchChats}
+                disabled={loadingChats || status !== "ready"}
+              >
+                تحديث
+              </button>
+            </div>
           </div>
+
+          {/* Stories Horizontal List */}
+          {stories.length > 0 && (
+            <div className="flex items-center gap-3 overflow-x-auto border-b border-slate-100 bg-slate-50/50 p-3 no-scrollbar scroll-smooth">
+              {stories.map((story) => (
+                <button
+                  key={story.id}
+                  onClick={() => setSelectedStory(story)}
+                  className="flex shrink-0 flex-col items-center gap-1 group"
+                >
+                  <div className="relative rounded-full border-2 border-brand-blue p-[2px] shadow-sm transition-all group-hover:scale-110 group-active:scale-95 group-hover:shadow-md">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-[10px] font-bold text-brand-blue border border-white">
+                      {story.senderName?.slice(0, 2).toUpperCase() || "WA"}
+                    </div>
+                    {story.hasMedia && (
+                      <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand-blue text-[8px] text-white ring-2 ring-white">
+                        🖼️
+                      </span>
+                    )}
+                  </div>
+                  <span className="max-w-[50px] truncate text-[8px] font-bold text-slate-600">
+                    {story.senderName || "حالة"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="px-4 py-2 border-b border-slate-100">
             <input
               type="text"
@@ -984,6 +1041,49 @@ export default function ChatPage() {
           )}
         </div>
       </div>
+
+      {/* Story Viewer Modal */}
+      {selectedStory && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+          <div className="relative w-full max-w-lg overflow-hidden rounded-3xl bg-slate-900 border border-slate-700 shadow-2xl flex flex-col h-[85vh] animate-in zoom-in-95 duration-300">
+            <button
+              onClick={() => setSelectedStory(null)}
+              className="absolute right-6 top-6 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white transition-all hover:bg-white hover:text-black hover:rotate-90 active:scale-90"
+            >
+              ✕
+            </button>
+            <div className="flex-1 overflow-y-auto p-4 flex items-center justify-center bg-slate-950/50">
+              {selectedStory.hasMedia ? (
+                <div className="w-full">
+                  <WhatsAppMedia clientId={clientId} messageId={selectedStory.id} type={selectedStory.type} />
+                </div>
+              ) : (
+                <div className="text-xl text-white text-center px-10 whitespace-pre-wrap font-medium leading-relaxed drop-shadow-md">
+                  {selectedStory.body}
+                </div>
+              )}
+            </div>
+            <div className="bg-slate-800/80 p-6 border-t border-slate-700/50 backdrop-blur-md">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-brand-blue flex items-center justify-center text-white font-bold ring-2 ring-white/10 shadow-lg">
+                  {selectedStory.senderName?.slice(0, 1) || "S"}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white tracking-tight">{selectedStory.senderName || "حالة"}</p>
+                  <p className="text-[10px] text-slate-400 font-medium">{formatFriendlyTime(selectedStory.timestamp)}</p>
+                </div>
+              </div>
+              {selectedStory.body && selectedStory.hasMedia && (
+                <div className="mt-4 max-h-32 overflow-y-auto custom-scrollbar">
+                  <p className="text-sm text-slate-200 whitespace-pre-wrap bg-white/5 p-4 rounded-2xl border border-white/10 leading-relaxed shadow-inner">
+                    {selectedStory.body}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
