@@ -615,7 +615,28 @@ export default function ChatPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showEmojis, setShowEmojis] = useState(false);
 
+  // New Chat State
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [newPhone, setNewPhone] = useState("");
+
   const emojis = ["😀", "😂", "🥰", "😎", "🤔", "😭", "😡", "👍", "👎", "👏", "🙏", "❤️", "💔", "🔥", "✨", "🎉", "📅", "✅", "❌", "👋"];
+
+  const handleStartChat = async () => {
+    if (!newPhone) return;
+    // Basic validation
+    const cleanPhone = newPhone.replace(/\D/g, "");
+    if (cleanPhone.length < 10) {
+      alert("من فضلك أدخل رقم صحيح مع كود الدولة");
+      return;
+    }
+    const chatId = `${cleanPhone}@c.us`;
+
+    // Check if chat exists in local list, if not, we can force select it
+    // The chat list update will happen on next sync or message
+    setSelectedChat(chatId);
+    setShowNewChatModal(false);
+    setNewPhone("");
+  };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -703,6 +724,13 @@ export default function ChatPage() {
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4 shrink-0 bg-slate-50/50">
             <h3 className="font-black text-slate-800 text-lg">المحادثات</h3>
             <div className="flex gap-2">
+              <button
+                className="h-9 w-9 flex items-center justify-center rounded-xl bg-white border border-slate-100 text-brand-blue hover:bg-blue-50 hover:shadow-md transition-all font-black text-lg"
+                onClick={() => setShowNewChatModal(true)}
+                title="محادثة جديدة"
+              >
+                +
+              </button>
               <button
                 className="h-9 w-9 flex items-center justify-center rounded-xl bg-white border border-slate-100 text-slate-500 hover:text-brand-blue hover:shadow-md transition-all"
                 onClick={fetchStories}
@@ -1214,6 +1242,45 @@ export default function ChatPage() {
                   <p className="text-sm text-slate-200 font-bold leading-relaxed bg-white/5 p-4 rounded-2xl border border-white/10">{selectedStory.body}</p>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Chat Modal */}
+      {showNewChatModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white w-full max-w-sm rounded-[32px] p-8 shadow-2xl">
+            <h3 className="text-xl font-black text-slate-800 mb-2">محادثة جديدة</h3>
+            <p className="text-xs text-slate-400 font-bold mb-6">أدخل رقم الهاتف مع كود الدولة (بدون +)</p>
+
+            <div className="space-y-4">
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-lg">📱</span>
+                <input
+                  type="text"
+                  placeholder="مثال: 201000000000"
+                  value={newPhone}
+                  onChange={(e) => setNewPhone(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 pl-12 pr-4 text-sm font-black outline-none focus:ring-4 focus:ring-brand-blue/10 focus:border-brand-blue transition-all dir-ltr text-left"
+                  dir="ltr"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowNewChatModal(false)}
+                  className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 font-black text-xs hover:bg-slate-200 transition-all"
+                >
+                  إلغاء
+                </button>
+                <button
+                  onClick={handleStartChat}
+                  className="flex-1 py-3 rounded-xl bg-brand-blue text-white font-black text-xs hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all hover:scale-105 active:scale-95"
+                >
+                  بدء المحادثة
+                </button>
+              </div>
             </div>
           </div>
         </div>
