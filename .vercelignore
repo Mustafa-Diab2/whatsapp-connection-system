@@ -18,7 +18,10 @@ dist
 .env.local
 
 # Backend API (لن يتم رفعه على Vercel)
-apps/api
+# Backend API (Ingore code, but keep package.json for workspace)
+apps/api/*
+!apps/api/package.json
+
 
 # Logs
 *.log
