@@ -297,6 +297,65 @@ app.post("/whatsapp/send-media", verifyToken, async (req, res) => {
   }
 });
 
+// Reply to message
+app.post("/whatsapp/reply", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  const { chatId, content, quotedMessageId } = req.body;
+  try {
+    const client = manager.ensureReadyClient(orgId);
+    await client.sendMessage(chatId, content, { quotedMessageId });
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, message: err?.message || "Failed to reply" });
+  }
+});
+
+// Delete message
+app.post("/whatsapp/delete-message", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  const { messageId, everyone } = req.body;
+  try {
+    const client = manager.ensureReadyClient(orgId);
+    // Note: getMessageById might need implementation in WhatsAppManager or direct client access
+    // wwebjs client.getMessageById isn't standard on Client, usually it's on Chat or requires search.
+    // However, older versions or extensions might have it. 
+    // SAFEST WAY: Load chat -> fetch messages -> find message -> delete.
+    // BUT efficient way if available: client.getMessageById(messageId) (if supported by the lib version used)
+
+    // Let's rely on manager having access or client having it.
+    // If client.getMessageById is not available, we might fail.
+    // Given wwebjs version, let's try direct access if exists, else generic handler.
+
+    const msg = await client.getMessageById(messageId);
+    if (msg) {
+      await msg.delete(!!everyone);
+      res.json({ ok: true });
+    } else {
+      res.status(404).json({ ok: false, message: "Message not found" });
+    }
+  } catch (err: any) {
+    res.status(500).json({ ok: false, message: err?.message || "Failed to delete message" });
+  }
+});
+
+// Message Info (Read receipts)
+app.get("/whatsapp/message-info/:messageId", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  const { messageId } = req.params;
+  try {
+    const client = manager.ensureReadyClient(orgId);
+    const msg = await client.getMessageById(messageId);
+    if (msg) {
+      const info = await msg.getInfo();
+      res.json({ ok: true, info });
+    } else {
+      res.status(404).json({ ok: false, message: "Message not found" });
+    }
+  } catch (err: any) {
+    res.status(500).json({ ok: false, message: err?.message || "Failed to get message info" });
+  }
+});
+
 // Destroy session (logout)
 app.post("/whatsapp/logout", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
@@ -417,17 +476,23 @@ app.get("/whatsapp/media/:clientId/:messageId", verifyToken, async (req, res) =>
 
   try {
     const client = manager.ensureReadyClient(orgId);
-    // Find the message. This can be tricky if not in recent cache.
-    // However, usually it's used for recently loaded messages.
-    const msg = await client.getMessageById(messageId);
 
-    if (!msg || !msg.hasMedia) {
-      return res.status(404).json({ message: "Message or media not found" });
+    // Try to get message from store
+    let msg = null;
+    try {
+      msg = await client.getMessageById(messageId);
+    } catch (e) {
+      console.warn(`[${orgId}] Message ${messageId} not found in store, trying search...`);
     }
 
+    if (!msg || !msg.hasMedia) {
+      return res.status(404).json({ message: "Message not found or has no media (Server Restarted?)" });
+    }
+
+    // Try to download
     const media = await msg.downloadMedia();
     if (!media) {
-      return res.status(404).json({ message: "Failed to download media" });
+      return res.status(404).json({ message: "Failed to download media content" });
     }
 
     res.json({
@@ -436,8 +501,8 @@ app.get("/whatsapp/media/:clientId/:messageId", verifyToken, async (req, res) =>
       filename: media.filename
     });
   } catch (err: any) {
-    console.error(`[${orgId}] Get media error:`, err);
-    res.status(500).json({ message: "Failed to download media" });
+    console.error(`[${orgId}] Get media error:`, err.message);
+    res.status(500).json({ message: "Error downloading media. Session might be expired." });
   }
 });
 

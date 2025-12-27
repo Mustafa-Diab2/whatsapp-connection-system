@@ -165,6 +165,7 @@ export default function ChatPage() {
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const [replyingTo, setReplyingTo] = useState<MessageItem | null>(null);
 
   // Keep ref in sync with state for socket callback
   useEffect(() => {
@@ -497,13 +498,19 @@ export default function ChatPage() {
       const res = await fetch(`${apiBase}/whatsapp/send`, {
         method: "POST",
         headers: getAuthHeaders(),
-        body: JSON.stringify({ clientId, chatId: selectedChat, message: messageInput.trim() }),
+        body: JSON.stringify({
+          clientId,
+          chatId: selectedChat,
+          message: messageInput.trim(),
+          quotedMessageId: replyingTo?.id
+        }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.message || "تعذر إرسال الرسالة");
       }
       setMessageInput("");
+      setReplyingTo(null);
       // Don't refetch - wait for socket event or add optimistically
     } catch (err: any) {
       setErrorMsg(err?.message || "فشل إرسال الرسالة");
@@ -646,6 +653,33 @@ export default function ChatPage() {
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleDeleteMessage = async (msgId: string, everyone: boolean) => {
+    if (!confirm(everyone ? "هل تريد حذف الرسالة لدى الجميع؟" : "هل تريد حذف الرسالة لديك فقط؟")) return;
+    try {
+      await fetch(`${apiBase}/whatsapp/delete-message`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ clientId, messageId: msgId, everyone })
+      });
+      // Remove from UI optimistically
+      setMessages(prev => prev.filter(m => m.id !== msgId));
+    } catch (e) {
+      alert("فشل حذف الرسالة");
+    }
+  };
+
+  const handleMessageInfo = async (msgId: string) => {
+    try {
+      const res = await fetch(`${apiBase}/whatsapp/message-info/${msgId}`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.ok && data.info) {
+        const readCount = data.info.read?.length || 0;
+        const deliveryCount = data.info.delivery?.length || 0;
+        alert(`تقرير الرسالة:\n👀 تمت القراءة بواسطة: ${readCount}\n📩 تم الاستلام بواسطة: ${deliveryCount}`);
+      }
+    } catch (e) { console.error(e); }
   };
 
   return (
@@ -894,8 +928,18 @@ export default function ChatPage() {
               {messages.map((msg) => (
                 <div
                   key={msg.id}
-                  className={`flex w-full ${msg.fromMe ? "justify-start flex-row-reverse" : "justify-start flex-row"}`}
+                  className={`flex w-full group/msg relative ${msg.fromMe ? "justify-start flex-row-reverse" : "justify-start flex-row"}`}
                 >
+                  {/* Message Actions (Hidden by default, shown on hover) */}
+                  <div className={`absolute top-0 opacity-0 group-hover/msg:opacity-100 transition-opacity flex items-center gap-1 bg-white shadow-sm border border-slate-100 rounded-lg p-1 z-10 ${msg.fromMe ? "right-full mr-2" : "left-full ml-2"}`}>
+                    <button onClick={() => setReplyingTo(msg)} className="p-1.5 hover:bg-slate-50 rounded text-[10px] text-slate-500" title="رد">↩️</button>
+                    {msg.fromMe && (
+                      <>
+                        <button onClick={() => handleMessageInfo(msg.id)} className="p-1.5 hover:bg-slate-50 rounded text-[10px] text-slate-500" title="معلومات">ℹ️</button>
+                        <button onClick={() => handleDeleteMessage(msg.id, true)} className="p-1.5 hover:bg-red-50 rounded text-[10px] text-red-500" title="حذف للجميع">🗑️</button>
+                      </>
+                    )}
+                  </div>
                   <div className={`flex flex-col max-w-[88%] sm:max-w-[75%] ${msg.fromMe ? "items-end text-right" : "items-start text-left"}`}>
                     <div
                       className={`relative rounded-3xl px-5 py-3.5 text-sm shadow-sm transition-all hover:shadow-md ${msg.fromMe
@@ -976,6 +1020,7 @@ export default function ChatPage() {
               </div>
             )}
 
+
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
                 <button onClick={() => setShowQuickReplies(!showQuickReplies)} className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black transition-all ${showQuickReplies ? 'bg-brand-blue text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>⚡ الردود</button>
@@ -984,10 +1029,21 @@ export default function ChatPage() {
                 <button onClick={() => setShowEmojis(!showEmojis)} className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black transition-all ${showEmojis ? 'bg-amber-400 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>😊 فيسات</button>
               </div>
 
+              {/* Reply Preview */}
+              {replyingTo && (
+                <div className="flex items-center justify-between bg-slate-50 border-l-4 border-brand-blue rounded-r-xl p-3 animate-in slide-in-from-bottom-2">
+                  <div className="flex flex-col text-xs">
+                    <span className="font-bold text-brand-blue mb-0.5">الرد على: {replyingTo.senderName || replyingTo.author?.split('@')[0] || "مرسل"}</span>
+                    <span className="text-slate-500 line-clamp-1">{replyingTo.body || "ملف وسائط"}</span>
+                  </div>
+                  <button onClick={() => setReplyingTo(null)} className="h-6 w-6 flex items-center justify-center rounded-full hover:bg-slate-200 text-slate-500">✕</button>
+                </div>
+              )}
+
               <div className="flex items-end gap-3">
                 <div className="relative flex-1 group">
                   <textarea
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-3.5 text-sm outline-none focus:ring-4 focus:ring-brand-blue/5 focus:border-brand-blue/30 focus:bg-white transition-all font-bold resize-none custom-scrollbar min-h-[56px] max-h-32"
+                    className={`w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-3.5 text-sm outline-none focus:ring-4 focus:ring-brand-blue/5 focus:border-brand-blue/30 focus:bg-white transition-all font-bold resize-none custom-scrollbar min-h-[56px] ${replyingTo ? 'rounded-tl-none' : ''}`}
                     rows={1}
                     placeholder="اكتب رسالتك للعميل هنا..."
                     value={messageInput}
@@ -1028,140 +1084,141 @@ export default function ChatPage() {
           ${showCustomerPanel ? 'w-full sm:w-[400px] translate-x-0' : 'w-0 -translate-x-full'}
           border-r border-slate-100
         `}>
-          {showCustomerPanel && (
-            <div className="flex h-full flex-col">
-              <div className="flex items-center justify-between px-6 py-6 border-b border-slate-50 bg-white sticky top-0 z-10">
-                <h3 className="text-xl font-black text-slate-800">بيانات العميل</h3>
-                <button
-                  onClick={() => setShowCustomerPanel(false)}
-                  className="h-10 w-10 flex items-center justify-center rounded-2xl bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all"
-                >✕</button>
-              </div>
+          <div className="flex h-full flex-col">
+            <div className="flex items-center justify-between px-6 py-6 border-b border-slate-50 bg-white sticky top-0 z-10">
+              <h3 className="text-xl font-black text-slate-800">بيانات العميل</h3>
+              <button
+                onClick={() => setShowCustomerPanel(false)}
+                className="h-10 w-10 flex items-center justify-center rounded-2xl bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all"
+              >✕</button>
+            </div>
 
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-10">
-                {selectedCustomer ? (
-                  <>
-                    <div className="flex flex-col items-center text-center">
-                      <div className="mb-6 relative">
-                        <div className="flex h-28 w-28 items-center justify-center rounded-[40px] bg-slate-50 text-5xl shadow-inner border-2 border-white ring-[12px] ring-slate-50/30">
-                          {selectedCustomer.avatar || "👤"}
-                        </div>
-                        <span className={`absolute -bottom-1 -right-1 h-6 w-6 rounded-xl border-4 border-white ${selectedCustomer.status === 'active' ? 'bg-green-500' : 'bg-slate-300'}`}></span>
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-10">
+              {selectedCustomer ? (
+                <>
+                  <div className="flex flex-col items-center text-center">
+                    <div className="mb-6 relative">
+                      <div className="flex h-28 w-28 items-center justify-center rounded-[40px] bg-slate-50 text-5xl shadow-inner border-2 border-white ring-[12px] ring-slate-50/30">
+                        {selectedCustomer.avatar || "👤"}
                       </div>
-                      <h3 className="text-2xl font-black text-slate-900 tracking-tight">{selectedCustomer.name}</h3>
-                      <p dir="ltr" className="text-[13px] font-black text-slate-400 mt-2 tracking-widest">{selectedCustomer.phone}</p>
+                      <span className={`absolute -bottom-1 -right-1 h-6 w-6 rounded-xl border-4 border-white ${selectedCustomer.status === 'active' ? 'bg-green-500' : 'bg-slate-300'}`}></span>
                     </div>
+                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">{selectedCustomer.name}</h3>
+                    <p dir="ltr" className="text-[13px] font-black text-slate-400 mt-2 tracking-widest">{selectedCustomer.phone}</p>
+                  </div>
 
-                    <div className="space-y-8">
-                      {/* Tags Section */}
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between border-b border-slate-50 pb-2">
-                          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Tags / الأوسمة</span>
-                          <span className="text-[10px] font-black text-slate-300">#{selectedCustomer.tags?.length || 0}</span>
-                        </div>
-                        <div className="flex flex-wrap gap-2 justify-end">
-                          {selectedCustomer.tags?.map((tag: string) => (
-                            <span key={tag} className="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-[10px] font-black text-brand-blue border border-blue-100">
-                              {tag}
-                              <button onClick={() => updateCustomerTags(selectedCustomer.tags.filter((t: string) => t !== tag))} className="text-xs hover:text-red-500">✕</button>
-                            </span>
-                          ))}
-                          <div className="w-full mt-2">
-                            <input
-                              type="text"
-                              placeholder="إضافة وسم جديد..."
-                              value={newTag}
-                              onChange={(e) => setNewTag(e.target.value)}
-                              onKeyDown={(e) => { if (e.key === 'Enter' && newTag.trim()) { updateCustomerTags([...(selectedCustomer.tags || []), newTag.trim()]); setNewTag(''); } }}
-                              className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-3 text-xs font-black focus:ring-4 focus:ring-brand-blue/5 outline-none transition-all"
-                            />
-                          </div>
-                        </div>
+                  <div className="space-y-8">
+                    {/* Tags Section */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between border-b border-slate-50 pb-2">
+                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Tags / الأوسمة</span>
+                        <span className="text-[10px] font-black text-slate-300">#{selectedCustomer.tags?.length || 0}</span>
                       </div>
-
-                      {/* Notes Section */}
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between border-b border-slate-50 pb-2">
-                          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Notes / ملاحظات</span>
-                          <button onClick={() => updateCustomerNotes(newNotes)} className="text-[9px] font-black text-brand-blue hover:underline">حفظ التغييرات</button>
-                        </div>
-                        <textarea
-                          className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-xs font-bold focus:ring-4 focus:ring-brand-blue/5 outline-none transition-all min-h-[120px]"
-                          placeholder="اكتب ملاحظاتك عن العميل هنا..."
-                          value={newNotes}
-                          onChange={(e) => setNewNotes(e.target.value)}
-                        />
-                      </div>
-
-                      {/* Technical Info */}
-                      <div className="space-y-4 bg-slate-50/50 rounded-3xl p-6 border border-slate-100">
-                        <div className="flex justify-between items-center text-[11px] font-black uppercase tracking-tight">
-                          <span className="text-slate-800">{selectedCustomer.source || "غير محدد"}</span>
-                          <span className="text-slate-400">Source</span>
-                        </div>
-                        <div className="flex justify-between items-center text-[11px] font-black uppercase tracking-tight">
-                          <span className="text-slate-800">{selectedCustomer.last_contact_at ? new Date(selectedCustomer.last_contact_at).toLocaleDateString() : 'لا يوجد'}</span>
-                          <span className="text-slate-400">Last contact</span>
+                      <div className="flex flex-wrap gap-2 justify-end">
+                        {selectedCustomer.tags?.map((tag: string) => (
+                          <span key={tag} className="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-[10px] font-black text-brand-blue border border-blue-100">
+                            {tag}
+                            <button onClick={() => updateCustomerTags(selectedCustomer.tags.filter((t: string) => t !== tag))} className="text-xs hover:text-red-500">✕</button>
+                          </span>
+                        ))}
+                        <div className="w-full mt-2">
+                          <input
+                            type="text"
+                            placeholder="إضافة وسم جديد..."
+                            value={newTag}
+                            onChange={(e) => setNewTag(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter' && newTag.trim()) { updateCustomerTags([...(selectedCustomer.tags || []), newTag.trim()]); setNewTag(''); } }}
+                            className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-3 text-xs font-black focus:ring-4 focus:ring-brand-blue/5 outline-none transition-all"
+                          />
                         </div>
                       </div>
                     </div>
-                  </>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-center space-y-6 pt-10">
-                    <div className="h-20 w-20 flex items-center justify-center rounded-3xl bg-slate-50 text-3xl">🧩</div>
-                    <div className="space-y-2 px-6">
-                      <h4 className="text-lg font-black text-slate-800">عميل غير متعرف عليه</h4>
-                      <p className="text-xs font-bold text-slate-400 leading-relaxed">لم نتمكن من العثور على ملف تعريف لهذا الرقم في نظام CRM الخاص بك. يمكنك إنشاء ملف جديد الآن.</p>
-                      <button className="w-full mt-6 rounded-2xl bg-brand-blue py-4 text-xs font-black text-white shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all hover:scale-105 active:scale-95">إنشاء ملف عميل جديد</button>
+
+                    {/* Notes Section */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between border-b border-slate-50 pb-2">
+                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Notes / ملاحظات</span>
+                        <button onClick={() => updateCustomerNotes(newNotes)} className="text-[9px] font-black text-brand-blue hover:underline">حفظ التغييرات</button>
+                      </div>
+                      <textarea
+                        className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-xs font-bold focus:ring-4 focus:ring-brand-blue/5 outline-none transition-all min-h-[120px]"
+                        placeholder="اكتب ملاحظاتك عن العميل هنا..."
+                        value={newNotes}
+                        onChange={(e) => setNewNotes(e.target.value)}
+                      />
+                    </div>
+
+                    {/* Technical Info */}
+                    <div className="space-y-4 bg-slate-50/50 rounded-3xl p-6 border border-slate-100">
+                      <div className="flex justify-between items-center text-[11px] font-black uppercase tracking-tight">
+                        <span className="text-slate-800">{selectedCustomer.source || "غير محدد"}</span>
+                        <span className="text-slate-400">Source</span>
+                      </div>
+                      <div className="flex justify-between items-center text-[11px] font-black uppercase tracking-tight">
+                        <span className="text-slate-800">{selectedCustomer.last_contact_at ? new Date(selectedCustomer.last_contact_at).toLocaleDateString() : 'لا يوجد'}</span>
+                        <span className="text-slate-400">Last contact</span>
+                      </div>
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* 4. Overlay Modals */}
-      {selectedStory && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-in fade-in duration-300">
-          <div className="relative w-full max-w-lg overflow-hidden rounded-[40px] bg-[#0f172a] shadow-2xl flex flex-col h-[85vh] border border-white/10">
-            <button
-              onClick={() => setSelectedStory(null)}
-              className="absolute right-6 top-6 z-30 h-12 w-12 flex items-center justify-center rounded-2xl bg-black/40 text-white backdrop-blur-xl border border-white/10 hover:bg-white hover:text-black transition-all active:scale-90"
-            >✕</button>
-
-            <div className="flex-1 overflow-hidden flex items-center justify-center bg-black/20">
-              {selectedStory.hasMedia ? (
-                <div className="w-full">
-                  <WhatsAppMedia clientId={clientId} messageId={selectedStory.id} type={selectedStory.type} />
-                </div>
+                </>
               ) : (
-                <div className="text-2xl text-white text-center p-12 font-black leading-relaxed">
-                  {selectedStory.body}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-[#1e293b]/80 p-8 border-t border-white/5 backdrop-blur-2xl">
-              <div className="flex items-center gap-4">
-                <div className="h-12 w-12 rounded-2xl bg-brand-blue flex items-center justify-center text-white font-black text-xl shadow-lg ring-4 ring-white/5">
-                  {selectedStory.senderName?.slice(0, 1) || "S"}
-                </div>
-                <div>
-                  <p className="text-base font-black text-white">{selectedStory.senderName || "حالة جديدة"}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{formatFriendlyTime(selectedStory.timestamp)}</p>
-                </div>
-              </div>
-              {selectedStory.body && selectedStory.hasMedia && (
-                <div className="mt-6 max-h-32 overflow-y-auto custom-scrollbar">
-                  <p className="text-sm text-slate-200 font-bold leading-relaxed bg-white/5 p-4 rounded-2xl border border-white/10">{selectedStory.body}</p>
+                <div className="flex flex-col items-center justify-center h-full text-center space-y-6 pt-10">
+                  <div className="h-20 w-20 flex items-center justify-center rounded-3xl bg-slate-50 text-3xl">🧩</div>
+                  <div className="space-y-2 px-6">
+                    <h4 className="text-lg font-black text-slate-800">عميل غير متعرف عليه</h4>
+                    <p className="text-xs font-bold text-slate-400 leading-relaxed">لم نتمكن من العثور على ملف تعريف لهذا الرقم في نظام CRM الخاص بك. يمكنك إنشاء ملف جديد الآن.</p>
+                    <button className="w-full mt-6 rounded-2xl bg-brand-blue py-4 text-xs font-black text-white shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all hover:scale-105 active:scale-95">إنشاء ملف عميل جديد</button>
+                  </div>
                 </div>
               )}
             </div>
           </div>
+              )}
         </div>
-      )}
-    </div>
+      </div>
+
+      {/* 4. Overlay Modals */}
+      {
+        selectedStory && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-in fade-in duration-300">
+            <div className="relative w-full max-w-lg overflow-hidden rounded-[40px] bg-[#0f172a] shadow-2xl flex flex-col h-[85vh] border border-white/10">
+              <button
+                onClick={() => setSelectedStory(null)}
+                className="absolute right-6 top-6 z-30 h-12 w-12 flex items-center justify-center rounded-2xl bg-black/40 text-white backdrop-blur-xl border border-white/10 hover:bg-white hover:text-black transition-all active:scale-90"
+              >✕</button>
+
+              <div className="flex-1 overflow-hidden flex items-center justify-center bg-black/20">
+                {selectedStory.hasMedia ? (
+                  <div className="w-full">
+                    <WhatsAppMedia clientId={clientId} messageId={selectedStory.id} type={selectedStory.type} />
+                  </div>
+                ) : (
+                  <div className="text-2xl text-white text-center p-12 font-black leading-relaxed">
+                    {selectedStory.body}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-[#1e293b]/80 p-8 border-t border-white/5 backdrop-blur-2xl">
+                <div className="flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-2xl bg-brand-blue flex items-center justify-center text-white font-black text-xl shadow-lg ring-4 ring-white/5">
+                    {selectedStory.senderName?.slice(0, 1) || "S"}
+                  </div>
+                  <div>
+                    <p className="text-base font-black text-white">{selectedStory.senderName || "حالة جديدة"}</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{formatFriendlyTime(selectedStory.timestamp)}</p>
+                  </div>
+                </div>
+                {selectedStory.body && selectedStory.hasMedia && (
+                  <div className="mt-6 max-h-32 overflow-y-auto custom-scrollbar">
+                    <p className="text-sm text-slate-200 font-bold leading-relaxed bg-white/5 p-4 rounded-2xl border border-white/10">{selectedStory.body}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      }
+    </div >
   );
 }
