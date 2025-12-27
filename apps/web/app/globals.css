@@ -19,7 +19,8 @@
 
 @layer components {
   .card {
-    @apply bg-white rounded-[32px] shadow-[0_8px_30px_rgb(0, 0, 0, 0.04)] border border-slate-100 transition-all duration-300;
+    @apply bg-white rounded-[32px] border border-slate-100 transition-all duration-300;
+    box-shadow: 0 8px 30px rgb(0, 0, 0, 0.04);
   }
 
   .glass {
