@@ -345,11 +345,49 @@ app.get("/whatsapp/messages/:chatId", verifyToken, async (req, res) => {
       fromMe: m.fromMe,
       timestamp: m.timestamp,
       type: m.type,
+      author: m.author,
+      ack: m.ack,
+      hasMedia: m.hasMedia,
     })).reverse();
     res.json({ messages: simplified });
   } catch (err: any) {
     console.error(`[${orgId}] Get messages error:`, err);
     res.status(400).json({ message: err?.message || "Failed to get messages" });
+  }
+});
+
+// Get media for a message
+app.get("/whatsapp/media/:clientId/:messageId", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  const { clientId, messageId } = req.params;
+
+  if (clientId !== orgId) {
+    return res.status(403).json({ message: "Access denied" });
+  }
+
+  try {
+    const client = manager.ensureReadyClient(orgId);
+    // Find the message. This can be tricky if not in recent cache.
+    // However, usually it's used for recently loaded messages.
+    const msg = await client.getMessageById(messageId);
+
+    if (!msg || !msg.hasMedia) {
+      return res.status(404).json({ message: "Message or media not found" });
+    }
+
+    const media = await msg.downloadMedia();
+    if (!media) {
+      return res.status(404).json({ message: "Failed to download media" });
+    }
+
+    res.json({
+      mimetype: media.mimetype,
+      data: media.data,
+      filename: media.filename
+    });
+  } catch (err: any) {
+    console.error(`[${orgId}] Get media error:`, err);
+    res.status(500).json({ message: "Failed to download media" });
   }
 });
 

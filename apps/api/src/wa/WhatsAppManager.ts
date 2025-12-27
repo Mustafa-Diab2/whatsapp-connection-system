@@ -272,6 +272,9 @@ export default class WhatsAppManager {
         timestamp: message.timestamp,
         fromMe: message.fromMe,
         type: message.type,
+        author: message.author,
+        ack: message.ack,
+        hasMedia: message.hasMedia,
       };
 
       // Emit to socket for real-time updates
@@ -314,6 +317,9 @@ export default class WhatsAppManager {
           timestamp: message.timestamp,
           fromMe: message.fromMe,
           type: message.type,
+          author: message.author,
+          ack: message.ack,
+          hasMedia: message.hasMedia,
         };
 
         // Emit to socket for real-time updates
@@ -790,6 +796,9 @@ export default class WhatsAppManager {
             timestamp: replyMsg.timestamp,
             fromMe: true,
             type: replyMsg.type,
+            author: replyMsg.author,
+            ack: replyMsg.ack,
+            hasMedia: replyMsg.hasMedia,
           }
         });
       }
