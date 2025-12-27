@@ -1084,141 +1084,140 @@ export default function ChatPage() {
           ${showCustomerPanel ? 'w-full sm:w-[400px] translate-x-0' : 'w-0 -translate-x-full'}
           border-r border-slate-100
         `}>
-          <div className="flex h-full flex-col">
-            <div className="flex items-center justify-between px-6 py-6 border-b border-slate-50 bg-white sticky top-0 z-10">
-              <h3 className="text-xl font-black text-slate-800">بيانات العميل</h3>
-              <button
-                onClick={() => setShowCustomerPanel(false)}
-                className="h-10 w-10 flex items-center justify-center rounded-2xl bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all"
-              >✕</button>
-            </div>
+          {showCustomerPanel && (
+            <div className="flex h-full flex-col">
+              <div className="flex items-center justify-between px-6 py-6 border-b border-slate-50 bg-white sticky top-0 z-10">
+                <h3 className="text-xl font-black text-slate-800">بيانات العميل</h3>
+                <button
+                  onClick={() => setShowCustomerPanel(false)}
+                  className="h-10 w-10 flex items-center justify-center rounded-2xl bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all"
+                >✕</button>
+              </div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-10">
-              {selectedCustomer ? (
-                <>
-                  <div className="flex flex-col items-center text-center">
-                    <div className="mb-6 relative">
-                      <div className="flex h-28 w-28 items-center justify-center rounded-[40px] bg-slate-50 text-5xl shadow-inner border-2 border-white ring-[12px] ring-slate-50/30">
-                        {selectedCustomer.avatar || "👤"}
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-10">
+                {selectedCustomer ? (
+                  <>
+                    <div className="flex flex-col items-center text-center">
+                      <div className="mb-6 relative">
+                        <div className="flex h-28 w-28 items-center justify-center rounded-[40px] bg-slate-50 text-5xl shadow-inner border-2 border-white ring-[12px] ring-slate-50/30">
+                          {selectedCustomer.avatar || "👤"}
+                        </div>
+                        <span className={`absolute -bottom-1 -right-1 h-6 w-6 rounded-xl border-4 border-white ${selectedCustomer.status === 'active' ? 'bg-green-500' : 'bg-slate-300'}`}></span>
                       </div>
-                      <span className={`absolute -bottom-1 -right-1 h-6 w-6 rounded-xl border-4 border-white ${selectedCustomer.status === 'active' ? 'bg-green-500' : 'bg-slate-300'}`}></span>
+                      <h3 className="text-2xl font-black text-slate-900 tracking-tight">{selectedCustomer.name}</h3>
+                      <p dir="ltr" className="text-[13px] font-black text-slate-400 mt-2 tracking-widest">{selectedCustomer.phone}</p>
                     </div>
-                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">{selectedCustomer.name}</h3>
-                    <p dir="ltr" className="text-[13px] font-black text-slate-400 mt-2 tracking-widest">{selectedCustomer.phone}</p>
-                  </div>
 
-                  <div className="space-y-8">
-                    {/* Tags Section */}
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-50 pb-2">
-                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Tags / الأوسمة</span>
-                        <span className="text-[10px] font-black text-slate-300">#{selectedCustomer.tags?.length || 0}</span>
+                    <div className="space-y-8">
+                      {/* Tags Section */}
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-50 pb-2">
+                          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Tags / الأوسمة</span>
+                          <span className="text-[10px] font-black text-slate-300">#{selectedCustomer.tags?.length || 0}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 justify-end">
+                          {selectedCustomer.tags?.map((tag: string) => (
+                            <span key={tag} className="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-[10px] font-black text-brand-blue border border-blue-100">
+                              {tag}
+                              <button onClick={() => updateCustomerTags(selectedCustomer.tags.filter((t: string) => t !== tag))} className="text-xs hover:text-red-500">✕</button>
+                            </span>
+                          ))}
+                          <div className="w-full mt-2">
+                            <input
+                              type="text"
+                              placeholder="إضافة وسم جديد..."
+                              value={newTag}
+                              onChange={(e) => setNewTag(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter' && newTag.trim()) { updateCustomerTags([...(selectedCustomer.tags || []), newTag.trim()]); setNewTag(''); } }}
+                              className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-3 text-xs font-black focus:ring-4 focus:ring-brand-blue/5 outline-none transition-all"
+                            />
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex flex-wrap gap-2 justify-end">
-                        {selectedCustomer.tags?.map((tag: string) => (
-                          <span key={tag} className="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-[10px] font-black text-brand-blue border border-blue-100">
-                            {tag}
-                            <button onClick={() => updateCustomerTags(selectedCustomer.tags.filter((t: string) => t !== tag))} className="text-xs hover:text-red-500">✕</button>
-                          </span>
-                        ))}
-                        <div className="w-full mt-2">
-                          <input
-                            type="text"
-                            placeholder="إضافة وسم جديد..."
-                            value={newTag}
-                            onChange={(e) => setNewTag(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter' && newTag.trim()) { updateCustomerTags([...(selectedCustomer.tags || []), newTag.trim()]); setNewTag(''); } }}
-                            className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-3 text-xs font-black focus:ring-4 focus:ring-brand-blue/5 outline-none transition-all"
-                          />
+
+                      {/* Notes Section */}
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-50 pb-2">
+                          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Notes / ملاحظات</span>
+                          <button onClick={() => updateCustomerNotes(newNotes)} className="text-[9px] font-black text-brand-blue hover:underline">حفظ التغييرات</button>
+                        </div>
+                        <textarea
+                          className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-xs font-bold focus:ring-4 focus:ring-brand-blue/5 outline-none transition-all min-h-[120px]"
+                          placeholder="اكتب ملاحظاتك عن العميل هنا..."
+                          value={newNotes}
+                          onChange={(e) => setNewNotes(e.target.value)}
+                        />
+                      </div>
+
+                      {/* Technical Info */}
+                      <div className="space-y-4 bg-slate-50/50 rounded-3xl p-6 border border-slate-100">
+                        <div className="flex justify-between items-center text-[11px] font-black uppercase tracking-tight">
+                          <span className="text-slate-800">{selectedCustomer.source || "غير محدد"}</span>
+                          <span className="text-slate-400">Source</span>
+                        </div>
+                        <div className="flex justify-between items-center text-[11px] font-black uppercase tracking-tight">
+                          <span className="text-slate-800">{selectedCustomer.last_contact_at ? new Date(selectedCustomer.last_contact_at).toLocaleDateString() : 'لا يوجد'}</span>
+                          <span className="text-slate-400">Last contact</span>
                         </div>
                       </div>
                     </div>
-
-                    {/* Notes Section */}
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-50 pb-2">
-                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Notes / ملاحظات</span>
-                        <button onClick={() => updateCustomerNotes(newNotes)} className="text-[9px] font-black text-brand-blue hover:underline">حفظ التغييرات</button>
-                      </div>
-                      <textarea
-                        className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-xs font-bold focus:ring-4 focus:ring-brand-blue/5 outline-none transition-all min-h-[120px]"
-                        placeholder="اكتب ملاحظاتك عن العميل هنا..."
-                        value={newNotes}
-                        onChange={(e) => setNewNotes(e.target.value)}
-                      />
-                    </div>
-
-                    {/* Technical Info */}
-                    <div className="space-y-4 bg-slate-50/50 rounded-3xl p-6 border border-slate-100">
-                      <div className="flex justify-between items-center text-[11px] font-black uppercase tracking-tight">
-                        <span className="text-slate-800">{selectedCustomer.source || "غير محدد"}</span>
-                        <span className="text-slate-400">Source</span>
-                      </div>
-                      <div className="flex justify-between items-center text-[11px] font-black uppercase tracking-tight">
-                        <span className="text-slate-800">{selectedCustomer.last_contact_at ? new Date(selectedCustomer.last_contact_at).toLocaleDateString() : 'لا يوجد'}</span>
-                        <span className="text-slate-400">Last contact</span>
-                      </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-center space-y-6 pt-10">
+                    <div className="h-20 w-20 flex items-center justify-center rounded-3xl bg-slate-50 text-3xl">🧩</div>
+                    <div className="space-y-2 px-6">
+                      <h4 className="text-lg font-black text-slate-800">عميل غير متعرف عليه</h4>
+                      <p className="text-xs font-bold text-slate-400 leading-relaxed">لم نتمكن من العثور على ملف تعريف لهذا الرقم في نظام CRM الخاص بك. يمكنك إنشاء ملف جديد الآن.</p>
+                      <button className="w-full mt-6 rounded-2xl bg-brand-blue py-4 text-xs font-black text-white shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all hover:scale-105 active:scale-95">إنشاء ملف عميل جديد</button>
                     </div>
                   </div>
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-center space-y-6 pt-10">
-                  <div className="h-20 w-20 flex items-center justify-center rounded-3xl bg-slate-50 text-3xl">🧩</div>
-                  <div className="space-y-2 px-6">
-                    <h4 className="text-lg font-black text-slate-800">عميل غير متعرف عليه</h4>
-                    <p className="text-xs font-bold text-slate-400 leading-relaxed">لم نتمكن من العثور على ملف تعريف لهذا الرقم في نظام CRM الخاص بك. يمكنك إنشاء ملف جديد الآن.</p>
-                    <button className="w-full mt-6 rounded-2xl bg-brand-blue py-4 text-xs font-black text-white shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all hover:scale-105 active:scale-95">إنشاء ملف عميل جديد</button>
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
-              )}
+          )}
         </div>
       </div>
 
       {/* 4. Overlay Modals */}
-      {
-        selectedStory && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-in fade-in duration-300">
-            <div className="relative w-full max-w-lg overflow-hidden rounded-[40px] bg-[#0f172a] shadow-2xl flex flex-col h-[85vh] border border-white/10">
-              <button
-                onClick={() => setSelectedStory(null)}
-                className="absolute right-6 top-6 z-30 h-12 w-12 flex items-center justify-center rounded-2xl bg-black/40 text-white backdrop-blur-xl border border-white/10 hover:bg-white hover:text-black transition-all active:scale-90"
-              >✕</button>
+      {selectedStory && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-in fade-in duration-300">
+          <div className="relative w-full max-w-lg overflow-hidden rounded-[40px] bg-[#0f172a] shadow-2xl flex flex-col h-[85vh] border border-white/10">
+            <button
+              onClick={() => setSelectedStory(null)}
+              className="absolute right-6 top-6 z-30 h-12 w-12 flex items-center justify-center rounded-2xl bg-black/40 text-white backdrop-blur-xl border border-white/10 hover:bg-white hover:text-black transition-all active:scale-90"
+            >✕</button>
 
-              <div className="flex-1 overflow-hidden flex items-center justify-center bg-black/20">
-                {selectedStory.hasMedia ? (
-                  <div className="w-full">
-                    <WhatsAppMedia clientId={clientId} messageId={selectedStory.id} type={selectedStory.type} />
-                  </div>
-                ) : (
-                  <div className="text-2xl text-white text-center p-12 font-black leading-relaxed">
-                    {selectedStory.body}
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-[#1e293b]/80 p-8 border-t border-white/5 backdrop-blur-2xl">
-                <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-2xl bg-brand-blue flex items-center justify-center text-white font-black text-xl shadow-lg ring-4 ring-white/5">
-                    {selectedStory.senderName?.slice(0, 1) || "S"}
-                  </div>
-                  <div>
-                    <p className="text-base font-black text-white">{selectedStory.senderName || "حالة جديدة"}</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{formatFriendlyTime(selectedStory.timestamp)}</p>
-                  </div>
+            <div className="flex-1 overflow-hidden flex items-center justify-center bg-black/20">
+              {selectedStory.hasMedia ? (
+                <div className="w-full">
+                  <WhatsAppMedia clientId={clientId} messageId={selectedStory.id} type={selectedStory.type} />
                 </div>
-                {selectedStory.body && selectedStory.hasMedia && (
-                  <div className="mt-6 max-h-32 overflow-y-auto custom-scrollbar">
-                    <p className="text-sm text-slate-200 font-bold leading-relaxed bg-white/5 p-4 rounded-2xl border border-white/10">{selectedStory.body}</p>
-                  </div>
-                )}
+              ) : (
+                <div className="text-2xl text-white text-center p-12 font-black leading-relaxed">
+                  {selectedStory.body}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-[#1e293b]/80 p-8 border-t border-white/5 backdrop-blur-2xl">
+              <div className="flex items-center gap-4">
+                <div className="h-12 w-12 rounded-2xl bg-brand-blue flex items-center justify-center text-white font-black text-xl shadow-lg ring-4 ring-white/5">
+                  {selectedStory.senderName?.slice(0, 1) || "S"}
+                </div>
+                <div>
+                  <p className="text-base font-black text-white">{selectedStory.senderName || "حالة جديدة"}</p>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{formatFriendlyTime(selectedStory.timestamp)}</p>
+                </div>
               </div>
+              {selectedStory.body && selectedStory.hasMedia && (
+                <div className="mt-6 max-h-32 overflow-y-auto custom-scrollbar">
+                  <p className="text-sm text-slate-200 font-bold leading-relaxed bg-white/5 p-4 rounded-2xl border border-white/10">{selectedStory.body}</p>
+                </div>
+              )}
             </div>
           </div>
-        )
-      }
-    </div >
+        </div>
+      )}
+    </div>
   );
 }
