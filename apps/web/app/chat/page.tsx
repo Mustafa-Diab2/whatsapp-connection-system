@@ -710,7 +710,9 @@ export default function ChatPage() {
     if (!currentChatObj || !selectedChat) return;
     setUpdatingCustomer(true);
     try {
-      const phone = selectedChat.split('@')[0];
+      // Use the phone number provided by the server (which we improved with realPhone logic)
+      // Fallback to JID split only if absolutely necessary
+      const phone = (currentChatObj as any).phone || selectedChat.split('@')[0];
       const res = await fetch(`${apiBase}/api/customers`, {
         method: "POST",
         headers: getAuthHeaders(),

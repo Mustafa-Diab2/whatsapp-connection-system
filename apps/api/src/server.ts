@@ -445,10 +445,25 @@ app.get("/whatsapp/chats", verifyToken, async (req, res) => {
     const chats = await client.getChats();
     const simplified = await Promise.all(chats.slice(0, 50).map(async (c) => {
       const waChatId = c.id._serialized;
-      const customer = await db.getCustomerByPhone(waChatId.split('@')[0], orgId);
+      let realPhone = waChatId.split('@')[0];
+      let name = c.name || c.id.user;
+
+      try {
+        const contact = await c.getContact();
+        if (contact.number) {
+          realPhone = contact.number;
+        }
+        if (contact.name || contact.pushname) {
+          name = contact.name || contact.pushname;
+        }
+      } catch (e) { }
+
+      const customer = await db.getCustomerByPhone(realPhone, orgId);
+
       return {
         id: waChatId,
-        name: c.name || c.id.user,
+        phone: realPhone, // New field: Clean phone number
+        name: name,
         isGroup: c.isGroup,
         unreadCount: c.unreadCount,
         customer,

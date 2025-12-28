@@ -894,23 +894,33 @@ export default class WhatsAppManager {
   async sendMessage(clientId: string, to: string, text: string): Promise<{ ok: boolean; messageId?: string }> {
     const client = this.ensureReadyClient(clientId);
 
-    // Format phone number directly to WhatsApp JID format (@c.us)
     let chatId = to;
     if (!to.includes("@")) {
-      // Remove any non-digits and append @c.us - this bypasses LID discovery errors as requested
       const cleanNumber = to.replace(/\D/g, "");
       chatId = `${cleanNumber}@c.us`;
     }
 
     try {
-      console.log(`[${clientId}] [DIRECT_SEND] Sending to JID: ${chatId}`);
+      // Step 1: Attempt direct send
+      console.log(`[${clientId}] [SEND] To: ${chatId}`);
       const msg = await client.sendMessage(chatId, text);
-      console.log(`[${clientId}] Message sent to ${chatId}`);
       return { ok: true, messageId: msg.id._serialized };
     } catch (err: any) {
-      console.error(`[${clientId}] Failed to send message to ${chatId}:`, err.message || err);
+      console.warn(`[${clientId}] Send failed to ${chatId}: ${err.message}. Attempting LID resolution...`);
 
-      // Map common WhatsApp errors to friendly messages for the UI
+      try {
+        // Step 2: If failed, try to get real phone number from contact
+        const contact = await client.getContactById(chatId);
+        if (contact && contact.number && contact.number !== chatId.split('@')[0]) {
+          const resolvedJid = `${contact.number}@c.us`;
+          console.log(`[${clientId}] Resolved successfully: ${chatId} -> ${resolvedJid}`);
+          const msg = await client.sendMessage(resolvedJid, text);
+          return { ok: true, messageId: msg.id._serialized };
+        }
+      } catch (resErr: any) {
+        console.error(`[${clientId}] Resolution failed: ${resErr.message}`);
+      }
+
       if (err.message && (err.message.includes("No LID") || err.message.includes("not found"))) {
         throw new Error("الرقم غير مسجل في واتساب أو صيغته خاطئة");
       }
@@ -932,8 +942,21 @@ export default class WhatsAppManager {
       const msg = await client.sendMessage(chatId, media, options);
       console.log(`[${clientId}] Media sent to ${chatId}`);
       return { ok: true, messageId: msg.id._serialized };
-    } catch (err) {
-      console.error(`[${clientId}] Failed to send media to ${chatId}:`, err);
+    } catch (err: any) {
+      console.warn(`[${clientId}] Media send failed to ${chatId}: ${err.message}. Attempting LID resolution...`);
+      try {
+        const contact = await client.getContactById(chatId);
+        if (contact && contact.number && contact.number !== chatId.split('@')[0]) {
+          const resolvedJid = `${contact.number}@c.us`;
+          console.log(`[${clientId}] Resolved media JID: ${chatId} -> ${resolvedJid}`);
+          const media = new MessageMedia(mimetype, base64, filename);
+          const options = caption ? { caption } : {};
+          const msg = await client.sendMessage(resolvedJid, media, options);
+          return { ok: true, messageId: msg.id._serialized };
+        }
+      } catch (e) { }
+
+      console.error(`[${clientId}] Failed to send media to ${chatId}:`, err.message || err);
       throw err;
     }
   }
