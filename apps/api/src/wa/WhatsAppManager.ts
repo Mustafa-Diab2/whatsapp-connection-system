@@ -894,31 +894,24 @@ export default class WhatsAppManager {
   async sendMessage(clientId: string, to: string, text: string): Promise<{ ok: boolean; messageId?: string }> {
     const client = this.ensureReadyClient(clientId);
 
-    // Format phone number if needed
+    // Format phone number directly to WhatsApp JID format (@c.us)
     let chatId = to;
     if (!to.includes("@")) {
-      chatId = to.replace(/\D/g, "");
-      // Special check for number validity before sending
-      try {
-        const idInfo = await client.getNumberId(chatId);
-        if (idInfo) {
-          chatId = idInfo._serialized;
-        } else {
-          chatId = chatId + "@c.us"; // Fallback to basic JID
-        }
-      } catch (e) {
-        chatId = chatId + "@c.us";
-      }
+      // Remove any non-digits and append @c.us - this bypasses LID discovery errors as requested
+      const cleanNumber = to.replace(/\D/g, "");
+      chatId = `${cleanNumber}@c.us`;
     }
 
     try {
+      console.log(`[${clientId}] [DIRECT_SEND] Sending to JID: ${chatId}`);
       const msg = await client.sendMessage(chatId, text);
       console.log(`[${clientId}] Message sent to ${chatId}`);
       return { ok: true, messageId: msg.id._serialized };
     } catch (err: any) {
-      console.error(`[${clientId}] Failed to send message to ${chatId}:`, err);
-      // Clean up error message for user
-      if (err.message && err.message.includes("No LID")) {
+      console.error(`[${clientId}] Failed to send message to ${chatId}:`, err.message || err);
+
+      // Map common WhatsApp errors to friendly messages for the UI
+      if (err.message && (err.message.includes("No LID") || err.message.includes("not found"))) {
         throw new Error("الرقم غير مسجل في واتساب أو صيغته خاطئة");
       }
       throw err;
