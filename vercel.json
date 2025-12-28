@@ -6,22 +6,33 @@
       "use": "@vercel/next"
     }
   ],
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/:path*",
-      "destination": "https://whatsapp-api-production-7606.up.railway.app/api/:path*"
+      "src": "/api/(.*)",
+      "dest": "https://whatsapp-api-production-7606.up.railway.app/api/$1",
+      "headers": {
+        "Cache-Control": "no-cache"
+      }
     },
     {
-      "source": "/auth/:path*",
-      "destination": "https://whatsapp-api-production-7606.up.railway.app/auth/:path*"
+      "src": "/auth/(.*)",
+      "dest": "https://whatsapp-api-production-7606.up.railway.app/auth/$1"
     },
     {
-      "source": "/whatsapp/:path*",
-      "destination": "https://whatsapp-api-production-7606.up.railway.app/whatsapp/:path*"
+      "src": "/whatsapp/(.*)",
+      "dest": "https://whatsapp-api-production-7606.up.railway.app/whatsapp/$1"
+    },
+    {
+      "src": "/contact-profile/(.*)",
+      "dest": "/apps/web/contact-profile/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/apps/web/$1"
     }
   ],
   "env": {
-    "NEXT_PUBLIC_API_URL": "",
+    "NEXT_PUBLIC_API_URL": "https://whatsapp-api-production-7606.up.railway.app",
     "NEXT_PUBLIC_SOCKET_URL": "https://whatsapp-api-production-7606.up.railway.app"
   }
 }
