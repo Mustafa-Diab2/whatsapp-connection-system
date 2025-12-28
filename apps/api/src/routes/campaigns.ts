@@ -186,13 +186,20 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
                 successCount++;
             } catch (err: any) {
                 console.error(`[Campaign ${campaignId}] ERROR sending to ${recipient.phone}:`, err.message);
+                failCount++; // Increment failCount as it's a failed send
+
+                const errMsg = err.message || "Unknown error";
+
+                // Update the main campaign with the last error to show in UI
+                await supabase.from('campaigns').update({ error_message: errMsg }).eq('id', campaignId);
+
                 try {
                     await db.logCampaignResult({
                         campaign_id: campaignId,
                         customer_id: recipient._origin === 'customer' ? recipient.id : null,
                         phone: recipient.phone,
                         status: "failed",
-                        error_message: err.message
+                        error_message: errMsg
                     });
                 } catch (e: any) {
                     console.error("Failed to log failure to DB", e.message);
