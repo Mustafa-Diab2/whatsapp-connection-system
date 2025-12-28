@@ -36,6 +36,7 @@ console.log("NODE_ENV:", NODE_ENV);
 console.log("SUPABASE_URL:", process.env.SUPABASE_URL ? "✓ Set" : "✗ Not set");
 
 const app = express();
+app.set('trust proxy', 1);
 
 // ============ SECURITY MIDDLEWARE ============
 
@@ -123,16 +124,32 @@ const httpServer = http.createServer(app);
 async function ensureSchema() {
   try {
     console.log("[DB] Checking for required columns...");
-    // Check if error_message exists, if not add it
-    await supabase.rpc('execute_sql', {
-      sql_query: "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS failed_sends INTEGER DEFAULT 0; ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS error_message TEXT;"
-    }).catch(async () => {
-      // Fallback: try raw query if RPC is not available (some supabase setups)
-      console.log("[DB] RPC execute_sql failed, columns might already exist or need dashboard update.");
+    // Check and add columns if they don't exist
+    const { error } = await supabase.rpc('execute_sql', {
+      sql_query: `
+        DO $$ 
+        BEGIN 
+          BEGIN
+            ALTER TABLE campaigns ADD COLUMN failed_sends INTEGER DEFAULT 0;
+          EXCEPTION WHEN duplicate_column THEN
+            RAISE NOTICE 'column failed_sends already exists';
+          END;
+          
+          BEGIN
+            ALTER TABLE campaigns ADD COLUMN error_message TEXT;
+          EXCEPTION WHEN duplicate_column THEN
+            RAISE NOTICE 'column error_message already exists';
+          END;
+        END $$;`
     });
-    console.log("[DB] Schema check completed.");
-  } catch (e) {
-    console.error("[DB] Schema Error:", e);
+
+    if (error) {
+      console.log("[DB] RPC execute_sql notice:", error.message);
+    } else {
+      console.log("[DB] Schema check completed successfully.");
+    }
+  } catch (e: any) {
+    console.warn("[DB] Schema check skipped or failed:", e.message);
   }
 }
 ensureSchema();
