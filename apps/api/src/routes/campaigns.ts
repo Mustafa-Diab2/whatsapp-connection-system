@@ -204,7 +204,6 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
                 } catch (e: any) {
                     console.error("Failed to log failure to DB", e.message);
                 }
-                failCount++;
             }
         }
 
