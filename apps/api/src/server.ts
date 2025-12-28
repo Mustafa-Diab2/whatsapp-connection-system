@@ -686,6 +686,25 @@ app.get("/api/customers", verifyToken, async (req, res) => {
   }
 });
 
+// Get customer by phone number (MUST be before :id route!)
+app.get("/api/customers/phone/:phone", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  let { phone } = req.params;
+
+  // Clean phone number - remove @c.us suffix if present
+  phone = phone.replace(/@c\.us$/, '').replace(/@s\.whatsapp\.net$/, '');
+
+  try {
+    const customer = await db.getCustomerByPhone(phone, orgId);
+    if (!customer) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+    res.json({ customer });
+  } catch (err: any) {
+    res.status(500).json({ message: err?.message || "Failed to get customer" });
+  }
+});
+
 // Get single customer by ID
 app.get("/api/customers/:id", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
