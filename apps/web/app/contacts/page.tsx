@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
+import axios from "axios";
 import { encodeId } from "../../lib/obfuscator";
 
 type Contact = {
@@ -27,9 +28,11 @@ export default function ContactsPage() {
 
     const fetchContacts = useCallback(async () => {
         try {
-            const res = await fetch(`${apiBase}/api/contacts`);
-            const data = await res.json();
-            setContacts(data.contacts || []);
+            const token = localStorage.getItem("token");
+            const res = await axios.get(`${apiBase}/api/contacts`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setContacts(res.data.contacts || []);
         } catch (err) {
             console.error("Failed to fetch contacts:", err);
         } finally {
@@ -64,18 +67,13 @@ export default function ContactsPage() {
     const handleSave = async () => {
         if (!formData.name || !formData.phone) return;
         try {
+            const token = localStorage.getItem("token");
+            const headers = { Authorization: `Bearer ${token}` };
+
             if (editingContact) {
-                await fetch(`${apiBase}/api/contacts/${editingContact.id}`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(formData),
-                });
+                await axios.put(`${apiBase}/api/contacts/${editingContact.id}`, formData, { headers });
             } else {
-                await fetch(`${apiBase}/api/contacts`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(formData),
-                });
+                await axios.post(`${apiBase}/api/contacts`, formData, { headers });
             }
             await fetchContacts();
             setShowModal(false);
@@ -87,7 +85,10 @@ export default function ContactsPage() {
     const handleDelete = async (id: string) => {
         if (confirm("هل أنت متأكد من حذف جهة الاتصال؟")) {
             try {
-                await fetch(`${apiBase}/api/contacts/${id}`, { method: "DELETE" });
+                const token = localStorage.getItem("token");
+                await axios.delete(`${apiBase}/api/contacts/${id}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
                 await fetchContacts();
             } catch (err) {
                 console.error("Failed to delete contact:", err);

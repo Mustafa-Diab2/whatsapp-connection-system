@@ -78,14 +78,29 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
     try {
         await db.updateCampaignStatus(campaignId, "processing");
 
-        // 1. Fetch Recipients
-        let query = supabase.from('customers').select('*').eq('organization_id', orgId);
+        // 1. Fetch Recipients from both Customers and Contacts
+        const [customersRes, contactsRes] = await Promise.all([
+            supabase.from('customers').select('id, name, phone, status').eq('organization_id', orgId),
+            supabase.from('contacts').select('id, name, phone').eq('organization_id', orgId)
+        ]);
+
+        const customers = customersRes.data || [];
+        const contacts = contactsRes.data || [];
+
+        // Apply filters if targetGroup is active
+        let filteredRecipients: any[] = [...customers];
         if (targetGroup === 'active') {
-            query = query.eq('status', 'active'); // Example filter
+            filteredRecipients = customers.filter(c => c.status === 'active');
+        } else {
+            // Merge with contacts for 'all' group
+            filteredRecipients = [...customers, ...contacts];
         }
 
-        const { data: customers } = await query;
-        if (!customers || customers.length === 0) {
+        // De-duplicate by phone number
+        const uniqueRecipients = Array.from(new Map(filteredRecipients.map(r => [r.phone, r])).values());
+
+        if (uniqueRecipients.length === 0) {
+            console.log(`[Campaign ${campaignId}] No recipients found.`);
             await db.updateCampaignStatus(campaignId, "completed", { total_recipients: 0 });
             return;
         }
@@ -93,51 +108,51 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
         // Check for already sent messages (Idempotency)
         const { data: logs } = await supabase
             .from('campaign_logs')
-            .select('customer_id')
+            .select('phone, status')
             .eq('campaign_id', campaignId)
             .eq('status', 'sent');
 
-        const sentCustomerIds = new Set(logs?.map(l => l.customer_id) || []);
-        const pendingCustomers = customers.filter(c => !sentCustomerIds.has(c.id));
+        const sentPhones = new Set(logs?.map(l => l.phone) || []);
+        const pendingRecipients = uniqueRecipients.filter(r => !sentPhones.has(r.phone));
 
-        console.log(`[Campaign ${campaignId}] Total: ${customers.length}, Already Sent: ${sentCustomerIds.size}, Pending: ${pendingCustomers.length}`);
+        console.log(`[Campaign ${campaignId}] Total: ${uniqueRecipients.length}, Already Sent: ${sentPhones.size}, Pending: ${pendingRecipients.length}`);
 
-        if (pendingCustomers.length === 0) {
-            await db.updateCampaignStatus(campaignId, "completed", { total_recipients: customers.length });
+        if (pendingRecipients.length === 0) {
+            await db.updateCampaignStatus(campaignId, "completed", { total_recipients: uniqueRecipients.length });
             return;
         }
 
-        await db.updateCampaignStatus(campaignId, "processing", { total_recipients: customers.length });
+        await db.updateCampaignStatus(campaignId, "processing", { total_recipients: uniqueRecipients.length });
 
-        let successCount = sentCustomerIds.size; // Start count with already sent
+        let successCount = sentPhones.size; // Start count with already sent
         let failCount = 0;
 
         // 2. Loop and Send
-        for (const customer of pendingCustomers) {
+        for (const recipient of pendingRecipients) {
             // Rate Limiting / Delay (Random 2s to 5s)
             const delay = Math.floor(Math.random() * 3000) + 2000;
             await new Promise(r => setTimeout(r, delay));
 
             try {
                 // Personalize message (Simple replace)
-                const text = message.replace(/{name}/g, customer.name || "عزيزي العميل");
+                const text = message.replace(/{name}/g, recipient.name || "عزيزي العميل");
 
                 // Note: using orgId as clientId. Ensure the client is connected!
-                const result = await manager.sendMessage(orgId, customer.phone, text);
+                const result = await manager.sendMessage(orgId, recipient.phone, text);
 
                 await db.logCampaignResult({
                     campaign_id: campaignId,
-                    customer_id: customer.id,
-                    phone: customer.phone,
+                    customer_id: (recipient as any).id,
+                    phone: recipient.phone,
                     status: "sent"
                 });
                 successCount++;
             } catch (err: any) {
-                console.error(`[Campaign ${campaignId}] Failed to send to ${customer.phone}:`, err);
+                console.error(`[Campaign ${campaignId}] Failed to send to ${recipient.phone}:`, err);
                 await db.logCampaignResult({
                     campaign_id: campaignId,
-                    customer_id: customer.id,
-                    phone: customer.phone,
+                    customer_id: (recipient as any).id,
+                    phone: recipient.phone,
                     status: "failed",
                     error_message: err.message
                 });

@@ -15,6 +15,7 @@ const menuItems: MenuItem[] = [
   { label: "WhatsApp Connection", labelAr: "اتصال الواتساب", href: "/whatsapp-connect", icon: "📱" },
   { label: "Chat", labelAr: "المحادثات", href: "/chat", icon: "💬" },
   { label: "Mini CRM", labelAr: "إدارة العملاء", href: "/crm", icon: "👥" },
+  { label: "Contacts", labelAr: "جهة اتصال", href: "/contacts", icon: "📇" },
   { label: "Knowledge Base", labelAr: "قاعدة المعرفة", href: "/documents", icon: "📚" },
   { label: "Campaigns", labelAr: "الحملات", href: "/campaigns", icon: "📢" },
   { label: "AI Agent", labelAr: "الذكاء الاصطناعي", href: "/ai", icon: "🧠" },

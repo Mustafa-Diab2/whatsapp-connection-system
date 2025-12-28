@@ -80,7 +80,7 @@ export default function CRMPage() {
             const res = await axios.get(`${API_URL}/api/customers`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            setCustomers(res.data || []);
+            setCustomers(res.data.customers || []);
         } catch (err) {
             console.error("Failed to fetch customers", err);
         }
