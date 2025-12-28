@@ -4,7 +4,7 @@ const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 if (!supabaseUrl || !supabaseServiceKey) {
-    console.error('❌ CRITICAL: Supabase credentials missing. Check Environment Variables.');
+    console.error('❌ CRITICAL ERROR: Supabase Credentials are MISSING in this environment!');
 }
 
 export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseServiceKey, {

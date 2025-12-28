@@ -162,25 +162,20 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
             await new Promise(r => setTimeout(r, delay));
 
             try {
-                // Personalize message (Simple replace)
+                console.log(`[Campaign ${campaignId}] Processing recipient ${recipient.phone} (${recipient._origin})`);
                 const text = message.replace(/{name}/g, recipient.name || "عزيزي العميل");
 
-                // Get normalized phone
                 let cleanPhone = normalize(recipient.phone);
-
-                // --- SMART NORMALIZATION (Focus: Egypt) ---
-                // If starts with 01 (11 digits), replace with 201
+                // Egypt normalization: 01x -> 201x
                 if (cleanPhone.startsWith('01') && cleanPhone.length === 11) {
                     cleanPhone = '20' + cleanPhone.substring(1);
-                }
-                // If starts with 1 (10 digits), assume it's after the 0
-                else if (cleanPhone.startsWith('1') && cleanPhone.length === 10) {
+                } else if (cleanPhone.startsWith('1') && cleanPhone.length === 10) {
                     cleanPhone = '20' + cleanPhone;
                 }
 
-                console.log(`[Campaign ${campaignId}] Final Phone for WhatsApp: ${cleanPhone}`);
+                console.log(`[Campaign ${campaignId}] Sending to FINAL JID: ${cleanPhone}@c.us`);
                 const result = await manager.sendMessage(orgId, cleanPhone, text);
-                console.log(`[Campaign ${campaignId}] Result from Manager:`, JSON.stringify(result));
+                console.log(`[Campaign ${campaignId}] SUCCESS Result:`, JSON.stringify(result));
 
                 await db.logCampaignResult({
                     campaign_id: campaignId,
