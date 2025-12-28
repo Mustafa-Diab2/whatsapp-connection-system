@@ -827,11 +827,11 @@ app.post("/api/settings/auto-assign", verifyToken, async (req, res) => {
 app.get("/api/quick-replies", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
   try {
-    const replies = await db.getQuickReplies(orgId);
-    res.json({ replies });
+    const replies = await db.getQuickReplies(orgId).catch(() => []);
+    res.json({ replies: replies || [] });
   } catch (err: any) {
     console.error(`[${orgId}] Quick Replies Error:`, err);
-    res.status(500).json({ message: "Error fetching quick replies", error: err.message });
+    res.json({ replies: [] }); // Safe fallback
   }
 });
 

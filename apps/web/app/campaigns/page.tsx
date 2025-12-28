@@ -11,6 +11,8 @@ interface Campaign {
     status: string;
     total_recipients: number;
     successful_sends: number;
+    failed_sends?: number;
+    error_message?: string;
     created_at: string;
 }
 
@@ -226,8 +228,8 @@ export default function CampaignsPage() {
                                                     </div>
                                                     <div className="flex flex-col items-end gap-2">
                                                         <span className={`text-[10px] font-black px-3 py-1 rounded-xl uppercase tracking-widest ${camp.status === 'completed' ? 'bg-green-100 text-green-700' :
-                                                                camp.status === 'processing' ? 'bg-blue-500 text-white animate-pulse' :
-                                                                    'bg-slate-200 text-slate-600'
+                                                            camp.status === 'processing' ? 'bg-blue-500 text-white animate-pulse' :
+                                                                'bg-slate-200 text-slate-600'
                                                             }`}>
                                                             {camp.status === 'completed' ? 'تم الانتهاء' :
                                                                 camp.status === 'processing' ? 'جاري التنفيذ' : 'مسودة'}
@@ -252,7 +254,11 @@ export default function CampaignsPage() {
                                                         </div>
                                                         <div className="flex flex-col">
                                                             <span className="text-[9px] font-black text-slate-400 uppercase">الناجحة</span>
-                                                            <span className="font-black text-brand-green">{camp.successful_sends}</span>
+                                                            <span className="font-black text-brand-green">{camp.successful_sends || 0}</span>
+                                                        </div>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[9px] font-black text-slate-400 uppercase">الفاشلة</span>
+                                                            <span className="font-black text-red-500">{camp.failed_sends || 0}</span>
                                                         </div>
                                                     </div>
 
