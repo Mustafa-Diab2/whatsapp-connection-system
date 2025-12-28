@@ -816,7 +816,8 @@ app.get("/api/quick-replies", verifyToken, async (req, res) => {
     const replies = await db.getQuickReplies(orgId);
     res.json({ replies });
   } catch (err: any) {
-    res.status(500).json({ message: err?.message || "Failed to get quick replies" });
+    console.error(`[${orgId}] Quick Replies Error:`, err);
+    res.status(500).json({ message: "Error fetching quick replies", error: err.message });
   }
 });
 

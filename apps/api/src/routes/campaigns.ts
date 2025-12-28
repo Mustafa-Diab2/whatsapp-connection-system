@@ -84,8 +84,8 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
             supabase.from('contacts').select('id, name, phone').eq('organization_id', orgId)
         ]);
 
-        const customers = customersRes.data || [];
-        const contacts = contactsRes.data || [];
+        const customers = (customersRes.data || []).map(c => ({ ...c, _origin: 'customer' }));
+        const contacts = (contactsRes.data || []).map(c => ({ ...c, _origin: 'contact' }));
 
         // Apply filters if targetGroup is active
         let filteredRecipients: any[] = [...customers];
@@ -97,7 +97,9 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
         }
 
         // De-duplicate by phone number
-        const uniqueRecipients = Array.from(new Map(filteredRecipients.map(r => [r.phone, r])).values());
+        const normalize = (p: string) => p ? p.replace(/\D/g, "") : "";
+        const uniqueRecipients = Array.from(new Map(filteredRecipients.map(r => [normalize(r.phone), r])).values());
+        console.log(`[Campaign ${campaignId}] Total Unique Recipients: ${uniqueRecipients.length}`);
 
         if (uniqueRecipients.length === 0) {
             console.log(`[Campaign ${campaignId}] No recipients found.`);
@@ -112,13 +114,13 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
             .eq('campaign_id', campaignId)
             .eq('status', 'sent');
 
-        const sentPhones = new Set(logs?.map(l => l.phone) || []);
-        const pendingRecipients = uniqueRecipients.filter(r => !sentPhones.has(r.phone));
+        const sentPhones = new Set(logs?.map(l => normalize(l.phone)) || []);
+        const pendingRecipients = uniqueRecipients.filter(r => !sentPhones.has(normalize(r.phone)));
 
         console.log(`[Campaign ${campaignId}] Total: ${uniqueRecipients.length}, Already Sent: ${sentPhones.size}, Pending: ${pendingRecipients.length}`);
 
         if (pendingRecipients.length === 0) {
-            await db.updateCampaignStatus(campaignId, "completed", { total_recipients: uniqueRecipients.length });
+            await db.updateCampaignStatus(campaignId, "completed", { total_recipients: uniqueRecipients.length, successful_sends: sentPhones.size });
             return;
         }
 
@@ -131,35 +133,36 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
         for (const recipient of pendingRecipients) {
             // Rate Limiting / Delay (Random 2s to 5s)
             const delay = Math.floor(Math.random() * 3000) + 2000;
+            console.log(`[Campaign ${campaignId}] Waiting ${delay}ms before sending to ${recipient.phone}`);
             await new Promise(r => setTimeout(r, delay));
 
             try {
                 // Personalize message (Simple replace)
                 const text = message.replace(/{name}/g, recipient.name || "عزيزي العميل");
+                const cleanPhone = normalize(recipient.phone);
 
-                // Note: using orgId as clientId. Ensure the client is connected!
-                const result = await manager.sendMessage(orgId, recipient.phone, text);
+                console.log(`[Campaign ${campaignId}] Sending message to ${cleanPhone}...`);
+                const result = await manager.sendMessage(orgId, cleanPhone, text);
+                console.log(`[Campaign ${campaignId}] Success for ${cleanPhone}: ${result.messageId}`);
 
                 await db.logCampaignResult({
                     campaign_id: campaignId,
-                    customer_id: (recipient as any).id,
-                    phone: recipient.phone,
+                    customer_id: recipient._origin === 'customer' ? recipient.id : undefined,
+                    phone: cleanPhone,
                     status: "sent"
                 });
                 successCount++;
             } catch (err: any) {
-                console.error(`[Campaign ${campaignId}] Failed to send to ${recipient.phone}:`, err);
+                console.error(`[Campaign ${campaignId}] Failed to send to ${recipient.phone}:`, err.message);
                 await db.logCampaignResult({
                     campaign_id: campaignId,
-                    customer_id: (recipient as any).id,
+                    customer_id: recipient._origin === 'customer' ? recipient.id : undefined,
                     phone: recipient.phone,
                     status: "failed",
                     error_message: err.message
                 });
                 failCount++;
             }
-
-            // Update stats incrementally every 5 messages? maybe overkill, just update at end
         }
 
         await db.updateCampaignStatus(campaignId, "completed", {
