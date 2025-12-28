@@ -71,6 +71,23 @@ router.post("/:id/send", verifyToken, validate(sendCampaignSchema), async (req: 
     }
 });
 
+// Get campaign logs
+router.get("/:id/logs", verifyToken, async (req: Request, res: Response) => {
+    try {
+        const orgId = (req as any).user.organizationId;
+        const { id } = req.params;
+        const { data: logs, error } = await supabase
+            .from('campaign_logs')
+            .select('*')
+            .eq('campaign_id', id)
+            .order('sent_at', { ascending: false });
+        if (error) throw error;
+        res.json({ logs });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message || "Failed to fetch logs" });
+    }
+});
+
 // Helper: Background Sender
 async function sendCampaign(orgId: string, campaignId: string, message: string, targetGroup: string, manager: WhatsAppManager) {
     console.log(`[Campaign ${campaignId}] Starting broadcast...`);
@@ -124,6 +141,15 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
             return;
         }
 
+        const state = manager.getState(orgId);
+        console.log(`[Campaign ${campaignId}] Client Status: ${state.status}, Recipients found: ${uniqueRecipients.length}`);
+
+        if (state.status !== 'ready') {
+            console.error(`[Campaign ${campaignId}] Aborting: Client is not ready (Current status: ${state.status})`);
+            await db.updateCampaignStatus(campaignId, "failed", { error_message: "WhatsApp client not connected" });
+            return;
+        }
+
         await db.updateCampaignStatus(campaignId, "processing", { total_recipients: uniqueRecipients.length });
 
         let successCount = sentPhones.size; // Start count with already sent
@@ -131,15 +157,26 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
 
         // 2. Loop and Send
         for (const recipient of pendingRecipients) {
-            // Rate Limiting / Delay (Random 2s to 5s)
             const delay = Math.floor(Math.random() * 3000) + 2000;
-            console.log(`[Campaign ${campaignId}] Waiting ${delay}ms before sending to ${recipient.phone}`);
+            console.log(`[Campaign ${campaignId}] Waiting ${delay}ms to send to ${recipient.phone}`);
             await new Promise(r => setTimeout(r, delay));
 
             try {
                 // Personalize message (Simple replace)
                 const text = message.replace(/{name}/g, recipient.name || "عزيزي العميل");
-                const cleanPhone = normalize(recipient.phone);
+
+                // Get normalized phone
+                let cleanPhone = normalize(recipient.phone);
+
+                // --- SMART NORMALIZATION (Focus: Egypt) ---
+                // If starts with 01 (11 digits), replace with 201
+                if (cleanPhone.startsWith('01') && cleanPhone.length === 11) {
+                    cleanPhone = '20' + cleanPhone.substring(1);
+                }
+                // If starts with 1 (10 digits), assume it's after the 0
+                else if (cleanPhone.startsWith('1') && cleanPhone.length === 10) {
+                    cleanPhone = '20' + cleanPhone;
+                }
 
                 console.log(`[Campaign ${campaignId}] Sending message to ${cleanPhone}...`);
                 const result = await manager.sendMessage(orgId, cleanPhone, text);
@@ -153,14 +190,18 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
                 });
                 successCount++;
             } catch (err: any) {
-                console.error(`[Campaign ${campaignId}] Failed to send to ${recipient.phone}:`, err.message);
-                await db.logCampaignResult({
-                    campaign_id: campaignId,
-                    customer_id: recipient._origin === 'customer' ? recipient.id : null,
-                    phone: recipient.phone,
-                    status: "failed",
-                    error_message: err.message
-                });
+                console.error(`[Campaign ${campaignId}] ERROR sending to ${recipient.phone}:`, err.message);
+                try {
+                    await db.logCampaignResult({
+                        campaign_id: campaignId,
+                        customer_id: recipient._origin === 'customer' ? recipient.id : null,
+                        phone: recipient.phone,
+                        status: "failed",
+                        error_message: err.message
+                    });
+                } catch (e: any) {
+                    console.error("Failed to log failure to DB", e.message);
+                }
                 failCount++;
             }
         }
