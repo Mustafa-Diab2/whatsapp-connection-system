@@ -265,12 +265,19 @@ export default function CampaignsPage() {
                                                     {camp.status !== 'processing' && (
                                                         <button
                                                             onClick={() => handleResend(camp.id)}
-                                                            className="h-10 px-4 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-600 hover:border-brand-blue hover:text-brand-blue hover:shadow-md active:scale-95 transition-all"
+                                                            className="h-10 px-4 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-600 hover:border-brand-blue hover:text-brand-blue hover:shadow-md active:scale-95 transition-all transition-colors"
                                                         >
-                                                            استكمال / إعادة إرسال ↺
+                                                            إعادة إرسال ↺
                                                         </button>
                                                     )}
                                                 </div>
+
+                                                {camp.error_message && (
+                                                    <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-2xl">
+                                                        <p className="text-[10px] font-bold text-red-600 uppercase">سبب الفشل:</p>
+                                                        <p className="text-[11px] text-red-500 font-medium leading-relaxed mt-1">{camp.error_message}</p>
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })}

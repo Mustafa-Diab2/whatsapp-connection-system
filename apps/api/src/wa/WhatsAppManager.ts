@@ -473,32 +473,25 @@ export default class WhatsAppManager {
     if (!client) {
       console.log(`[${clientId}] Creating new WhatsApp client...`);
 
-      const puppeteerOptions: any = {
-        headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-accelerated-2d-canvas",
-          "--no-first-run",
-          "--no-zygote",
-          "--single-process",
-          "--disable-gpu",
-        ],
-      };
-
-      // Only use custom path if explicitly set
-      if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-        puppeteerOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-        console.log(`[${clientId}] Using custom Chromium: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
-      } else {
-        console.log(`[${clientId}] Using Puppeteer bundled Chromium`);
-      }
-
       client = new Client({
         authStrategy: new LocalAuth({ clientId }),
-        puppeteer: puppeteerOptions,
+        puppeteer: {
+          headless: true,
+          args: [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--no-zygote",
+            "--single-process",
+            "--disable-gpu",
+          ],
+          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        },
+        webVersionCache: {
+          type: "none",
+        },
       });
+
       this.attachClientEvents(clientId, client);
       this.clients.set(clientId, client);
     }
@@ -521,6 +514,7 @@ export default class WhatsAppManager {
       await this.resetSession(clientId, { preserveAttempts: false });
     }
 
+    this.releaseLock(clientId);
     return this.getState(clientId);
   }
 
