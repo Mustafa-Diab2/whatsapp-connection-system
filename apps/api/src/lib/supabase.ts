@@ -39,6 +39,18 @@ export const db = {
         return data;
     },
 
+    async getCustomerById(id: string, organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
+        const { data, error } = await supabase
+            .from('customers')
+            .select('*')
+            .eq('id', id)
+            .eq('organization_id', organizationId)
+            .single();
+        if (error) return null;
+        return data;
+    },
+
     async createCustomer(customer: {
         name: string;
         phone: string;

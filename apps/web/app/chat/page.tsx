@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import Link from "next/link";
 import { io, Socket } from "socket.io-client";
 import { encodeId, decodeId } from "../../lib/obfuscator";
 
@@ -914,9 +915,18 @@ export default function ChatPage() {
                 </div>
               )}
               <div className="min-w-0">
-                <p className="truncate text-[15px] font-black text-slate-900 leading-tight">
-                  {selectedChat ? selectedChatName : "مرحبا بك في المحادثات"}
-                </p>
+                {selectedChat && selectedCustomer ? (
+                  <Link
+                    href={`/contact-profile/${selectedCustomer.id}`}
+                    className="truncate text-[15px] font-black text-slate-900 leading-tight hover:text-brand-blue transition-colors cursor-pointer block"
+                  >
+                    {selectedChatName}
+                  </Link>
+                ) : (
+                  <p className="truncate text-[15px] font-black text-slate-900 leading-tight">
+                    {selectedChat ? selectedChatName : "مرحبا بك في المحادثات"}
+                  </p>
+                )}
                 {selectedChat && (
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className={`h-2 w-2 rounded-full ${status === 'ready' ? 'bg-green-500' : 'bg-slate-300'}`}></span>
@@ -1173,6 +1183,14 @@ export default function ChatPage() {
                       </div>
                       <h3 className="text-2xl font-black text-slate-900 tracking-tight">{selectedCustomer.name}</h3>
                       <p dir="ltr" className="text-[13px] font-black text-slate-400 mt-2 tracking-widest">{selectedCustomer.phone}</p>
+
+                      {/* Profile Link Button */}
+                      <Link
+                        href={`/contact-profile/${selectedCustomer.id}`}
+                        className="mt-4 w-full px-6 py-3 rounded-2xl bg-brand-blue text-white text-sm font-black hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2"
+                      >
+                        📋 عرض الملف الكامل
+                      </Link>
                     </div>
 
                     <div className="space-y-8">

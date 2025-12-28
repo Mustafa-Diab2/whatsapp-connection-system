@@ -487,6 +487,48 @@ app.get("/whatsapp/stories", verifyToken, async (req, res) => {
   }
 });
 
+// Get WhatsApp contact presence status
+app.get("/whatsapp/contact-status/:phone", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  const { phone } = req.params;
+  try {
+    const client = manager.ensureReadyClient(orgId);
+    const chatId = phone.includes('@') ? phone : `${phone}@c.us`;
+
+    // Get contact info from WhatsApp
+    const contact = await client.getContactById(chatId);
+
+    // Try to get profile picture URL
+    let profilePicUrl = null;
+    try {
+      profilePicUrl = await contact.getProfilePicUrl();
+    } catch (e) {
+      // Profile pic not available
+    }
+
+    res.json({
+      ok: true,
+      contact: {
+        id: contact.id._serialized,
+        name: contact.name || contact.pushname || null,
+        pushname: contact.pushname || null,
+        isOnline: (contact as any).isOnline || null, // May not always be available
+        lastSeen: (contact as any).lastSeen || null, // May not always be available
+        profilePicUrl,
+        isBlocked: contact.isBlocked,
+        isMe: contact.isMe,
+        isBusiness: contact.isBusiness
+      }
+    });
+  } catch (err: any) {
+    console.error(`[${orgId}] Get contact status error:`, err);
+    res.status(400).json({
+      ok: false,
+      message: err?.message || "Failed to get contact status"
+    });
+  }
+});
+
 
 // Get messages for a chat
 app.get("/whatsapp/messages/:chatId", verifyToken, async (req, res) => {
@@ -641,6 +683,21 @@ app.get("/api/customers", verifyToken, async (req, res) => {
     res.json({ customers });
   } catch (err: any) {
     res.status(500).json({ message: err?.message || "Failed to get customers" });
+  }
+});
+
+// Get single customer by ID
+app.get("/api/customers/:id", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  const { id } = req.params;
+  try {
+    const customer = await db.getCustomerById(id, orgId);
+    if (!customer) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+    res.json({ customer });
+  } catch (err: any) {
+    res.status(500).json({ message: err?.message || "Failed to get customer" });
   }
 });
 
