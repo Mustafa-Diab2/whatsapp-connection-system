@@ -4,7 +4,7 @@ const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 if (!supabaseUrl || !supabaseServiceKey) {
-    console.warn('⚠️ Supabase credentials not found. Database features will be disabled.');
+    console.error('❌ CRITICAL: Supabase credentials missing. Check Environment Variables.');
 }
 
 export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseServiceKey, {

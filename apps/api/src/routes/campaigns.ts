@@ -116,7 +116,7 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
         // De-duplicate by phone number
         const normalize = (p: string) => p ? p.replace(/\D/g, "") : "";
         const uniqueRecipients = Array.from(new Map(filteredRecipients.map(r => [normalize(r.phone), r])).values());
-        console.log(`[Campaign ${campaignId}] Total Unique Recipients: ${uniqueRecipients.length}`);
+        console.log(`[Campaign ${campaignId}] [NEW_VERSION_V3] Total Unique Recipients: ${uniqueRecipients.length}`);
 
         if (uniqueRecipients.length === 0) {
             console.log(`[Campaign ${campaignId}] No recipients found.`);
@@ -178,9 +178,9 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
                     cleanPhone = '20' + cleanPhone;
                 }
 
-                console.log(`[Campaign ${campaignId}] Sending message to ${cleanPhone}...`);
+                console.log(`[Campaign ${campaignId}] Final Phone for WhatsApp: ${cleanPhone}`);
                 const result = await manager.sendMessage(orgId, cleanPhone, text);
-                console.log(`[Campaign ${campaignId}] Success for ${cleanPhone}: ${result.messageId}`);
+                console.log(`[Campaign ${campaignId}] Result from Manager:`, JSON.stringify(result));
 
                 await db.logCampaignResult({
                     campaign_id: campaignId,
