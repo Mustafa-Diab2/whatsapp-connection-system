@@ -168,6 +168,7 @@ export default function ChatPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const [replyingTo, setReplyingTo] = useState<MessageItem | null>(null);
+  const currentChatObj = useMemo(() => chats.find(c => c.id === selectedChat), [chats, selectedChat]);
 
   // Keep ref in sync with state for socket callback
   useEffect(() => {
@@ -705,6 +706,40 @@ export default function ChatPage() {
     } catch (e) { console.error(e); }
   };
 
+  const handleCreateCustomer = async () => {
+    if (!currentChatObj || !selectedChat) return;
+    setUpdatingCustomer(true);
+    try {
+      const phone = selectedChat.split('@')[0];
+      const res = await fetch(`${apiBase}/api/customers`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          name: currentChatObj.name || phone,
+          phone: phone,
+          status: 'active'
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedCustomer(data.customer);
+        // Update local chat list to link customer
+        setChats(prev => prev.map(c => c.id === selectedChat ? { ...c, customer: data.customer, customer_id: data.customer.id } : c));
+      } else {
+        const err = await res.json();
+        setErrorMsg(err.message || "فشل إنشاء الملف");
+        setTimeout(() => setErrorMsg(null), 3000);
+      }
+    } catch (e) {
+      console.error(e);
+      setErrorMsg("خطأ في الاتصال بالسيرفر");
+      setTimeout(() => setErrorMsg(null), 3000);
+    } finally {
+      setUpdatingCustomer(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4 p-0 md:p-2 h-full">
       {/* Connection Warning */}
@@ -1198,7 +1233,13 @@ export default function ChatPage() {
                     <div className="space-y-2 px-6">
                       <h4 className="text-lg font-black text-slate-800">عميل غير متعرف عليه</h4>
                       <p className="text-xs font-bold text-slate-400 leading-relaxed">لم نتمكن من العثور على ملف تعريف لهذا الرقم في نظام CRM الخاص بك. يمكنك إنشاء ملف جديد الآن.</p>
-                      <button className="w-full mt-6 rounded-2xl bg-brand-blue py-4 text-xs font-black text-white shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all hover:scale-105 active:scale-95">إنشاء ملف عميل جديد</button>
+                      <button
+                        onClick={handleCreateCustomer}
+                        disabled={updatingCustomer}
+                        className="w-full mt-6 rounded-2xl bg-brand-blue py-4 text-xs font-black text-white shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                      >
+                        {updatingCustomer ? "جاري الإنشاء..." : "إنشاء ملف عميل جديد"}
+                      </button>
                     </div>
                   </div>
                 )}
