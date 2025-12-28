@@ -147,7 +147,7 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
 
                 await db.logCampaignResult({
                     campaign_id: campaignId,
-                    customer_id: recipient._origin === 'customer' ? recipient.id : undefined,
+                    customer_id: recipient._origin === 'customer' ? recipient.id : null,
                     phone: cleanPhone,
                     status: "sent"
                 });
@@ -156,7 +156,7 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
                 console.error(`[Campaign ${campaignId}] Failed to send to ${recipient.phone}:`, err.message);
                 await db.logCampaignResult({
                     campaign_id: campaignId,
-                    customer_id: recipient._origin === 'customer' ? recipient.id : undefined,
+                    customer_id: recipient._origin === 'customer' ? recipient.id : null,
                     phone: recipient.phone,
                     status: "failed",
                     error_message: err.message

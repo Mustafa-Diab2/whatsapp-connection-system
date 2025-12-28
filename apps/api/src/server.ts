@@ -9,7 +9,7 @@ import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import { Server } from "socket.io";
 import WhatsAppManager from "./wa/WhatsAppManager";
-import { db } from "./lib/supabase";
+import { db, supabase } from "./lib/supabase";
 import authRoutes, { verifyToken } from "./routes/auth";
 import documentsRoutes from "./routes/documents";
 import campaignsRoutes from "./routes/campaigns";
@@ -224,9 +224,22 @@ const getOrgId = (req: Request): string => {
   return (req as any).user?.organizationId;
 };
 
-// Apply verifyToken middleware to all API routes below
-// Note: Some WhatsApp routes might need to be open for webhooks, but here we secure everything for the frontend
-// We'll apply verifyToken to specific blocks to be safe
+// ========== DIAGNOSTICS ==========
+app.get("/api/diag", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  try {
+    const results: any = { orgId };
+    const tables = ['customers', 'contacts', 'campaigns', 'campaign_logs', 'quick_replies', 'organizations'];
+    for (const table of tables) {
+      const { error } = await supabase.from(table).select('count').limit(1);
+      results[table] = error ? `Error: ${error.message}` : 'Table Found';
+    }
+    results.waState = manager.getState(orgId);
+    res.json(results);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ========== WHATSAPP ROUTES (Secured) ==========
 
