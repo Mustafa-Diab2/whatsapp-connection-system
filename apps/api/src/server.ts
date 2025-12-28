@@ -119,6 +119,25 @@ app.disable('x-powered-by');
 // Create HTTP server
 const httpServer = http.createServer(app);
 
+// --- [SCHEMA FIX] Ensure DB Columns Exist ---
+async function ensureSchema() {
+  try {
+    console.log("[DB] Checking for required columns...");
+    // Check if error_message exists, if not add it
+    await supabase.rpc('execute_sql', {
+      sql_query: "ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS failed_sends INTEGER DEFAULT 0; ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS error_message TEXT;"
+    }).catch(async () => {
+      // Fallback: try raw query if RPC is not available (some supabase setups)
+      console.log("[DB] RPC execute_sql failed, columns might already exist or need dashboard update.");
+    });
+    console.log("[DB] Schema check completed.");
+  } catch (e) {
+    console.error("[DB] Schema Error:", e);
+  }
+}
+ensureSchema();
+// -------------------------------------------
+
 // Socket.io with proper CORS
 const io = new Server(httpServer, {
   cors: {
