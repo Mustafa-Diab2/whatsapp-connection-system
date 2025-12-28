@@ -228,11 +228,11 @@ const getOrgId = (req: Request): string => {
 app.get("/api/diag", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
   try {
-    const results: any = { orgId };
-    const tables = ['customers', 'contacts', 'campaigns', 'campaign_logs', 'quick_replies', 'organizations'];
+    const results: any = { orgId, timestamp: new Date().toISOString() };
+    const tables = ['customers', 'contacts', 'campaigns', 'campaign_logs', 'quick_replies'];
     for (const table of tables) {
-      const { error } = await supabase.from(table).select('count').limit(1);
-      results[table] = error ? `Error: ${error.message}` : 'Table Found';
+      const { error } = await supabase.from(table).select('*', { count: 'exact', head: true });
+      results[table] = error ? `Error: ${error.message}` : 'Table Link OK';
     }
     results.waState = manager.getState(orgId);
     res.json(results);
@@ -435,6 +435,7 @@ app.get("/whatsapp/stories", verifyToken, async (req, res) => {
     res.status(500).json({ message: err?.message || "Failed to get stories" });
   }
 });
+
 
 // Get messages for a chat
 app.get("/whatsapp/messages/:chatId", verifyToken, async (req, res) => {
