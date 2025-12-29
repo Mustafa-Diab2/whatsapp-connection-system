@@ -143,7 +143,7 @@ export const db = {
     },
 
     // ========== CONVERSATIONS ==========
-    async getOrCreateConversation(waChatId: string, organizationId: string, customerId?: string) {
+    async getOrCreateConversation(waChatId: string, organizationId: string, customerId?: string, physicalPhone?: string) {
         if (!organizationId) throw new Error("Organization ID required");
 
         // Try to find existing conversation
@@ -156,14 +156,15 @@ export const db = {
 
         if (existing) return existing;
 
-        // If no customerId provided, try to find or create customer by phone
+        // If no customerId provided, try to find or create customer
         let finalCustomerId = customerId;
+        const phoneToUse = physicalPhone || waChatId.split('@')[0];
+
         if (!finalCustomerId) {
-            const phone = waChatId.split('@')[0];
             const { data: customer } = await supabase
                 .from('customers')
                 .select('id')
-                .eq('phone', phone)
+                .eq('phone', phoneToUse)
                 .eq('organization_id', organizationId)
                 .maybeSingle();
 
@@ -174,8 +175,8 @@ export const db = {
                 const { data: newCustomer } = await supabase
                     .from('customers')
                     .insert({
-                        name: phone, // Default name to phone
-                        phone: phone,
+                        name: phoneToUse, // Default name to phone
+                        phone: phoneToUse,
                         organization_id: organizationId,
                         source: 'whatsapp'
                     })

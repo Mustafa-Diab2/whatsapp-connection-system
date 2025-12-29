@@ -250,7 +250,14 @@ export default class WhatsAppManager {
       try {
         const info = client.info;
         if (info && info.wid && info.wid.user) {
-          const myNumber = info.wid.user;
+          const myJid = info.wid._serialized;
+          let myNumber = info.wid.user;
+
+          try {
+            const me = await client.getContactById(myJid);
+            if (me.number) myNumber = me.number;
+          } catch (e) { }
+
           console.log(`[${clientId}] Connected with number: ${myNumber}`);
 
           // Update Admin profile for this Org
@@ -262,12 +269,9 @@ export default class WhatsAppManager {
 
           if (users && users.length > 0) {
             for (const user of users) {
-              if (!user.phone) {
+              if (!user.phone || user.phone.length > 15) { // Update if empty or looks like an ID
                 await db.updateUserInfo(user.id, { phone: myNumber });
                 console.log(`[${clientId}] Auto-updated admin phone to ${myNumber}`);
-              } else if (user.phone !== myNumber) {
-                // If they have a different number, we could potentially update it too or log it
-                // For now, let's keep it if they manually set something else, unless it's fundamentally different
               }
             }
           }
@@ -873,7 +877,9 @@ export default class WhatsAppManager {
       if (!settings?.auto_assign_enabled) return;
 
       // 1. Get or create conversation in DB
-      const conversation = await db.getOrCreateConversation(message.from, clientId);
+      const contact = await message.getContact();
+      const realPhone = contact.number || message.from.split('@')[0];
+      const conversation = await db.getOrCreateConversation(message.from, clientId, undefined, realPhone);
 
       // 2. If already assigned, do nothing
       if (conversation.assigned_to) return;
