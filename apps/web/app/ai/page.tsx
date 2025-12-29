@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { io } from "socket.io-client";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const clientId = "default";
@@ -16,6 +17,7 @@ export default function AIPage() {
     const [enabled, setEnabled] = useState(false);
     const [config, setConfig] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [botError, setBotError] = useState<string | null>(null);
 
     const [agentForm, setAgentForm] = useState({
         name: "",
@@ -119,6 +121,22 @@ export default function AIPage() {
             console.error("Failed to fetch agents", err);
         }
     };
+
+    useEffect(() => {
+        const token = localStorage.getItem("token");
+        const socket = io(apiBase, {
+            auth: { token }
+        });
+
+        socket.on("bot:error", (data: { message: string }) => {
+            setBotError(data.message);
+            setTimeout(() => setBotError(null), 5000);
+        });
+
+        return () => {
+            socket.disconnect();
+        };
+    }, []);
 
     useEffect(() => {
         fetchConfig();
@@ -254,6 +272,11 @@ export default function AIPage() {
                         </div>
                         <div>
                             <h3 className="font-semibold text-slate-800">المساعد الرئيسي (Gemini)</h3>
+                            {botError && (
+                                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-[10px] text-red-600 font-bold animate-pulse">
+                                    ⚠️ خطأ: {botError}
+                                </div>
+                            )}
                             <div className="mt-3 space-y-2">
                                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">شخصية البوت (Persona)</label>
                                 <textarea

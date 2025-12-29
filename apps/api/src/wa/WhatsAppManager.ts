@@ -773,6 +773,7 @@ export default class WhatsAppManager {
     let orgId: string | undefined;
 
     try {
+      console.log(`[${clientId}] [Bot] Checking config for ${message.from}`);
       const dbConfig = await db.getBotConfig(clientId);
       if (dbConfig) {
         config = {
@@ -783,18 +784,24 @@ export default class WhatsAppManager {
         };
         orgId = dbConfig.organization_id;
       }
-    } catch (e) {
-      // Fallback to memory
+    } catch (e: any) {
+      console.warn(`[${clientId}] [Bot] Failed to fetch config from DB, falling back to memory:`, e.message);
       config = this.botConfigs.get(clientId) || null;
       orgId = config?.organizationId;
     }
 
-    // Use default key if enabled, even if apiKey is empty in config
-    if (!config || !config.enabled) return;
+    if (!config || !config.enabled) {
+      console.log(`[${clientId}] [Bot] Bot is disabled for this client.`);
+      return;
+    }
 
-    // Ignore status updates or media for now, focus on text
-    if (message.type !== "chat") return;
+    // Ignore non-text messages
+    if (message.type !== "chat") {
+      console.log(`[${clientId}] [Bot] Ignoring non-text message type: ${message.type}`);
+      return;
+    }
 
+    console.log(`[${clientId}] [Bot] Handling message: "${message.body.substring(0, 50)}..."`);
     const startTime = Date.now();
 
     // Simulate typing
@@ -817,10 +824,19 @@ export default class WhatsAppManager {
       // If no orgId, we can't do RAG properly, fallback to normal reply without context docs
       let replyText = "";
 
+      // Diagnostic: Check if API key exists (either in config or env)
+      const effectiveKey = config.apiKey || process.env.GEMINI_API_KEY;
+      if (!effectiveKey) {
+        console.error(`[${clientId}] [Bot] CRITICAL: No Gemini API Key found! Check .env or Bot settings.`);
+        this.io.to(clientId).emit("bot:error", { message: "No API Key found" });
+        return;
+      }
+
       if (orgId) {
+        console.log(`[${clientId}] [Bot] Using RAG for Org ${orgId}`);
         replyText = await ai.generateRAGReply(message.body, conversationHistory, orgId, config.systemPrompt);
       } else {
-        // Fallback if no org (shouldn't happen in prod)
+        console.log(`[${clientId}] [Bot] Fallback to direct AI (No Org ID)`);
         replyText = await ai.generateReply(config.systemPrompt + "\n\nUser: " + message.body, conversationHistory);
       }
 
