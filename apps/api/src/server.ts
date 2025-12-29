@@ -123,8 +123,12 @@ const httpServer = http.createServer(app);
 // --- [SCHEMA FIX] Ensure DB Columns Exist ---
 async function ensureSchema() {
   try {
-    console.log("[DB] Checking for required columns...");
-    // Check and add columns if they don't exist
+    console.log(`[AI] GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? "✓ Set" : "✗ Missing"}`);
+
+    if (!process.env.GEMINI_API_KEY) {
+      console.warn("[AI] Warning: GEMINI_API_KEY is not set. Knowledge Base and AI replies will fail.");
+    }
+
     const { error } = await supabase.rpc('execute_sql', {
       sql_query: `
         DO $$ 
@@ -150,9 +154,9 @@ async function ensureSchema() {
     });
 
     if (error) {
-      console.log("[DB] RPC execute_sql notice:", error.message);
+      console.log("[DB] Schema update via RPC skipped (function might not exist yet). Please run migrations manually.");
     } else {
-      console.log("[DB] Schema check completed successfully.");
+      console.log("[DB] Schema auto-sync completed.");
     }
   } catch (e: any) {
     console.warn("[DB] Schema check skipped or failed:", e.message);

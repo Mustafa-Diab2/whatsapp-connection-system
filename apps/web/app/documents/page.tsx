@@ -51,9 +51,11 @@ export default function KnowledgeBasePage() {
             setNewContent("");
             await fetchDocuments();
             alert("تمت إضافة المحتوى بنجاح");
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to add document", error);
-            alert("حدث خطأ أثناء الإضافة");
+            const msg = error.response?.data?.error || "حدث خطأ أثناء الإضافة";
+            const details = error.response?.data?.details ? `\nالتفاصيل: ${error.response.data.details}` : "";
+            alert(`${msg}${details}`);
         } finally {
             setLoading(false);
         }

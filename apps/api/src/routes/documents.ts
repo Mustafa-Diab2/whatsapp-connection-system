@@ -32,14 +32,23 @@ router.post("/", verifyToken, async (req: Request, res: Response) => {
         const { content, source } = req.body;
 
         if (!content) {
-            return res.status(400).json({ error: "Content is required" });
+            return res.status(400).json({ error: "المحتوى مطلوب" });
         }
 
         // 1. Generate Embedding
-        const embedding = await ai.generateEmbedding(content);
+        let embedding: number[];
+        try {
+            embedding = await ai.generateEmbedding(content);
+        } catch (aiError: any) {
+            console.error("AI Embedding generation failed:", aiError);
+            return res.status(500).json({
+                error: "فشل توليد التشفير للذكاء الاصطناعي. تأكد من إعداد مفتاح API بشكل صحيح.",
+                details: aiError.message
+            });
+        }
 
         // 2. Save to DB
-        const { data, error } = await supabase
+        const { data, error: dbError } = await supabase
             .from("documents")
             .insert({
                 organization_id: orgId,
@@ -50,12 +59,18 @@ router.post("/", verifyToken, async (req: Request, res: Response) => {
             .select()
             .single();
 
-        if (error) throw error;
+        if (dbError) {
+            console.error("Supabase Document Insert Error:", dbError);
+            throw dbError;
+        }
 
-        res.status(201).json({ message: "Document added successfully", document: data });
+        res.status(201).json({ message: "تمت إضافة المعلومات بنجاح", document: data });
     } catch (error: any) {
-        console.error("Add document error:", error);
-        res.status(500).json({ error: error.message || "Failed to add document" });
+        console.error("Add document exception:", error);
+        res.status(500).json({
+            error: "فشل حفظ المعلومات في قاعدة البيانات.",
+            details: error.message
+        });
     }
 });
 
