@@ -47,7 +47,11 @@ router.post("/", verifyToken, validate(createDealSchema), async (req: Request, r
 
         res.status(201).json({ message: "Deal created", deal });
     } catch (error: any) {
-        res.status(500).json({ error: error.message || "Failed to create deal" });
+        console.error("❌ CREATE DEAL ERROR:", error);
+        res.status(500).json({
+            error: error.message || "Failed to create deal",
+            details: error.details || error.hint || null
+        });
     }
 });
 

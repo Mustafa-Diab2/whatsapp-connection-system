@@ -155,9 +155,11 @@ export default function CRMPage() {
                 tags: [],
                 expectedCloseDate: ""
             });
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to create deal", error);
-            alert("فشل إنشاء الصفقة");
+            const msg = error.response?.data?.error || "فشل إنشاء الصفقة";
+            const details = error.response?.data?.details ? `\nالتفاصيل: ${error.response.data.details}` : "";
+            alert(`${msg}${details}`);
         } finally {
             setIsSaving(false);
         }

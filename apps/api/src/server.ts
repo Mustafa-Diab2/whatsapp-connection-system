@@ -274,8 +274,15 @@ const getOrgId = (req: Request): string => {
 app.get("/api/diag", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
   try {
-    const results: any = { orgId, timestamp: new Date().toISOString() };
-    const tables = ['customers', 'contacts', 'campaigns', 'campaign_logs', 'quick_replies'];
+    const results: any = {
+      orgId,
+      timestamp: new Date().toISOString(),
+      env: {
+        gemini_api_key_set: !!process.env.GEMINI_API_KEY,
+        supabase_url_set: !!process.env.SUPABASE_URL,
+      }
+    };
+    const tables = ['customers', 'contacts', 'campaigns', 'campaign_logs', 'quick_replies', 'deals', 'documents'];
     for (const table of tables) {
       const { error } = await supabase.from(table).select('*', { count: 'exact', head: true });
       results[table] = error ? `Error: ${error.message}` : 'Table Link OK';
