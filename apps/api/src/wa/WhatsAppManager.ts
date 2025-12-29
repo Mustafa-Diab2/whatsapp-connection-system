@@ -255,10 +255,16 @@ export default class WhatsAppManager {
 
           try {
             const me = await client.getContactById(myJid);
-            if (me.number) myNumber = me.number;
+            const formatted = await me.getFormattedNumber();
+            const clean = formatted.replace(/\D/g, "");
+            if (clean && clean.length >= 8 && clean.length <= 15) {
+              myNumber = clean;
+            } else if (me.number) {
+              myNumber = me.number.replace(/\D/g, "");
+            }
           } catch (e) { }
 
-          console.log(`[${clientId}] Connected with number: ${myNumber}`);
+          console.log(`[${clientId}] Connected with true number: ${myNumber}`);
 
           // Update Admin profile for this Org
           const { data: users } = await supabase
@@ -269,9 +275,10 @@ export default class WhatsAppManager {
 
           if (users && users.length > 0) {
             for (const user of users) {
-              if (!user.phone || user.phone.length > 15) { // Update if empty or looks like an ID
+              // Force update if empty or looks like an ID or different from what we just found
+              if (!user.phone || user.phone.length > 15 || user.phone !== myNumber) {
                 await db.updateUserInfo(user.id, { phone: myNumber });
-                console.log(`[${clientId}] Auto-updated admin phone to ${myNumber}`);
+                console.log(`[${clientId}] Auto-synced true admin phone: ${myNumber}`);
               }
             }
           }
@@ -876,10 +883,27 @@ export default class WhatsAppManager {
       const settings = await db.getOrganizationSettings(clientId);
       if (!settings?.auto_assign_enabled) return;
 
-      // 1. Get or create conversation in DB
+      // 1. Get or create conversation in DB with true phone resolution
       const contact = await message.getContact();
-      const realPhone = contact.number || message.from.split('@')[0];
+      let realPhone = message.from.split('@')[0];
+
+      try {
+        const formatted = await contact.getFormattedNumber();
+        const clean = formatted.replace(/\D/g, "");
+        if (clean && clean.length >= 8 && clean.length <= 15) {
+          realPhone = clean;
+        } else if (contact.number) {
+          realPhone = contact.number.replace(/\D/g, "");
+        }
+      } catch (e) { }
+
       const conversation = await db.getOrCreateConversation(message.from, clientId, undefined, realPhone);
+
+      // 2. Extra Safety: Update existing customer if the phone was an ID
+      if (conversation.customer && (conversation.customer.phone.length > 15 || conversation.customer.phone !== realPhone)) {
+        await db.updateCustomer(conversation.customer.id, { phone: realPhone }, clientId);
+        console.log(`[ForceFix] Updated customer ${conversation.customer.id} from ID to phone: ${realPhone}`);
+      }
 
       // 2. If already assigned, do nothing
       if (conversation.assigned_to) return;
