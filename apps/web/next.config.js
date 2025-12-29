@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // تحسين للنشر على Vercel
-  output: 'standalone',
+  // تحسين للنشر على Vercel
+  // output: 'standalone',
 
   // السماح بالصور من مصادر محددة
   images: {
