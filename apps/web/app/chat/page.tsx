@@ -431,7 +431,8 @@ export default function ChatPage() {
     const q = searchQuery.toLowerCase();
     return chats.filter(c =>
       c.name.toLowerCase().includes(q) ||
-      c.id.toLowerCase().includes(q)
+      c.id.toLowerCase().includes(q) ||
+      ((c as any).phone && (c as any).phone.includes(q))
     );
   }, [chats, searchQuery]);
 

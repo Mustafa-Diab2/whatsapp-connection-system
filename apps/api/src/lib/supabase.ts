@@ -158,7 +158,8 @@ export const db = {
 
         // If no customerId provided, try to find or create customer
         let finalCustomerId = customerId;
-        const phoneToUse = physicalPhone || waChatId.split('@')[0];
+        const rawPhone = physicalPhone || waChatId.split('@')[0];
+        const phoneToUse = rawPhone.replace(/\D/g, ""); // Clean formatting for DB consistency
 
         if (!finalCustomerId) {
             const { data: customer } = await supabase

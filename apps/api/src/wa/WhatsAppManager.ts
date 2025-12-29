@@ -308,16 +308,22 @@ export default class WhatsAppManager {
       console.log(`[${clientId}] Message received from ${message.from}`);
 
       let senderName = null;
+      let realPhone = message.from.split('@')[0];
       try {
-        if (message.author && !message.fromMe) {
-          const contact = await message.getContact();
-          senderName = contact.name || contact.pushname || contact.number;
+        const contact = await message.getContact();
+        senderName = contact.name || contact.pushname || contact.number;
+
+        const formatted = await contact.getFormattedNumber();
+        const clean = formatted.replace(/\D/g, "");
+        if (clean && clean.length >= 8 && clean.length <= 15) {
+          realPhone = clean;
         }
       } catch (e) { }
 
       const messageData = {
         id: message.id._serialized,
         from: message.from,
+        phone: realPhone, // Added resolved phone
         to: message.to,
         body: message.body || (message as any).caption || "",
         timestamp: message.timestamp,
@@ -361,10 +367,21 @@ export default class WhatsAppManager {
       if (message.fromMe) {
         console.log(`[${clientId}] Message sent to ${message.to}`);
 
+        let realPhone = message.to.split('@')[0];
+        try {
+          const contact = await message.getContact();
+          const formatted = await contact.getFormattedNumber();
+          const clean = formatted.replace(/\D/g, "");
+          if (clean && clean.length >= 8 && clean.length <= 15) {
+            realPhone = clean;
+          }
+        } catch (e) { }
+
         const messageData = {
           id: message.id._serialized,
           from: message.from,
           to: message.to,
+          phone: realPhone, // Added resolved phone
           body: message.body,
           timestamp: message.timestamp,
           fromMe: message.fromMe,

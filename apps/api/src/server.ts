@@ -473,9 +473,14 @@ app.get("/whatsapp/chats", verifyToken, async (req, res) => {
 
       try {
         const contact = await c.getContact();
-        if (contact.number) {
-          realPhone = contact.number;
+        const formatted = await contact.getFormattedNumber();
+        const clean = formatted.replace(/\D/g, "");
+        if (clean && clean.length >= 8 && clean.length <= 15) {
+          realPhone = clean;
+        } else if (contact.number) {
+          realPhone = contact.number.replace(/\D/g, "");
         }
+
         if (contact.name || contact.pushname) {
           name = contact.name || contact.pushname;
         }
