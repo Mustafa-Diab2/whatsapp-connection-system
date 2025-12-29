@@ -180,7 +180,14 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
 
                 console.log(`[Campaign ${campaignId}] Sending to FINAL JID: ${cleanPhone}@c.us`);
                 const result = await manager.sendMessage(orgId, cleanPhone, text);
-                console.log(`[Campaign ${campaignId}] SUCCESS Result:`, JSON.stringify(result));
+
+                successCount++;
+
+                // Real-time update to DB
+                await supabase.from('campaigns').update({
+                    successful_sends: successCount,
+                    updated_at: new Date().toISOString()
+                }).eq('id', campaignId);
 
                 await db.logCampaignResult({
                     campaign_id: campaignId,
@@ -188,15 +195,18 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
                     phone: cleanPhone,
                     status: "sent"
                 });
-                successCount++;
             } catch (err: any) {
                 console.error(`[Campaign ${campaignId}] ERROR sending to ${recipient.phone}:`, err.message);
-                failCount++; // Increment failCount as it's a failed send
+                failCount++;
 
-                const errMsg = err.message || "Unknown error";
+                const errMsg = `[${recipient.phone}] ${err.message || "Unknown error"}`;
 
-                // Update the main campaign with the last error to show in UI
-                await supabase.from('campaigns').update({ error_message: errMsg }).eq('id', campaignId);
+                // Real-time update to DB (including counts and last error)
+                await supabase.from('campaigns').update({
+                    failed_sends: failCount,
+                    error_message: errMsg,
+                    updated_at: new Date().toISOString()
+                }).eq('id', campaignId);
 
                 try {
                     await db.logCampaignResult({
@@ -209,6 +219,18 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
                 } catch (e: any) {
                     console.error("Failed to log failure to DB", e.message);
                 }
+
+                // If error is fatal (not "not registered"), we should consider stopping
+                // For now, we continue to fulfill "skip failed and go to next"
+            }
+
+            // Check if client is still ready after each send attempt
+            if (manager.getState(orgId).status !== 'ready') {
+                console.error(`[Campaign ${campaignId}] Client disconnected during campaign. Aborting remaining.`);
+                await db.updateCampaignStatus(campaignId, "failed", {
+                    error_message: "WhatsApp disconnected mid-campaign. Please reconnect and Resend."
+                });
+                return;
             }
         }
 

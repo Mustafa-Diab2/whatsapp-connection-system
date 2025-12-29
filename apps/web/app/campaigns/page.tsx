@@ -251,7 +251,8 @@ export default function CampaignsPage() {
                             ) : (
                                 <div className="space-y-4 overflow-y-auto pr-2 custom-scrollbar">
                                     {campaigns.map(camp => {
-                                        const progress = camp.total_recipients > 0 ? (camp.successful_sends / camp.total_recipients) * 100 : 0;
+                                        const totalProcessed = (camp.successful_sends || 0) + (camp.failed_sends || 0);
+                                        const progress = camp.total_recipients > 0 ? (totalProcessed / camp.total_recipients) * 100 : 0;
                                         return (
                                             <div key={camp.id} className="group p-5 bg-slate-50/50 border border-slate-100 rounded-3xl hover:bg-white hover:shadow-xl hover:border-brand-blue/10 transition-all duration-300">
                                                 <div className="flex justify-between items-start mb-4">
