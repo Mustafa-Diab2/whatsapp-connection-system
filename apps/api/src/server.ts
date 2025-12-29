@@ -174,7 +174,19 @@ ensureSchema();
 // Socket.io with proper CORS
 const io = new Server(httpServer, {
   cors: {
-    origin: ALLOWED_ORIGINS, // Use specific origins instead of *
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const isAllowed =
+        ALLOWED_ORIGINS.includes(origin) ||
+        origin.endsWith('.vercel.app') ||
+        origin.includes('localhost');
+
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"), false);
+      }
+    },
     methods: ["GET", "POST"],
     credentials: true,
   },
