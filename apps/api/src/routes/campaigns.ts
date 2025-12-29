@@ -97,20 +97,25 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
 
         // 1. Fetch Recipients from both Customers and Contacts
         const [customersRes, contactsRes] = await Promise.all([
-            supabase.from('customers').select('id, name, phone, status').eq('organization_id', orgId),
+            supabase.from('customers').select('id, name, phone, status, customer_type').eq('organization_id', orgId),
             supabase.from('contacts').select('id, name, phone').eq('organization_id', orgId)
         ]);
 
         const customers = (customersRes.data || []).map(c => ({ ...c, _origin: 'customer' }));
         const contacts = (contactsRes.data || []).map(c => ({ ...c, _origin: 'contact' }));
 
-        // Apply filters if targetGroup is active
-        let filteredRecipients: any[] = [...customers];
-        if (targetGroup === 'active') {
-            filteredRecipients = customers.filter(c => c.status === 'active');
-        } else {
-            // Merge with contacts for 'all' group
+        // Apply filters
+        let filteredRecipients: any[] = [];
+        if (targetGroup === 'all') {
             filteredRecipients = [...customers, ...contacts];
+        } else if (targetGroup === 'active') {
+            filteredRecipients = customers.filter(c => c.status === 'active');
+        } else if (targetGroup.startsWith('type_')) {
+            const requestedType = targetGroup.replace('type_', '');
+            filteredRecipients = customers.filter(c => (c as any).customer_type === requestedType);
+        } else {
+            // Default fallback
+            filteredRecipients = [...customers];
         }
 
         // De-duplicate by phone number

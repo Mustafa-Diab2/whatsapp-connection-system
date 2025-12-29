@@ -16,6 +16,14 @@ interface Campaign {
     created_at: string;
 }
 
+interface CampaignLog {
+    id: string;
+    phone: string;
+    status: 'sent' | 'failed';
+    error_message?: string;
+    sent_at: string;
+}
+
 export default function CampaignsPage() {
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [loading, setLoading] = useState(false);
@@ -25,6 +33,11 @@ export default function CampaignsPage() {
     const [name, setName] = useState("");
     const [message, setMessage] = useState("");
     const [targetGroup, setTargetGroup] = useState("all");
+
+    // For detailed logs
+    const [selectedCampaignForLogs, setSelectedCampaignForLogs] = useState<Campaign | null>(null);
+    const [campaignLogs, setCampaignLogs] = useState<CampaignLog[]>([]);
+    const [loadingLogs, setLoadingLogs] = useState(false);
 
     useEffect(() => {
         fetchCampaigns();
@@ -101,6 +114,23 @@ export default function CampaignsPage() {
         }
     };
 
+    const fetchLogs = async (campaign: Campaign) => {
+        setSelectedCampaignForLogs(campaign);
+        setLoadingLogs(true);
+        try {
+            const token = localStorage.getItem("token");
+            const res = await axios.get(`${API_URL}/api/campaigns/${campaign.id}/logs`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setCampaignLogs(res.data.logs || []);
+        } catch (error) {
+            console.error("Failed to fetch logs", error);
+            alert("فشل تحميل سجلات الحملة");
+        } finally {
+            setLoadingLogs(false);
+        }
+    };
+
     return (
         <div className="h-screen overflow-hidden flex flex-col bg-slate-50/30">
             <div className="bg-white border-b border-slate-200 px-8 py-5 flex justify-between items-center">
@@ -141,8 +171,13 @@ export default function CampaignsPage() {
                                         value={targetGroup}
                                         onChange={(e) => setTargetGroup(e.target.value)}
                                     >
-                                        <option value="all">كل العملاء</option>
+                                        <option value="all">كل العملاء والاتصالات</option>
                                         <option value="active">العملاء النشطون فقط</option>
+                                        <option value="type_lead">عملاء محتملون (Leads)</option>
+                                        <option value="type_customer">عملاء فعليون (Customers)</option>
+                                        <option value="type_vip">عملاء VIP</option>
+                                        <option value="type_support">الدعم فني</option>
+                                        <option value="type_spam">المزعجون (Spam)</option>
                                     </select>
                                 </div>
 
@@ -263,12 +298,20 @@ export default function CampaignsPage() {
                                                     </div>
 
                                                     {camp.status !== 'processing' && (
-                                                        <button
-                                                            onClick={() => handleResend(camp.id)}
-                                                            className="h-10 px-4 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-600 hover:border-brand-blue hover:text-brand-blue hover:shadow-md active:scale-95 transition-all transition-colors"
-                                                        >
-                                                            إعادة إرسال ↺
-                                                        </button>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={() => fetchLogs(camp)}
+                                                                className="h-10 px-4 bg-slate-100 border border-slate-200 rounded-xl text-xs font-black text-slate-600 hover:bg-white hover:border-brand-blue hover:text-brand-blue hover:shadow-md active:scale-95 transition-all"
+                                                            >
+                                                                📊 تقرير العودة
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleResend(camp.id)}
+                                                                className="h-10 px-4 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-600 hover:border-brand-blue hover:text-brand-blue hover:shadow-md active:scale-95 transition-all transition-colors"
+                                                            >
+                                                                إعادة إرسال ↺
+                                                            </button>
+                                                        </div>
                                                     )}
                                                 </div>
 
@@ -287,6 +330,72 @@ export default function CampaignsPage() {
                     </div>
                 </div>
             </div>
+            {/* Logs Modal */}
+            {selectedCampaignForLogs && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            <div>
+                                <h3 className="text-xl font-black text-slate-800 tracking-tight">تقرير الحملة: {selectedCampaignForLogs.name}</h3>
+                                <p className="text-xs font-bold text-slate-400 mt-1 uppercase">إجمالي المستهدفين: {selectedCampaignForLogs.total_recipients}</p>
+                            </div>
+                            <button
+                                onClick={() => setSelectedCampaignForLogs(null)}
+                                className="h-10 w-10 flex items-center justify-center rounded-2xl bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-100 transition-all font-black"
+                            >✕</button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                            {loadingLogs ? (
+                                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                                    <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-blue border-t-transparent"></div>
+                                    <p className="text-sm font-black text-slate-400">جاري جلب تفاصيل الإرسال...</p>
+                                </div>
+                            ) : campaignLogs.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-20 bg-slate-50/50 rounded-3xl border border-dashed border-slate-100">
+                                    <div className="text-4xl mb-4">🏜️</div>
+                                    <p className="text-slate-400 font-bold">لا توجد سجلات مفصلة لهذه الحملة</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {campaignLogs.map(log => (
+                                        <div key={log.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white hover:shadow-md transition-all">
+                                            <div className="flex items-center gap-4">
+                                                <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-black ${log.status === 'sent' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                                    {log.status === 'sent' ? '✓' : '✕'}
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-black text-slate-700" dir="ltr">{log.phone}</p>
+                                                    <p className="text-[10px] font-bold text-slate-400 mt-0.5 uppercase">{new Date(log.sent_at).toLocaleString('ar-EG')}</p>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                {log.status === 'sent' ? (
+                                                    <span className="text-[10px] font-black bg-green-500 text-white px-3 py-1 rounded-lg uppercase tracking-widest">نجح</span>
+                                                ) : (
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        <span className="text-[10px] font-black bg-red-500 text-white px-3 py-1 rounded-lg uppercase tracking-widest">فشل</span>
+                                                        {log.error_message && <p className="text-[9px] font-bold text-red-400 max-w-[200px] text-right line-clamp-1">{log.error_message}</p>}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-8 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+                            <button
+                                onClick={() => setSelectedCampaignForLogs(null)}
+                                className="px-8 py-3 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-600 hover:bg-slate-50 transition-all font-black uppercase tracking-widest"
+                            >
+                                إغلاق التقرير
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

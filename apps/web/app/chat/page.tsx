@@ -355,6 +355,32 @@ export default function ChatPage() {
     }
   };
 
+  const updateCustomerType = async (type: string) => {
+    if (!selectedCustomer) return;
+    setUpdatingCustomer(true);
+    try {
+      const res = await fetch(`${apiBase}/api/customers/${selectedCustomer.id}`, {
+        method: "PUT",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ customer_type: type })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const updatedCustomer = data.customer || data;
+        setSelectedCustomer(updatedCustomer);
+
+        // Update the customer in the chat list as well to keep it in sync
+        setChats(prev => prev.map(c =>
+          c.id === selectedChat ? { ...c, customer: updatedCustomer } : c
+        ));
+      }
+    } catch (e) {
+      console.error("Failed to update customer type", e);
+    } finally {
+      setUpdatingCustomer(false);
+    }
+  };
+
   const fetchStories = useCallback(async () => {
     if (clientId === "default" || status !== "ready") return;
     setLoadingStories(true);
@@ -1209,6 +1235,32 @@ export default function ChatPage() {
                     </div>
 
                     <div className="space-y-8">
+                      {/* Customer Type Section */}
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-50 pb-2">
+                          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Customer Type / نوع العميل</span>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${selectedCustomer.customer_type === 'vip' ? 'bg-amber-100 text-amber-700' :
+                              selectedCustomer.customer_type === 'lead' ? 'bg-blue-100 text-blue-700' :
+                                selectedCustomer.customer_type === 'customer' ? 'bg-green-100 text-green-700' :
+                                  'bg-slate-100 text-slate-700'
+                            }`}>
+                            {selectedCustomer.customer_type || 'غير محدد'}
+                          </span>
+                        </div>
+                        <select
+                          value={selectedCustomer.customer_type || 'not_set'}
+                          onChange={(e) => updateCustomerType(e.target.value)}
+                          className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-3 text-xs font-black focus:ring-4 focus:ring-brand-blue/5 outline-none transition-all appearance-none cursor-pointer"
+                        >
+                          <option value="not_set">-- اختر النوع --</option>
+                          <option value="lead">عميل محتمل (Lead)</option>
+                          <option value="customer">عميل فعلي (Customer)</option>
+                          <option value="vip">عميل VIP</option>
+                          <option value="support">دعم فني (Support)</option>
+                          <option value="spam">مزعج (Spam)</option>
+                        </select>
+                      </div>
+
                       {/* Tags Section */}
                       <div className="space-y-4">
                         <div className="flex items-center justify-between border-b border-slate-50 pb-2">
