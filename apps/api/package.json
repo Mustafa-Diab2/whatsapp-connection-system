@@ -2,6 +2,7 @@
   "name": "@repo/api",
   "version": "1.0.0",
   "main": "dist/server.js",
+  "description": "WhatsApp Connection API Service",
   "license": "MIT",
   "type": "commonjs",
   "scripts": {
