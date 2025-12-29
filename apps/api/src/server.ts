@@ -475,10 +475,15 @@ app.get("/whatsapp/chats", verifyToken, async (req, res) => {
         const contact = await c.getContact();
         const formatted = await contact.getFormattedNumber();
         const clean = formatted.replace(/\D/g, "");
-        if (clean && clean.length >= 8 && clean.length <= 15) {
+        const rawNumber = contact.number ? contact.number.replace(/\D/g, "") : "";
+
+        // Choose best phone, avoiding the 4203... LID pattern
+        if (clean && clean.length >= 8 && clean.length <= 15 && !clean.startsWith("4203")) {
           realPhone = clean;
-        } else if (contact.number) {
-          realPhone = contact.number.replace(/\D/g, "");
+        } else if (rawNumber && rawNumber.length >= 8 && rawNumber.length <= 15 && !rawNumber.startsWith("4203")) {
+          realPhone = rawNumber;
+        } else if (contact.id.user && contact.id.user.length <= 15 && !contact.id.user.startsWith("4203")) {
+          realPhone = contact.id.user;
         }
 
         if (contact.name || contact.pushname) {
@@ -486,7 +491,14 @@ app.get("/whatsapp/chats", verifyToken, async (req, res) => {
         }
       } catch (e) { }
 
-      const customer = await db.getCustomerByPhone(realPhone, orgId);
+      const conversation = await db.getOrCreateConversation(waChatId, orgId, undefined, realPhone);
+      let customer = conversation.customer;
+
+      // Auto-fix existing customer record if it's an LID
+      if (customer && (customer.phone.length > 15 || customer.phone !== realPhone)) {
+        customer = await db.updateCustomer(customer.id, { phone: realPhone }, orgId);
+        console.log(`[ChatSync] Fixed customer record ${customer.id}: ID -> ${realPhone}`);
+      }
 
       return {
         id: waChatId,

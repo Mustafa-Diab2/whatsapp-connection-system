@@ -251,18 +251,8 @@ export default class WhatsAppManager {
         const info = client.info;
         if (info && info.wid && info.wid.user) {
           const myJid = info.wid._serialized;
-          let myNumber = info.wid.user;
-
-          try {
-            const me = await client.getContactById(myJid);
-            const formatted = await me.getFormattedNumber();
-            const clean = formatted.replace(/\D/g, "");
-            if (clean && clean.length >= 8 && clean.length <= 15) {
-              myNumber = clean;
-            } else if (me.number) {
-              myNumber = me.number.replace(/\D/g, "");
-            }
-          } catch (e) { }
+          const { realPhone } = await this.getOrCreateAndSyncCustomer(clientId, myJid);
+          let myNumber = realPhone;
 
           console.log(`[${clientId}] Connected with true number: ${myNumber}`);
 
@@ -308,16 +298,12 @@ export default class WhatsAppManager {
       console.log(`[${clientId}] Message received from ${message.from}`);
 
       let senderName = null;
-      let realPhone = message.from.split('@')[0];
+      // Resolve true phone and Sync Customer
+      const { realPhone } = await this.getOrCreateAndSyncCustomer(clientId, message.from);
+
       try {
         const contact = await message.getContact();
         senderName = contact.name || contact.pushname || contact.number;
-
-        const formatted = await contact.getFormattedNumber();
-        const clean = formatted.replace(/\D/g, "");
-        if (clean && clean.length >= 8 && clean.length <= 15) {
-          realPhone = clean;
-        }
       } catch (e) { }
 
       const messageData = {
@@ -367,21 +353,14 @@ export default class WhatsAppManager {
       if (message.fromMe) {
         console.log(`[${clientId}] Message sent to ${message.to}`);
 
-        let realPhone = message.to.split('@')[0];
-        try {
-          const contact = await message.getContact();
-          const formatted = await contact.getFormattedNumber();
-          const clean = formatted.replace(/\D/g, "");
-          if (clean && clean.length >= 8 && clean.length <= 15) {
-            realPhone = clean;
-          }
-        } catch (e) { }
+        // Sync Customer for sent message
+        const { realPhone } = await this.getOrCreateAndSyncCustomer(clientId, message.to);
 
         const messageData = {
           id: message.id._serialized,
           from: message.from,
           to: message.to,
-          phone: realPhone, // Added resolved phone
+          phone: realPhone,
           body: message.body,
           timestamp: message.timestamp,
           fromMe: message.fromMe,
@@ -900,27 +879,8 @@ export default class WhatsAppManager {
       const settings = await db.getOrganizationSettings(clientId);
       if (!settings?.auto_assign_enabled) return;
 
-      // 1. Get or create conversation in DB with true phone resolution
-      const contact = await message.getContact();
-      let realPhone = message.from.split('@')[0];
-
-      try {
-        const formatted = await contact.getFormattedNumber();
-        const clean = formatted.replace(/\D/g, "");
-        if (clean && clean.length >= 8 && clean.length <= 15) {
-          realPhone = clean;
-        } else if (contact.number) {
-          realPhone = contact.number.replace(/\D/g, "");
-        }
-      } catch (e) { }
-
-      const conversation = await db.getOrCreateConversation(message.from, clientId, undefined, realPhone);
-
-      // 2. Extra Safety: Update existing customer if the phone was an ID
-      if (conversation.customer && (conversation.customer.phone.length > 15 || conversation.customer.phone !== realPhone)) {
-        await db.updateCustomer(conversation.customer.id, { phone: realPhone }, clientId);
-        console.log(`[ForceFix] Updated customer ${conversation.customer.id} from ID to phone: ${realPhone}`);
-      }
+      // 1. Resolve true phone and Sync Customer (already partially handled in message listener, but good for safety)
+      const { realPhone, conversation } = await this.getOrCreateAndSyncCustomer(clientId, message.from);
 
       // 2. If already assigned, do nothing
       if (conversation.assigned_to) return;
@@ -949,6 +909,54 @@ export default class WhatsAppManager {
     } catch (err) {
       console.error(`[${clientId}] Auto assign error:`, err);
     }
+  }
+
+  // Shared helper to resolve real phone and sync customer
+  private async getOrCreateAndSyncCustomer(clientId: string, waChatId: string): Promise<{ realPhone: string; conversation: any }> {
+    const client = this.clients.get(clientId);
+    let realPhone = waChatId.split('@')[0];
+
+    if (client) {
+      try {
+        const contact = await client.getContactById(waChatId);
+
+        // Strategy 1: getFormattedNumber (usually the most readable)
+        const formatted = await contact.getFormattedNumber();
+        const cleanFormatted = formatted.replace(/\D/g, "");
+
+        // Strategy 2: contact.number (the raw physical number)
+        const rawNumber = contact.number ? contact.number.replace(/\D/g, "") : "";
+
+        // Choose the best one (prefer 8-15 digit numbers that don't look like internal IDs)
+        // Note: Specific pattern 4203 is often used for LIDs
+        if (cleanFormatted && cleanFormatted.length >= 8 && cleanFormatted.length <= 15 && !cleanFormatted.startsWith("4203")) {
+          realPhone = cleanFormatted;
+        } else if (rawNumber && rawNumber.length >= 8 && rawNumber.length <= 15 && !rawNumber.startsWith("4203")) {
+          realPhone = rawNumber;
+        } else if (contact.id.user && contact.id.user.length <= 15 && !contact.id.user.startsWith("4203")) {
+          realPhone = contact.id.user;
+        }
+      } catch (e) {
+        console.warn(`[${clientId}] Could not resolve real phone for ${waChatId}`);
+      }
+    }
+
+    const conversation = await db.getOrCreateConversation(waChatId, clientId, undefined, realPhone);
+
+    // Auto-fix existing records
+    if (conversation.customer) {
+      const currentPhone = conversation.customer.phone || "";
+      // Update if current is empty, an ID (> 15 chars), or looks like the specific pattern in image (4203...)
+      const looksLikeId = currentPhone.length > 15 || (currentPhone.length === 14 && currentPhone.startsWith("4203"));
+
+      if (!currentPhone || looksLikeId || (currentPhone !== realPhone && realPhone.length <= 15)) {
+        await db.updateCustomer(conversation.customer.id, { phone: realPhone }, clientId);
+        console.log(`[${clientId}] [ForceSync] Fixed customer record ${conversation.customer.id}: ${currentPhone} -> ${realPhone}`);
+        conversation.customer.phone = realPhone; // update local object
+      }
+    }
+
+    return { realPhone, conversation };
   }
 
   ensureReadyClient(clientId: string): Client {
