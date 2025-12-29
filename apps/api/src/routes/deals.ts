@@ -37,12 +37,12 @@ router.post("/", verifyToken, validate(createDealSchema), async (req: Request, r
             organization_id: orgId,
             title,
             value: value || 0,
-            customer_id: customerId,
+            customer_id: customerId || null,
             stage_id: stageId,
             priority: priority || 'medium',
             notes,
-            tags: tags || [],
-            expected_close_date: expectedCloseDate
+            tags: Array.isArray(tags) ? tags : [],
+            expected_close_date: expectedCloseDate || null
         });
 
         res.status(201).json({ message: "Deal created", deal });

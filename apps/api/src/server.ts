@@ -140,6 +140,12 @@ async function ensureSchema() {
           EXCEPTION WHEN duplicate_column THEN
             RAISE NOTICE 'column error_message already exists';
           END;
+          
+          BEGIN
+            ALTER TABLE deals ADD COLUMN tags TEXT[] DEFAULT '{}';
+          EXCEPTION WHEN duplicate_column THEN
+            RAISE NOTICE 'column tags already exists in deals table';
+          END;
         END $$;`
     });
 
