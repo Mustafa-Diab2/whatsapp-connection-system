@@ -88,14 +88,17 @@ export default function AIPage() {
 
     const fetchConfig = async () => {
         try {
-            // Add timestamp to prevent caching
-            const res = await fetch(`${apiBase}/bot/config/${clientId}?t=${Date.now()}`, {
+            const token = localStorage.getItem("token");
+            // Remove clientId from path as the API uses orgId from token
+            const res = await fetch(`${apiBase}/bot/config?t=${Date.now()}`, {
+                headers: { "Authorization": `Bearer ${token}` },
                 cache: 'no-store'
             });
             if (res.ok) {
                 const data = await res.json();
                 setConfig(data);
                 setEnabled(data.enabled || false);
+                setAgentForm(prev => ({ ...prev, systemPrompt: data.system_prompt || data.systemPrompt || "" }));
             }
         } catch (err) {
             console.error(err);
@@ -104,7 +107,10 @@ export default function AIPage() {
 
     const fetchAgents = async () => {
         try {
-            const res = await fetch(`${apiBase}/api/agents`);
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${apiBase}/api/agents`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
             if (res.ok) {
                 const data = await res.json();
                 setAgents(data);
@@ -130,12 +136,15 @@ export default function AIPage() {
         setConfig((prev: any) => ({ ...prev, enabled: newStatus }));
 
         try {
+            const token = localStorage.getItem("token");
             await fetch(`${apiBase}/bot/config`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
                 body: JSON.stringify({
                     clientId,
-                    // Use most up-to-date state from config
                     systemPrompt: config?.systemPrompt || config?.system_prompt || "",
                     apiKey: config?.apiKey || config?.api_key || "",
                     enabled: newStatus
@@ -245,16 +254,25 @@ export default function AIPage() {
                         </div>
                         <div>
                             <h3 className="font-semibold text-slate-800">المساعد الرئيسي (Gemini)</h3>
-                            <p className="text-xs text-slate-500 line-clamp-2 mt-1">
-                                {config?.systemPrompt || config?.system_prompt || "لا يوجد وصف"}
-                            </p>
+                            <div className="mt-3 space-y-2">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">شخصية البوت (Persona)</label>
+                                <textarea
+                                    className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-white min-h-[80px] focus:ring-2 focus:ring-brand-blue/20 outline-none"
+                                    placeholder="اكتب كيف يجب أن يتحدث البوت هنا..."
+                                    value={config?.systemPrompt || config?.system_prompt || ""}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setConfig((prev: any) => ({ ...prev, system_prompt: val, systemPrompt: val }));
+                                    }}
+                                />
+                            </div>
                         </div>
                         <div className="flex gap-2 pt-2">
                             <button
                                 onClick={() => toggleBot()}
-                                className={`flex-1 btn py-2 text-white transition ${enabled ? 'bg-red-500 hover:bg-red-600' : 'bg-brand-green hover:bg-green-600'}`}
+                                className={`flex-1 btn py-2 text-white transition font-bold shadow-sm ${enabled ? 'bg-red-500 hover:bg-red-600' : 'bg-brand-green hover:bg-green-600'}`}
                             >
-                                {enabled ? 'إيقاف البوت' : 'تفعيل البوت'}
+                                {enabled ? 'إيقاف البوت' : 'تفعيل وحفظ'}
                             </button>
                         </div>
                     </div>
