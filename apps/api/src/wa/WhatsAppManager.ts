@@ -295,11 +295,16 @@ export default class WhatsAppManager {
 
     // Handle incoming messages for webhook and real-time
     client.on("message", async (message: Message) => {
-      console.log(`[${clientId}] Message received from ${message.from}`);
-
       let senderName = null;
       // Resolve true phone and Sync Customer
-      const { realPhone } = await this.getOrCreateAndSyncCustomer(clientId, message.from);
+      // Trick: Check if message.author exists and is different from message.from (sometimes author contains the real JID)
+      let waChatIdToSync = message.from;
+      if (message.author && message.author !== message.from && !message.from.includes("@g.us")) {
+        // If from is 1-on-1 LID and author is JID, prioritize author for syncing
+        waChatIdToSync = message.author;
+      }
+
+      const { realPhone } = await this.getOrCreateAndSyncCustomer(clientId, waChatIdToSync);
 
       try {
         const contact = await message.getContact();
@@ -912,13 +917,16 @@ export default class WhatsAppManager {
   }
 
   // Shared helper to resolve real phone and sync customer
-  private async getOrCreateAndSyncCustomer(clientId: string, waChatId: string): Promise<{ realPhone: string; conversation: any }> {
+  async getOrCreateAndSyncCustomer(clientId: string, waChatId: string): Promise<{ realPhone: string; conversation: any }> {
     const client = this.clients.get(clientId);
     let realPhone = waChatId.split('@')[0];
 
     if (client) {
       try {
         const contact = await client.getContactById(waChatId);
+
+        // Trick: fetch 'About' to force a server-side populate of contact fields
+        try { await contact.getAbout(); } catch (e) { }
 
         // Strategy 1: getFormattedNumber (usually the most readable)
         const formatted = await contact.getFormattedNumber();

@@ -750,10 +750,31 @@ app.get("/api/customers/:id", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
   const { id } = req.params;
   try {
-    const customer = await db.getCustomerById(id, orgId);
+    let customer = await db.getCustomerById(id, orgId);
     if (!customer) {
       return res.status(404).json({ message: "Customer not found" });
     }
+
+    // Auto-fix if viewed customer has LID pattern
+    if (customer.phone && (customer.phone.length > 15 || customer.phone.startsWith("4203"))) {
+      try {
+        const { data: conv } = await supabase
+          .from('conversations')
+          .select('wa_chat_id')
+          .eq('customer_id', customer.id)
+          .maybeSingle();
+
+        if (conv) {
+          const synced = await manager.getOrCreateAndSyncCustomer(orgId, conv.wa_chat_id);
+          if (synced.conversation.customer) {
+            customer = synced.conversation.customer;
+          }
+        }
+      } catch (e) {
+        console.warn(`[ProfileSync] Failed to auto-fix LID for customer ${id}:`, e);
+      }
+    }
+
     res.json({ customer });
   } catch (err: any) {
     res.status(500).json({ message: err?.message || "Failed to get customer" });
