@@ -7,8 +7,17 @@ const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const clientId = "default";
 
 export default function AIPage() {
-    const [activeTab, setActiveTab] = useState<"agents" | "training" | "analytics">("agents");
+    const [activeTab, setActiveTab] = useState<"agents" | "rules" | "training" | "analytics">("agents");
     const [showModal, setShowModal] = useState(false);
+    const [showRuleModal, setShowRuleModal] = useState(false);
+
+    // Rules State
+    const [rules, setRules] = useState<any[]>([]);
+    const [ruleForm, setRuleForm] = useState({
+        trigger_keywords: "",
+        response_text: "",
+        match_type: "contains" as "exact" | "contains" | "regex"
+    });
 
     // Agents List State
     const [agents, setAgents] = useState<any[]>([]);
@@ -28,6 +37,61 @@ export default function AIPage() {
     // Training State
     const [documents, setDocuments] = useState<any[]>([]);
     const [trainingLoading, setTrainingLoading] = useState(false);
+
+    const fetchRules = async () => {
+        try {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${apiBase}/bot/rules`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setRules(data.rules || []);
+            }
+        } catch (err) {
+            console.error("Failed to fetch rules", err);
+        }
+    };
+
+    const handleAddRule = async () => {
+        if (!ruleForm.trigger_keywords || !ruleForm.response_text) return;
+        try {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${apiBase}/bot/rules`, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    trigger_keywords: ruleForm.trigger_keywords.split(",").map(k => k.trim()),
+                    response_text: ruleForm.response_text,
+                    match_type: ruleForm.match_type
+                })
+            });
+            if (res.ok) {
+                setShowRuleModal(false);
+                setRuleForm({ trigger_keywords: "", response_text: "", match_type: "contains" });
+                fetchRules();
+            }
+        } catch (err) {
+            console.error("Failed to add rule", err);
+        }
+    };
+
+    const handleDeleteRule = async (id: string) => {
+        if (!confirm("هل أنت متأكد من حذف هذه القاعدة؟")) return;
+        try {
+            const token = localStorage.getItem("token");
+            await fetch(`${apiBase}/bot/rules/${id}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            fetchRules();
+        } catch (err) {
+            console.error("Failed to delete rule", err);
+        }
+    };
 
     const fetchDocuments = async () => {
         try {
@@ -122,26 +186,33 @@ export default function AIPage() {
         }
     };
 
-    useEffect(() => {
-        const token = localStorage.getItem("token");
-        const socket = io(apiBase, {
-            auth: { token }
-        });
-
-        socket.on("bot:error", (data: { message: string }) => {
-            setBotError(data.message);
-            setTimeout(() => setBotError(null), 5000);
-        });
-
-        return () => {
-            socket.disconnect();
-        };
-    }, []);
+    const saveConfig = async (currentConfig: any) => {
+        try {
+            const token = localStorage.getItem("token");
+            await fetch(`${apiBase}/bot/config`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    clientId,
+                    systemPrompt: currentConfig.system_prompt || currentConfig.systemPrompt,
+                    apiKey: currentConfig.api_key || currentConfig.apiKey,
+                    enabled: currentConfig.enabled,
+                    botMode: currentConfig.bot_mode || currentConfig.botMode || "ai"
+                })
+            });
+        } catch (err) {
+            console.error("Failed to auto-save config", err);
+        }
+    };
 
     useEffect(() => {
         fetchConfig();
         fetchAgents();
         fetchDocuments();
+        fetchRules();
         setLoading(false);
     }, []);
 
@@ -165,7 +236,8 @@ export default function AIPage() {
                     clientId,
                     systemPrompt: config?.systemPrompt || config?.system_prompt || "",
                     apiKey: config?.apiKey || config?.api_key || "",
-                    enabled: newStatus
+                    enabled: newStatus,
+                    botMode: config?.bot_mode || config?.botMode || "ai"
                 })
             });
             // 2. Refresh to confirm
@@ -240,7 +312,8 @@ export default function AIPage() {
             {/* Tabs */}
             <div className="flex gap-2 border-b border-slate-200">
                 {[
-                    { key: "agents", label: "الوكلاء" },
+                    { key: "agents", label: "الوكلاء الذكية" },
+                    { key: "rules", label: "قواعد الرد السريع" },
                     { key: "training", label: "التدريب" },
                     { key: "analytics", label: "التحليلات" },
                 ].map((tab) => (
@@ -252,6 +325,14 @@ export default function AIPage() {
                         {tab.label}
                     </button>
                 ))}
+                {activeTab === "rules" && (
+                    <button
+                        className="btn bg-brand-green/20 text-brand-green text-xs px-4 py-1 self-center ml-auto hover:bg-brand-green hover:text-white"
+                        onClick={() => setShowRuleModal(true)}
+                    >
+                        + إضافة قاعدة
+                    </button>
+                )}
             </div>
 
             {/* Agents Tab */}
@@ -277,17 +358,57 @@ export default function AIPage() {
                                     ⚠️ خطأ: {botError}
                                 </div>
                             )}
-                            <div className="mt-3 space-y-2">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">شخصية البوت (Persona)</label>
-                                <textarea
-                                    className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-white min-h-[80px] focus:ring-2 focus:ring-brand-blue/20 outline-none"
-                                    placeholder="اكتب كيف يجب أن يتحدث البوت هنا..."
-                                    value={config?.systemPrompt || config?.system_prompt || ""}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        setConfig((prev: any) => ({ ...prev, system_prompt: val, systemPrompt: val }));
-                                    }}
-                                />
+                            <div className="mt-3 space-y-4">
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">شخصية البوت (Persona)</label>
+                                    <textarea
+                                        className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-white min-h-[80px] focus:ring-2 focus:ring-brand-blue/20 outline-none"
+                                        placeholder="اكتب كيف يجب أن يتحدث البوت هنا..."
+                                        value={config?.systemPrompt || config?.system_prompt || ""}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setConfig((prev: any) => ({ ...prev, system_prompt: val, systemPrompt: val }));
+                                        }}
+                                    />
+                                </div>
+
+                                <div className="p-3 bg-slate-100/50 rounded-xl space-y-2 border border-slate-200">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase block">وضع التشغيل (Operation Mode)</label>
+                                    <div className="grid grid-cols-3 gap-1">
+                                        {[
+                                            { id: 'ai', label: 'AI فقط', color: 'blue' },
+                                            { id: 'local', label: 'محلي فقط', color: 'green' },
+                                            { id: 'hybrid', label: 'هجين', color: 'purple' }
+                                        ].map(m => {
+                                            const isActive = (config?.botMode === m.id || config?.bot_mode === m.id);
+                                            const activeClasses = {
+                                                blue: 'bg-blue-500 text-white border-blue-500 shadow-sm',
+                                                green: 'bg-green-500 text-white border-green-500 shadow-sm',
+                                                purple: 'bg-purple-500 text-white border-purple-500 shadow-sm'
+                                            }[m.color as 'blue' | 'green' | 'purple'];
+
+                                            return (
+                                                <button
+                                                    key={m.id}
+                                                    onClick={() => {
+                                                        const newConf = { ...config, botMode: m.id, bot_mode: m.id };
+                                                        setConfig(newConf);
+                                                        saveConfig(newConf);
+                                                    }}
+                                                    className={`text-[10px] py-1 rounded-lg border transition ${isActive ? activeClasses : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                                                        }`}
+                                                >
+                                                    {m.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="text-[9px] text-slate-400 italic">
+                                        {(config?.botMode === 'hybrid' || config?.bot_mode === 'hybrid') && "* يبحث في القواعد أولاً ثم ينتقل للذكاء الاصطناعي"}
+                                        {(config?.botMode === 'local' || config?.bot_mode === 'local') && "* تشغيل الردود المبرمجة فقط (توفير API)"}
+                                        {(config?.botMode === 'ai' || config?.bot_mode === 'ai') && "* يعتمد بالكامل على الذكاء الاصطناعي"}
+                                    </p>
+                                </div>
                             </div>
                         </div>
                         <div className="flex gap-2 pt-2">
@@ -325,7 +446,47 @@ export default function AIPage() {
                 </div>
             )}
 
-            {/* Training Tab */}
+            {/* Rules Tab */}
+            {activeTab === "rules" && (
+                <div className="space-y-4">
+                    {rules.length === 0 ? (
+                        <div className="card p-12 text-center space-y-4">
+                            <div className="text-4xl">📝</div>
+                            <h3 className="text-lg font-bold text-slate-700">لا يوجد قواعد حالياً</h3>
+                            <p className="text-sm text-slate-500 max-w-xs mx-auto">قم بإضافة كلمات مفتاحية ليقوم البوت بالرد التلقائي عليها فوراً وبدون تكلفة API.</p>
+                            <button onClick={() => setShowRuleModal(true)} className="btn bg-brand-blue text-white px-6">إضافة أول قاعدة</button>
+                        </div>
+                    ) : (
+                        <div className="grid gap-4">
+                            {rules.map((rule) => (
+                                <div key={rule.id} className="card p-4 flex items-start justify-between gap-4 hover:border-brand-blue/30 transition-all">
+                                    <div className="space-y-2">
+                                        <div className="flex gap-2 items-center">
+                                            {rule.trigger_keywords.map((kw: string) => (
+                                                <span key={kw} className="bg-blue-50 text-brand-blue text-[10px] px-2 py-0.5 rounded-md font-bold border border-blue-100">
+                                                    {kw}
+                                                </span>
+                                            ))}
+                                            <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded uppercase font-bold tracking-tighter">
+                                                {rule.match_type}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-slate-700 font-medium bg-slate-50 p-2 rounded-lg border border-slate-100 leading-relaxed italic">
+                                            "{rule.response_text}"
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={() => handleDeleteRule(rule.id)}
+                                        className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                                    >
+                                        🗑️
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
             {activeTab === "training" && (
                 <div className="space-y-6">
                     <div className="card p-8 bg-white shadow-xl shadow-slate-200/50 rounded-[2rem] border-none group">
@@ -463,6 +624,62 @@ export default function AIPage() {
                                 إلغاء
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+            {/* Local Bot Rule Modal */}
+            {showRuleModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                    <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 space-y-6">
+                        <div className="flex justify-between items-center">
+                            <h3 className="text-xl font-black text-slate-800 tracking-tight">إضافة قاعدة رد محلي</h3>
+                            <button onClick={() => setShowRuleModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">كلمات زناد (Trigger Keywords)</label>
+                                <input
+                                    type="text"
+                                    className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-brand-blue/20 text-sm"
+                                    placeholder="سعر, بكام, تكلفة (افصل بفاصلة)"
+                                    value={ruleForm.trigger_keywords}
+                                    onChange={(e) => setRuleForm({ ...ruleForm, trigger_keywords: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">الرد التلقائي</label>
+                                <textarea
+                                    className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-brand-blue/20 text-sm min-h-[100px]"
+                                    placeholder="اكتب الرد الذي سيصل للعميل..."
+                                    value={ruleForm.response_text}
+                                    onChange={(e) => setRuleForm({ ...ruleForm, response_text: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">نوع المطابقة</label>
+                                <div className="flex gap-2">
+                                    {["contains", "exact", "regex"].map((m) => (
+                                        <button
+                                            key={m}
+                                            onClick={() => setRuleForm({ ...ruleForm, match_type: m as any })}
+                                            className={`flex-1 py-2 text-[10px] font-black rounded-lg border transition ${ruleForm.match_type === m ? 'bg-brand-blue text-white border-brand-blue' : 'bg-white text-slate-500 border-slate-200'}`}
+                                        >
+                                            {m.toUpperCase()}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={handleAddRule}
+                            className="w-full btn bg-brand-blue text-white py-4 font-black shadow-lg shadow-blue-200 disabled:opacity-50"
+                        >
+                            حفظ القاعدة
+                        </button>
                     </div>
                 </div>
             )}

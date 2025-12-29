@@ -686,13 +686,26 @@ app.post("/bot/config", verifyToken, async (req, res) => {
       system_prompt: systemPrompt,
       api_key: apiKey,
       enabled,
+      bot_mode: req.body.botMode || 'ai',
       organization_id: orgId
     });
-    manager.setBotConfig(orgId, { systemPrompt, apiKey, enabled });
+    manager.setBotConfig(orgId, {
+      systemPrompt,
+      apiKey,
+      enabled,
+      botMode: req.body.botMode || 'ai',
+      organizationId: orgId
+    });
     res.json({ ok: true });
   } catch (err: any) {
     console.error("Failed to save bot config:", err);
-    manager.setBotConfig(orgId, { systemPrompt, apiKey, enabled });
+    manager.setBotConfig(orgId, {
+      systemPrompt,
+      apiKey,
+      enabled,
+      botMode: req.body.botMode || 'ai',
+      organizationId: orgId
+    });
     res.json({ ok: true, warning: "Saved to memory only" });
   }
 });

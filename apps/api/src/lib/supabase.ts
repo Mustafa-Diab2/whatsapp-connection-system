@@ -366,6 +366,7 @@ export const db = {
         enabled?: boolean;
         system_prompt?: string;
         api_key?: string;
+        bot_mode?: string;
         organization_id: string;
     }) {
         const { data, error } = await supabase
@@ -511,6 +512,77 @@ export const db = {
         const { data, error } = await supabase
             .from('ai_agents')
             .insert(agent)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    // ========== LOCAL BOT RULES ==========
+    async getBotRules(organizationId: string) {
+        const { data, error } = await supabase
+            .from('bot_rules')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .eq('is_active', true)
+            .order('priority', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    },
+
+    async createBotRule(rule: any) {
+        const { data, error } = await supabase
+            .from('bot_rules')
+            .insert(rule)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async updateBotRule(id: string, updates: any, organizationId: string) {
+        const { data, error } = await supabase
+            .from('bot_rules')
+            .update(updates)
+            .eq('id', id)
+            .eq('organization_id', organizationId)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async deleteBotRule(id: string, organizationId: string) {
+        const { error } = await supabase
+            .from('bot_rules')
+            .delete()
+            .eq('id', id)
+            .eq('organization_id', organizationId);
+        if (error) throw error;
+        return true;
+    },
+
+    // ========== BOT SESSIONS ==========
+    async getBotSession(organizationId: string, phone: string) {
+        const { data, error } = await supabase
+            .from('bot_sessions')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .eq('customer_phone', phone)
+            .single();
+        if (error && error.code !== 'PGRST116') throw error;
+        return data;
+    },
+
+    async updateBotSession(organizationId: string, phone: string, updates: any) {
+        const { data, error } = await supabase
+            .from('bot_sessions')
+            .upsert({
+                organization_id: organizationId,
+                customer_phone: phone,
+                ...updates,
+                last_interaction: new Date().toISOString()
+            }, { onConflict: 'organization_id,customer_phone' })
             .select()
             .single();
         if (error) throw error;

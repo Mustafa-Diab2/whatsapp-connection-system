@@ -27,6 +27,7 @@ export type BotConfig = {
   systemPrompt: string;
   apiKey: string;
   enabled: boolean;
+  botMode: "ai" | "local" | "hybrid";
   organizationId?: string;
 };
 
@@ -72,6 +73,7 @@ export default class WhatsAppManager {
           systemPrompt: config.system_prompt || "",
           apiKey: config.api_key || "",
           enabled: config.enabled || false,
+          botMode: (config.bot_mode as any) || "ai",
           organizationId
         });
         console.log(`[WhatsAppManager] Loaded bot config for Org ${organizationId}`);
@@ -581,13 +583,13 @@ export default class WhatsAppManager {
     responseTimeMs: number;
   }> = [];
 
-  setBotConfig(clientId: string, config: { systemPrompt: string; apiKey: string; enabled: boolean }) {
+  setBotConfig(clientId: string, config: BotConfig) {
     this.botConfigs.set(clientId, config);
-    console.log(`[${clientId}] Bot config updated: ${config.enabled ? "Enabled" : "Disabled"}`);
+    console.log(`[${clientId}] Bot config updated: ${config.enabled ? "Enabled" : "Disabled"} (Mode: ${config.botMode})`);
   }
 
-  getBotConfig(clientId: string) {
-    return this.botConfigs.get(clientId) || { systemPrompt: "", apiKey: "", enabled: false };
+  getBotConfig(clientId: string): BotConfig {
+    return this.botConfigs.get(clientId) || { systemPrompt: "", apiKey: "", enabled: false, botMode: "ai" };
   }
 
   getBotActivities(limit = 20) {
@@ -755,15 +757,25 @@ export default class WhatsAppManager {
 
     const startTime = Date.now();
 
-    // Analyze message
+    let response = "";
+
+    // Check Local Rules first if applicable
+    if (config.botMode === "local" || config.botMode === "hybrid") {
+      const localMatch = await this.handleLocalBotReply(clientId, testMessage);
+      if (localMatch) {
+        response = localMatch;
+      }
+    }
+
+    // Fallback to AI if needed
+    if (!response && (config.botMode === "ai" || config.botMode === "hybrid")) {
+      response = await this.generateAIReply(config.apiKey, config.systemPrompt, testMessage);
+    }
+
     const analysis = await this.analyzeMessage(config.apiKey, testMessage);
-
-    // Generate response
-    const response = await this.generateAIReply(config.apiKey, config.systemPrompt, testMessage);
-
     const responseTimeMs = Date.now() - startTime;
 
-    return { analysis, response, responseTimeMs };
+    return { analysis, response: response || "لم يتم العثور على رد مناسب.", responseTimeMs };
   }
 
   private async handleBotReply(clientId: string, message: Message) {
@@ -780,6 +792,7 @@ export default class WhatsAppManager {
           apiKey: dbConfig.api_key || "",
           systemPrompt: dbConfig.system_prompt || "",
           enabled: dbConfig.enabled || false,
+          botMode: (dbConfig.bot_mode as any) || "ai",
           organizationId: dbConfig.organization_id
         };
         orgId = dbConfig.organization_id;
@@ -820,24 +833,38 @@ export default class WhatsAppManager {
           content: m.body
         }));
 
-      // Step 3: Generate response with RAG
-      // If no orgId, we can't do RAG properly, fallback to normal reply without context docs
+      // Step 3: Generate response
       let replyText = "";
-
-      // Diagnostic: Check if API key exists (either in config or env)
-      const effectiveKey = config.apiKey || process.env.GEMINI_API_KEY;
-      if (!effectiveKey) {
-        console.error(`[${clientId}] [Bot] CRITICAL: No Gemini API Key found! Check .env or Bot settings.`);
-        this.io.to(clientId).emit("bot:error", { message: "No API Key found" });
-        return;
+      // Diagnostic: Check if API key exists (only if mode needs AI)
+      if (config.botMode === "ai" || config.botMode === "hybrid") {
+        const effectiveKey = config.apiKey || process.env.GEMINI_API_KEY;
+        if (!effectiveKey) {
+          console.error(`[${clientId}] [Bot] CRITICAL: No Gemini API Key found! Check .env or Bot settings.`);
+          this.io.to(clientId).emit("bot:error", { message: "No API Key found" });
+          // If purely AI, we must abort. If hybrid, we can still try local below
+          if (config.botMode === "ai") return;
+        }
       }
 
-      if (orgId) {
-        console.log(`[${clientId}] [Bot] Using RAG for Org ${orgId}`);
-        replyText = await ai.generateRAGReply(message.body, conversationHistory, orgId, config.systemPrompt);
-      } else {
-        console.log(`[${clientId}] [Bot] Fallback to direct AI (No Org ID)`);
-        replyText = await ai.generateReply(config.systemPrompt + "\n\nUser: " + message.body, conversationHistory);
+      // --- [LOCAL BOT LAYER] ---
+      if (orgId && (config.botMode === "local" || config.botMode === "hybrid")) {
+        console.log(`[${clientId}] [Bot] Checking local rules...`);
+        const localReply = await this.handleLocalBotReply(orgId, message.body);
+        if (localReply) {
+          console.log(`[${clientId}] [Bot] Local match found!`);
+          replyText = localReply;
+        }
+      }
+
+      // --- [AI BOT LAYER] (Fallback or Primary) ---
+      if (!replyText && (config.botMode === "ai" || config.botMode === "hybrid")) {
+        if (orgId) {
+          console.log(`[${clientId}] [Bot] Using RAG for Org ${orgId}`);
+          replyText = await ai.generateRAGReply(message.body, conversationHistory, orgId, config.systemPrompt);
+        } else {
+          console.log(`[${clientId}] [Bot] Fallback to direct AI (No Org ID)`);
+          replyText = await ai.generateReply(config.systemPrompt + "\n\nUser: " + message.body, conversationHistory);
+        }
       }
 
       const responseTimeMs = Date.now() - startTime;
@@ -1113,6 +1140,34 @@ export default class WhatsAppManager {
       console.error(`[${clientId}] Failed to get stories:`, err);
       return [];
     }
+  }
+  private async handleLocalBotReply(organizationId: string, userMessage: string): Promise<string | null> {
+    try {
+      const rules = await db.getBotRules(organizationId);
+      const normalizedMsg = userMessage.toLowerCase().trim();
+
+      for (const rule of rules) {
+        const keywords = rule.trigger_keywords || [];
+        const isMatch = keywords.some((kw: string) => {
+          const normalizedKw = kw.toLowerCase().trim();
+          if (rule.match_type === "exact") {
+            return normalizedMsg === normalizedKw;
+          } else if (rule.match_type === "regex") {
+            try { return new RegExp(normalizedKw, "i").test(normalizedMsg); } catch (e) { return false; }
+          } else {
+            // Default: contains
+            return normalizedMsg.includes(normalizedKw);
+          }
+        });
+
+        if (isMatch) {
+          return rule.response_text;
+        }
+      }
+    } catch (e) {
+      console.error("[LocalBot] Failed to process rules:", e);
+    }
+    return null;
   }
 }
 
