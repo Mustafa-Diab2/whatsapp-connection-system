@@ -370,6 +370,17 @@ app.post("/whatsapp/send", verifyToken, async (req, res) => {
   }
 });
 
+app.post("/whatsapp/send-contact", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  const { chatId, contactId } = req.body;
+  try {
+    const result = await manager.sendContact(orgId, chatId, contactId);
+    res.json({ ok: true, result });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, message: err?.message || "Failed to send contact" });
+  }
+});
+
 app.post("/whatsapp/send-media", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
   const { chatId, base64, mimetype, filename, caption } = req.body;
@@ -462,6 +473,30 @@ app.post("/whatsapp/reset", verifyToken, async (req, res) => {
   }
 });
 
+app.get("/whatsapp/me", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  try {
+    const client = manager.ensureReadyClient(orgId);
+    let profilePicUrl = null;
+    try {
+      profilePicUrl = await client.getProfilePicUrl(client.info.wid._serialized);
+    } catch (e) { }
+
+    res.json({
+      ok: true,
+      info: {
+        pushname: client.info.pushname,
+        wid: client.info.wid,
+        platform: client.info.platform,
+        phone: client.info.wid.user,
+        profilePicUrl
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, message: err?.message || "Client not ready" });
+  }
+});
+
 app.post("/whatsapp/disconnect", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
   try {
@@ -475,10 +510,14 @@ app.post("/whatsapp/disconnect", verifyToken, async (req, res) => {
 // Get chats
 app.get("/whatsapp/chats", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
+  const limit = req.query.limit ? parseInt(req.query.limit as string) : 0; // 0 = all
+
   try {
     const client = manager.ensureReadyClient(orgId);
     const chats = await client.getChats();
-    const simplified = await Promise.all(chats.slice(0, 50).map(async (c) => {
+    const chatsToProcess = limit > 0 ? chats.slice(0, limit) : chats;
+
+    const simplified = await Promise.all(chatsToProcess.map(async (c) => {
       const waChatId = c.id._serialized;
       let realPhone = waChatId.split('@')[0];
       let name = c.name || c.id.user;

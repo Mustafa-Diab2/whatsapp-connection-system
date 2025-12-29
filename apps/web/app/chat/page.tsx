@@ -139,6 +139,7 @@ export default function ChatPage() {
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
+  const [meInfo, setMeInfo] = useState<{ pushname: string; phone: string; profilePicUrl?: string; wid?: any } | null>(null);
   const [loadingChats, setLoadingChats] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
@@ -427,30 +428,45 @@ export default function ChatPage() {
       setStatus("error");
       // setErrorMsg("تعذر جلب حالة الاتصال"); // Don't show error immediately on init
     }
-  }, [clientId]);
+  }, [clientId, initialChatEncoded]);
 
-  const fetchChats = useCallback(async () => {
+  const fetchMe = useCallback(async () => {
+    try {
+      const res = await fetch(`${apiBase}/whatsapp/me`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.ok) setMeInfo(data.info);
+    } catch (e) {
+      console.error("Failed to fetch me info", e);
+    }
+  }, []);
+
+  const autoSelectedRef = useRef(false);
+
+  const fetchChats = useCallback(async (limit = 0) => {
     if (clientId === "default") return;
-    setLoadingChats(true);
+    setLoadingChats(limit > 0); // Only show loader for initial batch
     setErrorMsg(null);
     try {
       // API endpoints now use token for auth/orgId
-      const res = await fetch(`${apiBase}/whatsapp/chats`, {
+      const res = await fetch(`${apiBase}/whatsapp/chats?limit=${limit}`, {
         headers: getAuthHeaders()
       });
       if (!res.ok) throw new Error("تعذر جلب المحادثات");
       const data = await res.json();
       setChats(data.chats || []);
-      if (data.chats?.length && !selectedChat) {
+
+      // Auto-select first chat only once
+      if (data.chats?.length && !autoSelectedRef.current && !selectedChat) {
         setSelectedChat(data.chats[0].id);
+        autoSelectedRef.current = true;
       }
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err?.message || "فشل تحميل المحادثات");
+      if (limit > 0) setErrorMsg(err?.message || "فشل تحميل المحادثات");
     } finally {
-      setLoadingChats(false);
+      if (limit > 0) setLoadingChats(false);
     }
-  }, [selectedChat, clientId]);
+  }, [clientId]); // Stable dependency
 
   const filteredChats = useMemo(() => {
     if (!searchQuery.trim()) return chats;
@@ -503,10 +519,22 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (status === "ready") {
-      void fetchChats();
+      void fetchMe();
+
+      // Phase 1: Fetch first 50 for speed
+      void fetchChats(50);
+
+      // Phase 2: Fetch all after 30 seconds
+      const timer = setTimeout(() => {
+        // console.log("Fetching remaining chats...");
+        void fetchChats(0);
+      }, 30000);
+
       void fetchStories();
+
+      return () => clearTimeout(timer);
     }
-  }, [status, fetchChats, fetchStories]);
+  }, [status, fetchChats, fetchStories, fetchMe]);
 
   useEffect(() => {
     if (selectedChat && status === "ready") {
@@ -548,7 +576,7 @@ export default function ChatPage() {
     } finally {
       setSending(false);
     }
-  }, [selectedChat, messageInput, clientId]);
+  }, [selectedChat, messageInput, clientId, replyingTo]);
 
   const startRecording = async () => {
     try {
@@ -590,6 +618,25 @@ export default function ChatPage() {
       setErrorMsg("يجب السماح بالوصول للميكروفون لتسجيل الرسائل الصوتية");
     }
   };
+
+  const shareMyContact = useCallback(async () => {
+    if (!selectedChat || !meInfo) return;
+    try {
+      const res = await fetch(`${apiBase}/whatsapp/send-contact`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          chatId: selectedChat,
+          contactId: meInfo.wid._serialized
+        })
+      });
+      if (res.ok) {
+        // Optimistic UI feedback or success message
+      }
+    } catch (e) {
+      console.error("Failed to share contact", e);
+    }
+  }, [selectedChat, meInfo]);
 
   const stopRecording = () => {
     if (mediaRecorderRef.current) {
@@ -788,6 +835,36 @@ export default function ChatPage() {
           flex-col card overflow-hidden transition-all duration-300 bg-white
           ${selectedChat ? 'hidden lg:flex lg:w-[350px]' : 'flex w-full lg:w-[380px]'}
         `}>
+          {/* Sidebar Header */}
+          <div className="flex items-center justify-between p-6 border-b border-slate-50 bg-white sticky top-0 z-10">
+            <div className="flex items-center gap-3">
+              {status === 'ready' && meInfo ? (
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <img
+                      src={meInfo.profilePicUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(meInfo.pushname)}&background=random`}
+                      className="h-10 w-10 rounded-2xl object-cover ring-2 ring-white shadow-sm"
+                      alt="Profile"
+                    />
+                    <div className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-white bg-green-500"></div>
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-black text-slate-800 leading-none mb-1">{meInfo.pushname}</h2>
+                    <p className="text-[10px] font-bold text-slate-400" dir="ltr">+{meInfo.phone}</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="h-10 w-10 rounded-2xl bg-brand-blue flex items-center justify-center text-white font-black shadow-lg shadow-blue-500/20">W</div>
+                  <h2 className="text-lg font-black text-slate-800 tracking-tight">المحادثات</h2>
+                </>
+              )}
+            </div>
+            <div className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${statusColors[status]} transition-all duration-500 shadow-sm border border-white/50`}>
+              {statusLabels[status]}
+            </div>
+          </div>
+
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4 shrink-0 bg-slate-50/50">
             <h3 className="font-black text-slate-800 text-lg">المحادثات</h3>
             <div className="flex gap-2">
@@ -808,7 +885,7 @@ export default function ChatPage() {
               </button>
               <button
                 className="h-9 px-4 text-xs font-black bg-brand-blue text-white rounded-xl shadow-sm hover:shadow-md hover:bg-blue-700 transition-all disabled:opacity-50"
-                onClick={fetchChats}
+                onClick={() => fetchChats(0)}
                 disabled={loadingChats || status !== "ready"}
               >
                 تحديث
@@ -1144,6 +1221,7 @@ export default function ChatPage() {
                 <button onClick={() => setShowQuickReplies(!showQuickReplies)} className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black transition-all ${showQuickReplies ? 'bg-brand-blue text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>⚡ الردود</button>
                 <button onClick={() => fileInputRef.current?.click()} className="shrink-0 px-4 py-1.5 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 text-[10px] font-black">📎 ملفات</button>
                 <button onClick={sendLocation} className="shrink-0 px-4 py-1.5 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 text-[10px] font-black">📍 الموقع</button>
+                <button onClick={shareMyContact} className="shrink-0 px-4 py-1.5 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 text-[10px] font-black">👤 هويتي</button>
                 <button onClick={() => setShowEmojis(!showEmojis)} className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black transition-all ${showEmojis ? 'bg-amber-400 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>😊 فيسات</button>
               </div>
 
@@ -1240,9 +1318,9 @@ export default function ChatPage() {
                         <div className="flex items-center justify-between border-b border-slate-50 pb-2">
                           <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Customer Type / نوع العميل</span>
                           <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${selectedCustomer.customer_type === 'vip' ? 'bg-amber-100 text-amber-700' :
-                              selectedCustomer.customer_type === 'lead' ? 'bg-blue-100 text-blue-700' :
-                                selectedCustomer.customer_type === 'customer' ? 'bg-green-100 text-green-700' :
-                                  'bg-slate-100 text-slate-700'
+                            selectedCustomer.customer_type === 'lead' ? 'bg-blue-100 text-blue-700' :
+                              selectedCustomer.customer_type === 'customer' ? 'bg-green-100 text-green-700' :
+                                'bg-slate-100 text-slate-700'
                             }`}>
                             {selectedCustomer.customer_type || 'غير محدد'}
                           </span>

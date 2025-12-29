@@ -1069,6 +1069,18 @@ export default class WhatsAppManager {
     }
   }
 
+  async sendContact(clientId: string, to: string, contactId: string): Promise<{ ok: boolean; messageId?: string }> {
+    const client = this.ensureReadyClient(clientId);
+    try {
+      const contact = await client.getContactById(contactId);
+      const msg = await client.sendMessage(to, contact);
+      return { ok: true, messageId: msg.id._serialized };
+    } catch (err: any) {
+      console.error(`[${clientId}] Failed to send contact:`, err.message);
+      throw err;
+    }
+  }
+
   async sendMediaMessage(clientId: string, to: string, base64: string, mimetype: string, filename?: string, caption?: string): Promise<{ ok: boolean; messageId?: string }> {
     const client = this.ensureReadyClient(clientId);
 
