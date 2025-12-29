@@ -345,7 +345,9 @@ export default class WhatsAppManager {
 
       await this.sendWebhook(payload);
 
-      // Add delay to prevent immediate reply overlap
+      // Increment stats
+      void db.incrementDailyStat("messages_received", 1, clientId);
+
       // Add delay to prevent immediate reply overlap
       setTimeout(() => {
         void this.handleBotReply(clientId, message);
@@ -380,6 +382,9 @@ export default class WhatsAppManager {
           clientId,
           message: messageData,
         });
+
+        // Increment stats
+        void db.incrementDailyStat("messages_sent", 1, clientId);
       }
     });
   }

@@ -400,16 +400,27 @@ export const db = {
             .select('status')
             .eq('organization_id', organizationId);
 
+        // Also query conversations as they represent active WhatsApp chats
+        const { data: conversations } = await supabase
+            .from('conversations')
+            .select('status')
+            .eq('organization_id', organizationId);
+
         const { data: deals } = await supabase
             .from('deals')
             .select('value')
             .eq('organization_id', organizationId);
 
+        // Priority for 'openThreads': If there are open conversations, use them. 
+        // In many cases, these terms are used interchangeably in the UI.
+        const openConversationsCount = conversations?.filter((c) => c.status === 'open').length || 0;
+        const openThreadsCount = threads?.filter((t) => t.status === 'open').length || 0;
+
         return {
             totalCustomers: customers?.length || 0,
             activeCustomers: customers?.filter((c) => c.status === 'active').length || 0,
             totalContacts: contacts?.length || 0,
-            openThreads: threads?.filter((t) => t.status === 'open').length || 0,
+            openThreads: Math.max(openConversationsCount, openThreadsCount), // Use the larger number (fallback to threads if legacy)
             pendingThreads: threads?.filter((t) => t.status === 'pending').length || 0,
             totalDealsValue: deals?.reduce((sum, d) => sum + Number(d.value), 0) || 0,
             totalDealsCount: deals?.length || 0
