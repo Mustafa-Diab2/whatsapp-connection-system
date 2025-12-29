@@ -150,6 +150,12 @@ async function ensureSchema() {
           EXCEPTION WHEN duplicate_column THEN
             RAISE NOTICE 'column tags already exists in deals table';
           END;
+
+          BEGIN
+            ALTER TABLE users ADD COLUMN phone TEXT;
+          EXCEPTION WHEN duplicate_column THEN
+            RAISE NOTICE 'column phone already exists in users table';
+          END;
         END $$;`
     });
 

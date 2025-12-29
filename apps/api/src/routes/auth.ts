@@ -173,7 +173,7 @@ router.get("/profile", verifyToken, async (req: Request, res: Response) => {
 
         const { data: user, error } = await supabase
             .from("users")
-            .select("id, email, name, avatar, created_at")
+            .select("id, email, name, phone, avatar, created_at")
             .eq("id", userId)
             .single();
 
@@ -192,13 +192,13 @@ router.get("/profile", verifyToken, async (req: Request, res: Response) => {
 router.put("/profile", verifyToken, async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.userId;
-        const { name } = req.body;
+        const { name, phone } = req.body;
 
         const { data: user, error } = await supabase
             .from("users")
-            .update({ name, updated_at: new Date().toISOString() })
+            .update({ name, phone, updated_at: new Date().toISOString() })
             .eq("id", userId)
-            .select("id, email, name, avatar, created_at")
+            .select("id, email, name, phone, avatar, created_at")
             .single();
 
         if (error) throw error;

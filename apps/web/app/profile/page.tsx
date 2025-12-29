@@ -9,6 +9,7 @@ interface User {
     id: string;
     email: string;
     name: string;
+    phone?: string;
     avatar?: string;
     created_at: string;
 }
@@ -23,6 +24,7 @@ export default function ProfilePage() {
     const [form, setForm] = useState({
         name: "",
         email: "",
+        phone: "",
         currentPassword: "",
         newPassword: "",
         confirmPassword: ""
@@ -34,7 +36,12 @@ export default function ProfilePage() {
         if (userData) {
             const parsed = JSON.parse(userData);
             setUser(parsed);
-            setForm(f => ({ ...f, name: parsed.name || "", email: parsed.email || "" }));
+            setForm(f => ({
+                ...f,
+                name: parsed.name || "",
+                email: parsed.email || "",
+                phone: parsed.phone || ""
+            }));
         } else {
             router.push("/login");
         }
@@ -54,7 +61,7 @@ export default function ProfilePage() {
                     "Content-Type": "application/json",
                     "Authorization": `Bearer ${token}`
                 },
-                body: JSON.stringify({ name: form.name })
+                body: JSON.stringify({ name: form.name, phone: form.phone })
             });
 
             if (!res.ok) {
@@ -178,6 +185,16 @@ export default function ProfilePage() {
                                 className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500/50"
                                 value={form.name}
                                 onChange={(e) => setForm({ ...form, name: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">رقم الهاتف (للحملات)</label>
+                            <input
+                                type="text"
+                                placeholder="مثال: 966500000000"
+                                className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500/50"
+                                value={form.phone}
+                                onChange={(e) => setForm({ ...form, phone: e.target.value })}
                             />
                         </div>
                         <div>
