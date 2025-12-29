@@ -128,9 +128,11 @@ export default function CRMPage() {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setDeals(prev => prev.filter(d => d.id !== dealId));
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to delete deal", error);
-            alert("حدث خطأ أثناء الحذف");
+            const msg = error.response?.data?.error || "حدث خطأ أثناء الحذف";
+            const details = error.response?.data?.details ? `\nالتفاصيل: ${error.response.data.details}` : "";
+            alert(`${msg}${details}`);
         }
     };
 

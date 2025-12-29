@@ -71,4 +71,21 @@ router.put("/:id", verifyToken, validate(updateDealStageSchema), async (req: Req
     }
 });
 
+// Delete Deal
+router.delete("/:id", verifyToken, async (req: Request, res: Response) => {
+    try {
+        const orgId = (req as any).user.organizationId;
+        const { id } = req.params;
+
+        await db.deleteDeal(id, orgId);
+        res.json({ message: "Deal deleted" });
+    } catch (error: any) {
+        console.error("❌ DELETE DEAL ERROR:", error);
+        res.status(500).json({
+            error: error.message || "Failed to delete deal",
+            details: error.details || error.hint || null
+        });
+    }
+});
+
 export default router;

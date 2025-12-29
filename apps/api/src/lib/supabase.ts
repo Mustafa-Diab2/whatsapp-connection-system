@@ -641,6 +641,16 @@ export const db = {
         return data;
     },
 
+    async deleteDeal(id: string, organizationId: string) {
+        if (!organizationId) throw new Error("Organization ID required");
+        const { error } = await supabase
+            .from('deals')
+            .delete()
+            .eq('id', id)
+            .eq('organization_id', organizationId);
+        if (error) throw error;
+    },
+
     // ========== AUTO ASSIGNMENT ==========
     async getOrganizationSettings(organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
