@@ -20,6 +20,7 @@ const menuItems: MenuItem[] = [
   { label: "Campaigns", labelAr: "الحملات", href: "/campaigns", icon: "📢" },
   { label: "AI Agent", labelAr: "الذكاء الاصطناعي", href: "/ai", icon: "🧠" },
   { label: "Configuration", labelAr: "الإعدادات", href: "/settings", icon: "⚙️" },
+  { label: "My Profile", labelAr: "ملفي الشخصي", href: "/profile", icon: "👤" },
 ];
 
 type SidebarProps = {

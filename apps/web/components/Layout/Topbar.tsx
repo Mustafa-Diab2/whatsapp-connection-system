@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import Link from "next/link";
 
 const Topbar = ({ onMenuClick }: { onMenuClick?: () => void }) => {
   const toggleFullscreen = useCallback(() => {
@@ -40,17 +41,19 @@ const Topbar = ({ onMenuClick }: { onMenuClick?: () => void }) => {
             ☰
           </button>
 
-          <div className="flex items-center gap-3 bg-slate-50/50 p-1.5 rounded-2xl border border-slate-100">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-brand-blue to-blue-700 flex items-center justify-center text-white shadow-lg shadow-blue-100 font-black">
-              AD
-            </div>
-            <div className="hidden sm:block ml-2 text-right">
-              <p className="text-xs font-black text-slate-900 leading-none mb-1">Badr Admin</p>
-              <div className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse"></span>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">System Online</span>
+          <div className="flex items-center gap-3 bg-slate-50/50 p-1.5 rounded-2xl border border-slate-100 ring-offset-2 ring-brand-blue/30 focus-within:ring-2 transition-all">
+            <Link href="/profile" className="flex items-center gap-3 group">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-brand-blue to-blue-700 flex items-center justify-center text-white shadow-lg shadow-blue-100 font-black group-hover:scale-105 transition-all">
+                AD
               </div>
-            </div>
+              <div className="hidden sm:block ml-2 text-right">
+                <p className="text-xs font-black text-slate-900 leading-none mb-1 group-hover:text-brand-blue transition-colors">Badr Admin</p>
+                <div className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">System Online</span>
+                </div>
+              </div>
+            </Link>
           </div>
         </div>
 
