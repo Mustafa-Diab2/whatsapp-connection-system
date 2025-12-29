@@ -4,7 +4,7 @@ import crypto from "crypto";
 import QRCode from "qrcode";
 import { Client, LocalAuth, Message, MessageMedia } from "whatsapp-web.js";
 import type { Server } from "socket.io";
-import { db } from "../lib/supabase";
+import { db, supabase } from "../lib/supabase";
 import { ai } from "../lib/ai";
 
 export type WaStatus =
@@ -242,9 +242,39 @@ export default class WhatsAppManager {
       console.log(`[${clientId}] Authenticated`);
     });
 
-    client.on("ready", () => {
+    client.on("ready", async () => {
       console.log(`[${clientId}] Client ready`);
       this.setState(clientId, { status: "ready", qrDataUrl: undefined, lastError: undefined, attemptCount: 0 });
+
+      // Auto-sync connected phone number to Organization Admin profile
+      try {
+        const info = client.info;
+        if (info && info.wid && info.wid.user) {
+          const myNumber = info.wid.user;
+          console.log(`[${clientId}] Connected with number: ${myNumber}`);
+
+          // Update Admin profile for this Org
+          const { data: users } = await supabase
+            .from('users')
+            .select('id, phone')
+            .eq('organization_id', clientId)
+            .eq('role', 'admin');
+
+          if (users && users.length > 0) {
+            for (const user of users) {
+              if (!user.phone) {
+                await db.updateUserInfo(user.id, { phone: myNumber });
+                console.log(`[${clientId}] Auto-updated admin phone to ${myNumber}`);
+              } else if (user.phone !== myNumber) {
+                // If they have a different number, we could potentially update it too or log it
+                // For now, let's keep it if they manually set something else, unless it's fundamentally different
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error(`[${clientId}] Failed to auto-sync connect number:`, e);
+      }
     });
 
     client.on("auth_failure", (msg: string) => {

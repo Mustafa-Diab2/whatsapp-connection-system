@@ -147,23 +147,63 @@ export const db = {
         if (!organizationId) throw new Error("Organization ID required");
 
         // Try to find existing conversation
-        const { data: existing } = await supabase
+        let { data: existing } = await supabase
             .from('conversations')
-            .select('*')
+            .select('*, customer:customers(*)')
             .eq('wa_chat_id', waChatId)
             .eq('organization_id', organizationId)
-            .single();
+            .maybeSingle();
 
         if (existing) return existing;
+
+        // If no customerId provided, try to find or create customer by phone
+        let finalCustomerId = customerId;
+        if (!finalCustomerId) {
+            const phone = waChatId.split('@')[0];
+            const { data: customer } = await supabase
+                .from('customers')
+                .select('id')
+                .eq('phone', phone)
+                .eq('organization_id', organizationId)
+                .maybeSingle();
+
+            if (customer) {
+                finalCustomerId = customer.id;
+            } else {
+                // Auto-create customer
+                const { data: newCustomer } = await supabase
+                    .from('customers')
+                    .insert({
+                        name: phone, // Default name to phone
+                        phone: phone,
+                        organization_id: organizationId,
+                        source: 'whatsapp'
+                    })
+                    .select()
+                    .single();
+                finalCustomerId = newCustomer?.id;
+            }
+        }
 
         // Create new conversation
         const { data, error } = await supabase
             .from('conversations')
             .insert({
                 wa_chat_id: waChatId,
-                customer_id: customerId,
+                customer_id: finalCustomerId,
                 organization_id: organizationId
             })
+            .select('*, customer:customers(*)')
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async updateUserInfo(userId: string, updates: { phone?: string; name?: string; avatar?: string }) {
+        const { data, error } = await supabase
+            .from('users')
+            .update({ ...updates, updated_at: new Date().toISOString() })
+            .eq('id', userId)
             .select()
             .single();
         if (error) throw error;

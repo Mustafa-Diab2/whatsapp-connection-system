@@ -248,9 +248,16 @@ export default function CRMPage() {
                                                     </span>
                                                 </div>
 
-                                                <div className="flex items-center gap-2 mb-3">
-                                                    <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px]">👤</div>
-                                                    <span className="text-[10px] font-bold text-slate-500 truncate">{deal.customer?.name || "بدون عميل"}</span>
+                                                <div className="flex flex-col gap-1 mb-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px]">👤</div>
+                                                        <span className="text-[10px] font-bold text-slate-500 truncate">{deal.customer?.name || "بدون عميل"}</span>
+                                                    </div>
+                                                    {(deal.customer as any)?.phone && (
+                                                        <div className="flex items-center gap-2 ml-1">
+                                                            <span className="text-[10px] text-slate-400">📱 {(deal.customer as any).phone}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 <div className="flex flex-wrap gap-1 mb-4">

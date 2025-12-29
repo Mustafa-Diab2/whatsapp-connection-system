@@ -879,11 +879,18 @@ export default function ChatPage() {
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={`h-2 w-2 rounded-full ${chat.isGroup ? "bg-amber-400" : "bg-emerald-400"}`}></span>
-                          <p className="truncate text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                            {chat.isGroup ? "Group" : "Personal"}
-                          </p>
+                        <div className="flex items-center justify-between mt-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`h-2 w-2 rounded-full ${(chat as any).isGroup ? "bg-amber-400" : "bg-emerald-400"}`}></span>
+                            <p className="truncate text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                              {(chat as any).isGroup ? "Group" : "Personal"}
+                            </p>
+                          </div>
+                          {(chat as any).phone && !(chat as any).isGroup && (
+                            <p dir="ltr" className="text-[10px] font-bold text-slate-300">
+                              {(chat as any).phone}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -928,11 +935,18 @@ export default function ChatPage() {
                   </p>
                 )}
                 {selectedChat && (
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className={`h-2 w-2 rounded-full ${status === 'ready' ? 'bg-green-500' : 'bg-slate-300'}`}></span>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">
-                      {status === 'ready' ? "Online now" : "Offline"}
-                    </p>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`h-1.5 w-1.5 rounded-full ${status === 'ready' ? 'bg-green-500' : 'bg-slate-300'}`}></span>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">
+                        {status === 'ready' ? "Online now" : "Offline"}
+                      </p>
+                    </div>
+                    {selectedChat && !selectedChat.includes('@g.us') && (
+                      <p dir="ltr" className="text-[10px] font-black text-slate-300 bg-slate-50 px-1.5 py-0.5 rounded-md border border-slate-100">
+                        {selectedChat.split('@')[0]}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
