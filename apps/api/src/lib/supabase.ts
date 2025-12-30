@@ -386,45 +386,42 @@ export const db = {
     async getAnalyticsStats(organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
 
-        const { data: customers } = await supabase
+        const today = new Date().toISOString().split('T')[0];
+
+        // 1. Total Customers (Real)
+        const { count: totalCustomers } = await supabase
             .from('customers')
-            .select('status')
+            .select('*', { count: 'exact', head: true })
             .eq('organization_id', organizationId);
 
-        const { data: contacts } = await supabase
-            .from('contacts')
-            .select('id')
+        // 2. Messages Sent TODAY (Real Activity)
+        const { count: messagesToday } = await supabase
+            .from('messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('organization_id', organizationId)
+            .gte('created_at', today);
+
+        // 3. Successful Campaign Sends (Total)
+        const { data: campaigns } = await supabase
+            .from('campaigns')
+            .select('successful_sends, status')
             .eq('organization_id', organizationId);
 
-        const { data: threads } = await supabase
-            .from('threads')
-            .select('status')
-            .eq('organization_id', organizationId);
+        const totalSuccessfulSends = campaigns?.reduce((sum, c) => sum + (c.successful_sends || 0), 0) || 0;
 
-        // Also query conversations as they represent active WhatsApp chats
-        const { data: conversations } = await supabase
-            .from('conversations')
-            .select('status')
-            .eq('organization_id', organizationId);
-
+        // 4. Deals count and value (Real)
         const { data: deals } = await supabase
             .from('deals')
             .select('value')
             .eq('organization_id', organizationId);
 
-        // Priority for 'openThreads': If there are open conversations, use them. 
-        // In many cases, these terms are used interchangeably in the UI.
-        const openConversationsCount = conversations?.filter((c) => c.status === 'open').length || 0;
-        const openThreadsCount = threads?.filter((t) => t.status === 'open').length || 0;
-
         return {
-            totalCustomers: customers?.length || 0,
-            activeCustomers: customers?.filter((c) => c.status === 'active').length || 0,
-            totalContacts: contacts?.length || 0,
-            openThreads: Math.max(openConversationsCount, openThreadsCount), // Use the larger number (fallback to threads if legacy)
-            pendingThreads: threads?.filter((t) => t.status === 'pending').length || 0,
+            totalCustomers: totalCustomers || 0,
+            messagesToday: messagesToday || 0,
+            totalSuccessfulSends: totalSuccessfulSends || 0,
             totalDealsValue: deals?.reduce((sum, d) => sum + Number(d.value), 0) || 0,
-            totalDealsCount: deals?.length || 0
+            totalDealsCount: deals?.length || 0,
+            activeCampaigns: campaigns?.filter(c => c.status === 'processing').length || 0
         };
     },
 

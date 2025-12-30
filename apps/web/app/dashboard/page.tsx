@@ -146,10 +146,10 @@ export default function DashboardPage() {
       {/* Stats Cards */}
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: "محادثات نشطة", value: stats?.openThreads || 0, icon: "💬", color: "blue" },
-          { label: "عملاء جدد", value: stats?.totalCustomers || 0, icon: "👥", color: "purple" },
-          { label: "قيمة الصفقات", value: `${(stats as any)?.totalDealsValue?.toLocaleString() || 0} JOD`, icon: "💰", color: "emerald" },
-          { label: "عدد الصفقات", value: (stats as any)?.totalDealsCount || 0, icon: "💼", color: "orange" },
+          { label: "رسائل اليوم", value: (stats as any)?.messagesToday || 0, icon: "✉️", color: "blue" },
+          { label: "إجمالي الإرسال الناجح", value: (stats as any)?.totalSuccessfulSends || 0, icon: "🚀", color: "green" },
+          { label: "عملاء مسجلين", value: stats?.totalCustomers || 0, icon: "👥", color: "purple" },
+          { label: "حملات جارية", value: (stats as any)?.activeCampaigns || 0, icon: "⚡", color: "orange" },
         ].map((item, idx) => (
           <div key={idx} className="group relative overflow-hidden card p-5 transition-all hover:scale-[1.02] hover:shadow-xl">
             <div className="relative z-10 flex flex-col gap-3">
