@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] - 2025-12-30
 
+### 🔧 Critical Bug Fixes - WhatsApp Error Handling
+
+#### Fixed
+- **LID Validation**: Now rejects invalid WhatsApp internal IDs (>15 digits) before sending
+- **Error Messages**: Enhanced error messages for common WhatsApp failures:
+  - "No LID for user" → Clear Arabic message with guidance
+  - "Evaluation failed" → Clearer explanation
+  - "getIsMyContact" errors → Handled gracefully
+- **Phone Number Validation**: Pre-send validation to prevent invalid messages
+
+#### Added
+- **Phone Cleanup Endpoint**: `POST /whatsapp/contacts/clean`
+  - Supports dry-run mode to preview changes
+  - Can fix extractable LIDs or delete invalid ones
+  - Returns detailed statistics
+- **Cleanup Script**: `src/scripts/cleanInvalidPhones.ts`
+  - Command-line tool for database cleanup
+  - Supports `--dry-run` and `--fix` flags
+  - Processes both customers and contacts tables
+
+#### Changed
+- **sendMessage**: Added upfront validation for phone numbers >15 digits
+- **Error Handling**: More specific error messages in Arabic for better UX
+
+---
+
 ### 🚀 Major Improvements - Campaign System
 
 #### Added

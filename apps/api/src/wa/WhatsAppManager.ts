@@ -1102,6 +1102,13 @@ export default class WhatsAppManager {
 
     if (!to.includes("@")) {
       cleanNumber = to.replace(/\D/g, "");
+
+      // Reject invalid LIDs (too long numbers that are WhatsApp internal IDs)
+      if (cleanNumber.length > 15) {
+        console.error(`[${clientId}] [SEND] Rejecting invalid LID/phone: ${to} (length: ${cleanNumber.length})`);
+        throw new Error("رقم WhatsApp ID داخلي غير صالح للإرسال. يرجى استخدام رقم هاتف حقيقي.");
+      }
+
       if (cleanNumber.length >= 15) {
         chatId = `${cleanNumber}@lid`;
       } else {
@@ -1109,6 +1116,12 @@ export default class WhatsAppManager {
       }
     } else {
       cleanNumber = to.split('@')[0].replace(/\D/g, '');
+
+      // Also check extracted numbers
+      if (cleanNumber.length > 15) {
+        console.error(`[${clientId}] [SEND] Rejecting invalid extracted number: ${cleanNumber} (length: ${cleanNumber.length})`);
+        throw new Error("رقم WhatsApp ID داخلي غير صالح للإرسال. يرجى استخدام رقم هاتف حقيقي.");
+      }
     }
 
     try {
@@ -1204,12 +1217,18 @@ export default class WhatsAppManager {
 
       // All strategies failed
       const errMsg = err.message || "";
-      if (errMsg.includes("No LID") || errMsg.includes("not found") || errMsg.includes("invalid")) {
+
+      // Provide specific error messages for common issues
+      if (errMsg.includes("No LID for user")) {
+        throw new Error("رقم WhatsApp ID داخلي غير صالح. استخدم رقم هاتف حقيقي أو قم بمزامنة جهات الاتصال.");
+      } else if (errMsg.includes("No LID") || errMsg.includes("not found") || errMsg.includes("invalid")) {
         throw new Error("رقم غير صحيح أو غير مسجل على واتساب");
       } else if (errMsg.includes("Evaluation failed")) {
-        throw new Error("فشل الاتصال بالمحادثة. حاول مرة أخرى.");
+        throw new Error("فشل الاتصال بالمحادثة. الرقم قد يكون غير صحيح أو غير موجود.");
       } else if (errMsg.includes("not registered")) {
         throw new Error("الرقم غير مسجل على واتساب");
+      } else if (errMsg.includes("getIsMyContact is not a function")) {
+        throw new Error("خطأ داخلي في مكتبة WhatsApp. حاول إعادة الاتصال.");
       }
 
       throw new Error(`فشل إرسال الرسالة: ${errMsg}`);

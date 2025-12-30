@@ -675,6 +675,161 @@ app.post("/whatsapp/contacts/sync", verifyToken, async (req, res) => {
   }
 });
 
+// Clean invalid phone numbers from database
+app.post("/whatsapp/contacts/clean", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  const { dryRun = true, fix = false } = req.body;
+
+  try {
+    console.log(`[${orgId}] Starting phone cleanup (dryRun: ${dryRun}, fix: ${fix})...`);
+
+    const VALID_PATTERNS = [
+      /(20[1][0-9]{9})/,
+      /(966[5][0-9]{8})/,
+      /(971[5][0-9]{8})/,
+      /(965[569][0-9]{7})/,
+      /(968[79][0-9]{7})/,
+      /(974[3567][0-9]{7})/,
+      /(973[3][0-9]{7})/,
+      /(962[7][0-9]{8})/,
+      /(961[3-9][0-9]{7})/,
+      /(212[6-7][0-9]{8})/,
+      /(213[5-7][0-9]{8})/,
+      /(216[2-9][0-9]{7})/,
+    ];
+
+    const isValidPhone = (phone: string): boolean => {
+      const clean = phone.replace(/\D/g, '');
+      if (clean.length < 10 || clean.length > 15) return false;
+      if (clean.startsWith('4203') || clean.startsWith('4204')) return false;
+      return true;
+    };
+
+    const extractValidPhone = (phone: string): string | null => {
+      const clean = phone.replace(/\D/g, '');
+      if (clean.length >= 10 && clean.length <= 15) return clean;
+
+      for (const pattern of VALID_PATTERNS) {
+        const match = clean.match(pattern);
+        if (match) return match[1];
+      }
+      return null;
+    };
+
+    const stats = {
+      customers: { total: 0, invalid: 0, fixed: 0, deleted: 0 },
+      contacts: { total: 0, invalid: 0, fixed: 0, deleted: 0 }
+    };
+
+    // Clean customers
+    const { data: customers } = await supabase
+      .from('customers')
+      .select('id, phone, name')
+      .eq('organization_id', orgId);
+
+    stats.customers.total = customers?.length || 0;
+
+    for (const customer of customers || []) {
+      if (!customer.phone) continue;
+
+      if (!isValidPhone(customer.phone)) {
+        stats.customers.invalid++;
+
+        if (fix) {
+          const extracted = extractValidPhone(customer.phone);
+          if (extracted) {
+            if (!dryRun) {
+              await supabase
+                .from('customers')
+                .update({ phone: extracted, updated_at: new Date().toISOString() })
+                .eq('id', customer.id);
+            }
+            stats.customers.fixed++;
+          } else {
+            if (!dryRun) {
+              await supabase.from('customers').delete().eq('id', customer.id);
+            }
+            stats.customers.deleted++;
+          }
+        } else {
+          if (!dryRun) {
+            await supabase.from('customers').delete().eq('id', customer.id);
+          }
+          stats.customers.deleted++;
+        }
+      }
+    }
+
+    // Clean contacts
+    const { data: contacts } = await supabase
+      .from('contacts')
+      .select('id, phone, name')
+      .eq('organization_id', orgId);
+
+    stats.contacts.total = contacts?.length || 0;
+
+    for (const contact of contacts || []) {
+      if (!contact.phone) continue;
+
+      if (!isValidPhone(contact.phone)) {
+        stats.contacts.invalid++;
+
+        if (fix) {
+          const extracted = extractValidPhone(contact.phone);
+          if (extracted) {
+            if (!dryRun) {
+              await supabase
+                .from('contacts')
+                .update({ phone: extracted, updated_at: new Date().toISOString() })
+                .eq('id', contact.id);
+            }
+            stats.contacts.fixed++;
+          } else {
+            if (!dryRun) {
+              await supabase.from('contacts').delete().eq('id', contact.id);
+            }
+            stats.contacts.deleted++;
+          }
+        } else {
+          if (!dryRun) {
+            await supabase.from('contacts').delete().eq('id', contact.id);
+          }
+          stats.contacts.deleted++;
+        }
+      }
+    }
+
+    const totalInvalid = stats.customers.invalid + stats.contacts.invalid;
+    const totalFixed = stats.customers.fixed + stats.contacts.fixed;
+    const totalDeleted = stats.customers.deleted + stats.contacts.deleted;
+
+    console.log(`[${orgId}] Cleanup complete: ${totalInvalid} invalid, ${totalFixed} fixed, ${totalDeleted} deleted`);
+
+    res.json({
+      ok: true,
+      message: dryRun
+        ? `تم الفحص: ${totalInvalid} رقم غير صالح (${totalFixed} يمكن إصلاحها، ${totalDeleted} سيتم حذفها)`
+        : `تم التنظيف: ${totalFixed} رقم تم إصلاحه، ${totalDeleted} رقم تم حذفه`,
+      dryRun,
+      stats: {
+        customers: stats.customers,
+        contacts: stats.contacts,
+        total: {
+          invalid: totalInvalid,
+          fixed: totalFixed,
+          deleted: totalDeleted
+        }
+      }
+    });
+  } catch (err: any) {
+    console.error(`[${orgId}] Clean contacts error:`, err);
+    res.status(500).json({
+      ok: false,
+      message: err?.message || "Failed to clean contacts"
+    });
+  }
+});
+
 // Get WhatsApp contact presence status
 app.get("/whatsapp/contact-status/:phone", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
