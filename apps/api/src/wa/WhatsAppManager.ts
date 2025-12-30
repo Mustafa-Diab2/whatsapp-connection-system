@@ -1055,32 +1055,58 @@ export default class WhatsAppManager {
     let chatId = to;
     if (!to.includes("@")) {
       const cleanNumber = to.replace(/\D/g, "");
-      chatId = `${cleanNumber}@c.us`;
+      // WhatsApp LIDs (Linked IDs) are usually 15 digits; sometimes they need @lid suffix
+      if (cleanNumber.length >= 15) {
+        chatId = `${cleanNumber}@lid`;
+      } else {
+        chatId = `${cleanNumber}@c.us`;
+      }
     }
 
     try {
       // Step 1: Attempt direct send
       console.log(`[${clientId}] [SEND] To: ${chatId}`);
-      const msg = await client.sendMessage(chatId, text);
-      return { ok: true, messageId: msg.id._serialized };
+      try {
+        const msg = await client.sendMessage(chatId, text);
+        return { ok: true, messageId: msg.id._serialized };
+      } catch (err: any) {
+        // If sending to @lid failed, try converting it to @c.us if it looks like a phone number
+        if (chatId.endsWith("@lid") && !chatId.startsWith("201") && !chatId.startsWith("966")) {
+          throw err; // rethrow to handle in outer block
+        }
+
+        // Try fallback to @c.us if first attempt was @lid and vice versa
+        const fallbackId = chatId.endsWith("@lid") ? chatId.replace("@lid", "@c.us") : chatId.replace("@c.us", "@lid");
+        console.log(`[${clientId}] Send failed to ${chatId}, trying fallback: ${fallbackId}`);
+        const msg = await client.sendMessage(fallbackId, text);
+        return { ok: true, messageId: msg.id._serialized };
+      }
     } catch (err: any) {
-      console.warn(`[${clientId}] Send failed to ${chatId}: ${err.message}. Attempting LID resolution...`);
+      console.warn(`[${clientId}] Send failed to ${chatId}: ${err.message}. Attempting contact resolution...`);
 
       try {
-        // Step 2: If failed, try to get real phone number from contact
+        // Step 2: Try to get real phone number or a better JID from contact
         const contact = await client.getContactById(chatId);
-        if (contact && contact.number && contact.number !== chatId.split('@')[0]) {
+        if (contact && contact.id._serialized !== chatId) {
+          console.log(`[${clientId}] Resolved JID from contact search: ${chatId} -> ${contact.id._serialized}`);
+          const msg = await client.sendMessage(contact.id._serialized, text);
+          return { ok: true, messageId: msg.id._serialized };
+        }
+
+        // Step 3: Try to find by number if handle is different
+        if (contact && contact.number && `${contact.number}@c.us` !== chatId) {
           const resolvedJid = `${contact.number}@c.us`;
-          console.log(`[${clientId}] Resolved successfully: ${chatId} -> ${resolvedJid}`);
+          console.log(`[${clientId}] Resolved by number: ${chatId} -> ${resolvedJid}`);
           const msg = await client.sendMessage(resolvedJid, text);
           return { ok: true, messageId: msg.id._serialized };
         }
       } catch (resErr: any) {
-        console.error(`[${clientId}] Resolution failed: ${resErr.message}`);
+        console.error(`[${clientId}] Resolution failed for ${chatId}: ${resErr.message}`);
       }
 
-      if (err.message && (err.message.includes("No LID") || err.message.includes("not found"))) {
-        throw new Error("الرقم غير مسجل في واتساب أو صيغته خاطئة");
+      const errMsg = err.message || "";
+      if (errMsg.includes("No LID") || errMsg.includes("not found") || errMsg.includes("invalid")) {
+        throw new Error("الرقم غير مسجل في واتساب أو المعرف الموصل (LID) غير صالح");
       }
       throw err;
     }
