@@ -29,9 +29,7 @@
     "socket.io": "^4.7.5",
     "whatsapp-web.js": "^1.26.0",
     "xss-clean": "^0.1.4",
-    "zod": "^3.25.76"
-  },
-  "devDependencies": {
+    "zod": "^3.25.76",
     "@types/bcryptjs": "^2.4.6",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.17",
@@ -41,7 +39,9 @@
     "@types/jsonwebtoken": "^9.0.5",
     "@types/multer": "^2.0.0",
     "@types/node": "^20.11.30",
-    "@types/qrcode": "^1.5.6",
+    "@types/qrcode": "^1.5.6"
+  },
+  "devDependencies": {
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.4.5"
   }
