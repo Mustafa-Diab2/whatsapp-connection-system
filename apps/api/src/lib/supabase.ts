@@ -457,14 +457,38 @@ export const db = {
     async getDailyAnalytics(days = 7, organizationId: string) {
         if (!organizationId) return [];
 
-        const { data, error } = await supabase
-            .from('analytics_daily')
-            .select('*')
-            .eq('organization_id', organizationId)
-            .order('date', { ascending: false })
-            .limit(days);
-        if (error) throw error;
-        return data || [];
+        const analytics = [];
+        for (let i = 0; i < days; i++) {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            const dateStr = date.toISOString().split('T')[0];
+
+            // Count sent messages
+            const { count: sent } = await supabase
+                .from('messages')
+                .select('*', { count: 'exact', head: true })
+                .eq('organization_id', organizationId)
+                .eq('is_from_customer', false)
+                .gte('created_at', `${dateStr}T00:00:00`)
+                .lte('created_at', `${dateStr}T23:59:59`);
+
+            // Count received messages
+            const { count: received } = await supabase
+                .from('messages')
+                .select('*', { count: 'exact', head: true })
+                .eq('organization_id', organizationId)
+                .eq('is_from_customer', true)
+                .gte('created_at', `${dateStr}T00:00:00`)
+                .lte('created_at', `${dateStr}T23:59:59`);
+
+            analytics.push({
+                date: dateStr,
+                messages_sent: sent || 0,
+                messages_received: received || 0
+            });
+        }
+
+        return analytics.reverse(); // Return from oldest to newest
     },
 
     // ========== AI RESPONSES ==========
