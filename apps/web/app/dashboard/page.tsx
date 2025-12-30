@@ -186,27 +186,49 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Simple SVG Chart */}
-          <div className="relative h-64 w-full bg-slate-50/50 rounded-2xl flex items-end p-4 group">
+          {/* Message Activity Chart */}
+          <div className="relative h-72 w-full bg-gradient-to-b from-slate-50/20 to-transparent rounded-2xl flex items-end p-6 group">
             {dailyData.length > 0 ? (
-              <div className="flex w-full items-end justify-between h-full gap-2">
-                {dailyData.reverse().map((day, idx) => {
-                  const max = Math.max(...dailyData.map(d => (d.messages_sent || 0) + (d.messages_received || 0)), 10);
+              <div className="flex w-full items-end justify-between h-56 gap-4">
+                {/* Clone and pad data to ensure 7 slots if needed for a consistent look */}
+                {[...Array(Math.max(0, 7 - dailyData.length)).fill(null), ...dailyData].map((day, idx) => {
+                  if (!day) return <div key={`empty-${idx}`} className="flex-1"></div>;
+
+                  const max = Math.max(...dailyData.map(d => Math.max(d.messages_sent || 0, d.messages_received || 0, 5)), 10);
                   const sH = ((day.messages_sent || 0) / max) * 100;
                   const rH = ((day.messages_received || 0) / max) * 100;
+
                   return (
-                    <div key={idx} className="flex-1 flex flex-col items-center gap-2 group/bar">
-                      <div className="w-full flex items-end gap-1 px-1 h-48 justify-center">
-                        <div className="w-3 rounded-t-full bg-brand-blue transition-all duration-700 hover:brightness-110" style={{ height: `${sH}%` }}></div>
-                        <div className="w-3 rounded-t-full bg-sky-400 transition-all duration-700 hover:brightness-110" style={{ height: `${rH}%` }}></div>
+                    <div key={idx} className="flex-1 flex flex-col items-center gap-4 group/bar relative">
+                      {/* Tooltip on Hover */}
+                      <div className="absolute -top-16 bg-slate-900 text-white text-[10px] p-2 rounded-xl opacity-0 translate-y-2 group-hover/bar:opacity-100 group-hover/bar:translate-y-0 transition-all z-20 shadow-xl pointer-events-none min-w-[80px]">
+                        <div className="flex justify-between gap-2"><span>صادر:</span> <span className="font-bold">{day.messages_sent || 0}</span></div>
+                        <div className="flex justify-between gap-2 border-t border-slate-700 mt-1 pt-1"><span>وارد:</span> <span className="font-bold">{day.messages_received || 0}</span></div>
+                        <div className="absolute bottom-[-4px] left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 rotate-45"></div>
                       </div>
-                      <span className="text-[9px] font-bold text-slate-400 rotate-45">{new Date(day.date).toLocaleDateString('ar-EG', { weekday: 'short' })}</span>
+
+                      <div className="w-full flex items-end gap-1.5 h-full justify-center">
+                        <div
+                          className="w-3 rounded-full bg-brand-blue transition-all duration-1000 ease-out hover:brightness-125 hover:shadow-lg hover:shadow-brand-blue/20"
+                          style={{ height: `${Math.max(sH, 4)}%` }}
+                        ></div>
+                        <div
+                          className="w-3 rounded-full bg-sky-400 transition-all duration-1000 ease-out delay-75 hover:brightness-125 hover:shadow-lg hover:shadow-sky-400/20"
+                          style={{ height: `${Math.max(rH, 4)}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">
+                        {new Date(day.date).toLocaleDateString('ar-EG', { weekday: 'short' })}
+                      </span>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <div className="w-full text-center text-slate-400 text-sm italic">لا توجد بيانات كافية لعرض الرسم البياني</div>
+              <div className="w-full h-full flex items-center justify-center flex-col gap-3">
+                <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center text-xl">📊</div>
+                <p className="text-slate-400 text-sm font-bold">لا توجد بيانات للرسائل حتى الآن</p>
+              </div>
             )}
           </div>
         </div>
