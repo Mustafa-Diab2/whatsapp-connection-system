@@ -60,6 +60,13 @@ export default function DashboardPage() {
     }
 
     fetchData(token);
+
+    // Live update every 30 seconds
+    const interval = setInterval(() => {
+      fetchData(token);
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, [router]);
 
   const fetchData = async (token: string) => {
@@ -148,9 +155,6 @@ export default function DashboardPage() {
             <div className="relative z-10 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <span className="text-2xl">{item.icon}</span>
-                <div className="h-8 w-8 rounded-full bg-slate-50 flex items-center justify-center text-[10px] font-bold text-slate-400">
-                  +12%
-                </div>
               </div>
               <div>
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">{item.label}</p>
