@@ -657,9 +657,16 @@ app.get("/whatsapp/contacts", verifyToken, async (req, res) => {
 // Get all WhatsApp chats (conversations)
 app.get("/whatsapp/chats", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
+  const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+
   try {
-    console.log(`[${orgId}] Fetching all WhatsApp chats...`);
-    const chats = await manager.getAllChats(orgId);
+    console.log(`[${orgId}] Fetching all WhatsApp chats (limit: ${limit ?? 'none'})...`);
+    let chats = await manager.getAllChats(orgId);
+
+    // Apply limit if specified and greater than 0
+    if (limit !== undefined && limit > 0) {
+      chats = chats.slice(0, limit);
+    }
 
     res.json({
       ok: true,
