@@ -55,7 +55,7 @@ export default class WhatsAppManager {
   private connectInFlight = new Map<string, Promise<WaState>>();
   private botConfigs = new Map<string, BotConfig>();
   private readonly io: Server;
-  private readonly qrTimeoutMs = 20_000;
+  private readonly qrTimeoutMs = 60_000;
   private isShuttingDown = false;
 
   constructor(io: Server) {
@@ -524,6 +524,10 @@ export default class WhatsAppManager {
 
       client = new Client({
         authStrategy: new LocalAuth({ clientId }),
+        webVersion: '2.3000.1018903273', // Forced stable version to fix RegistrationUtils error
+        webVersionCache: {
+          type: 'none', // Critical: do not use cached broken versions
+        },
         puppeteer: {
           headless: true,
           args: [
@@ -531,13 +535,15 @@ export default class WhatsAppManager {
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
             "--no-zygote",
-            "--single-process",
             "--disable-gpu",
+            "--disable-extensions",
+            "--disable-client-side-phishing-detection",
+            "--disable-setuid-sandbox",
+            "--disable-accelerated-2d-canvas",
+            "--no-first-run",
+            "--no-single-process", // Railway works better without single-process sometimes
           ],
           executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        },
-        webVersionCache: {
-          type: "none",
         },
       });
 
