@@ -99,6 +99,22 @@ export default function CampaignsPage() {
         }
     };
 
+    const handleStop = async (id: string) => {
+        if (!confirm("هل تريد إيقاف هذه الحملة؟ سيتم حفظ التقدم الحالي.")) return;
+
+        try {
+            const token = localStorage.getItem("token");
+            await axios.post(`${API_URL}/api/campaigns/${id}/stop`, {}, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            alert("تم إرسال أمر الإيقاف");
+            fetchCampaigns();
+        } catch (error) {
+            console.error("Failed to stop campaign", error);
+            alert("فشل إيقاف الحملة");
+        }
+    };
+
     const handleCreate = async () => {
         if (!name || !message) {
             alert("يرجى ملء جميع الحقول");
@@ -282,10 +298,14 @@ export default function CampaignsPage() {
                                                     <div className="flex flex-col items-end gap-2">
                                                         <span className={`text-[10px] font-black px-3 py-1 rounded-xl uppercase tracking-widest ${camp.status === 'completed' ? 'bg-green-100 text-green-700' :
                                                             camp.status === 'processing' ? 'bg-blue-500 text-white animate-pulse' :
-                                                                'bg-slate-200 text-slate-600'
+                                                                camp.status === 'stopped' ? 'bg-orange-100 text-orange-700' :
+                                                                    camp.status === 'failed' ? 'bg-red-100 text-red-700' :
+                                                                        'bg-slate-200 text-slate-600'
                                                             }`}>
                                                             {camp.status === 'completed' ? 'تم الانتهاء' :
-                                                                camp.status === 'processing' ? 'جاري التنفيذ' : 'مسودة'}
+                                                                camp.status === 'processing' ? 'جاري التنفيذ' :
+                                                                    camp.status === 'stopped' ? 'متوقفة' :
+                                                                        camp.status === 'failed' ? 'فشلت' : 'مسودة'}
                                                         </span>
                                                         <span className="text-xs font-black text-slate-900">{Math.round(progress)}%</span>
                                                     </div>
@@ -315,7 +335,14 @@ export default function CampaignsPage() {
                                                         </div>
                                                     </div>
 
-                                                    {camp.status !== 'processing' && (
+                                                    {camp.status === 'processing' ? (
+                                                        <button
+                                                            onClick={() => handleStop(camp.id)}
+                                                            className="h-10 px-4 bg-red-500 text-white rounded-xl text-xs font-black hover:bg-red-600 hover:shadow-md active:scale-95 transition-all animate-pulse"
+                                                        >
+                                                            ⏹️ إيقاف الحملة
+                                                        </button>
+                                                    ) : (
                                                         <div className="flex gap-2">
                                                             <button
                                                                 onClick={() => fetchLogs(camp)}

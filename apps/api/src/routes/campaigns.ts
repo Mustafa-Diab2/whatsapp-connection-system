@@ -160,6 +160,39 @@ router.delete("/:id", verifyToken, async (req: Request, res: Response) => {
     }
 });
 
+// Global set to track campaigns that should stop
+const stoppedCampaigns = new Set<string>();
+
+// Stop Campaign
+router.post("/:id/stop", verifyToken, async (req: Request, res: Response) => {
+    try {
+        const orgId = (req as any).user.organizationId;
+        const { id } = req.params;
+
+        // Add to stopped set
+        stoppedCampaigns.add(id);
+
+        // Update status in database
+        await supabase
+            .from('campaigns')
+            .update({
+                status: 'stopped',
+                error_message: 'تم إيقاف الحملة يدوياً',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', id)
+            .eq('organization_id', orgId);
+
+        res.json({ message: "Campaign stop signal sent" });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message || "Failed to stop campaign" });
+    }
+});
+
+// Export stoppedCampaigns for use in sendCampaign function
+export { stoppedCampaigns };
+
+
 // Helper: Background Sender
 async function sendCampaign(orgId: string, campaignId: string, message: string, targetGroup: string, manager: WhatsAppManager) {
     console.log(`[Campaign ${campaignId}] Starting broadcast...`);
@@ -234,6 +267,18 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
 
         // 2. Loop and Send
         for (const recipient of pendingRecipients) {
+            // Check if campaign was stopped
+            if (stoppedCampaigns.has(campaignId)) {
+                console.log(`[Campaign ${campaignId}] Campaign was stopped by user.`);
+                stoppedCampaigns.delete(campaignId); // Clean up
+                await db.updateCampaignStatus(campaignId, "stopped", {
+                    successful_sends: successCount,
+                    failed_sends: failCount,
+                    error_message: "تم إيقاف الحملة يدوياً"
+                });
+                return;
+            }
+
             const delay = Math.floor(Math.random() * 3000) + 2000;
             console.log(`[Campaign ${campaignId}] Waiting ${delay}ms to send to ${recipient.phone}`);
             await new Promise(r => setTimeout(r, delay));
