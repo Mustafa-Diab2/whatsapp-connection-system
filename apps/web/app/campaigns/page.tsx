@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
+import { io, Socket } from "socket.io-client";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || API_URL;
 
 interface Campaign {
     id: string;
@@ -25,10 +27,36 @@ interface CampaignLog {
     sent_at: string;
 }
 
+// Toast notification component
+const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 'error' | 'info'; onClose: () => void }) => {
+    useEffect(() => {
+        const timer = setTimeout(onClose, 4000);
+        return () => clearTimeout(timer);
+    }, [onClose]);
+
+    const colors = {
+        success: 'bg-green-500',
+        error: 'bg-red-500',
+        info: 'bg-blue-500'
+    };
+
+    return (
+        <div className={`fixed top-4 right-4 z-[100] ${colors[type]} text-white px-6 py-3 rounded-2xl shadow-xl animate-in slide-in-from-top-2 font-bold text-sm flex items-center gap-2`}>
+            {type === 'success' && '✓'}
+            {type === 'error' && '✕'}
+            {type === 'info' && 'ℹ'}
+            {message}
+            <button onClick={onClose} className="ml-2 hover:opacity-70">✕</button>
+        </div>
+    );
+};
+
 export default function CampaignsPage() {
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(true);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+    const socketRef = useRef<Socket | null>(null);
 
     // Form State
     const [name, setName] = useState("");
@@ -40,11 +68,50 @@ export default function CampaignsPage() {
     const [campaignLogs, setCampaignLogs] = useState<CampaignLog[]>([]);
     const [loadingLogs, setLoadingLogs] = useState(false);
 
-    useEffect(() => {
-        fetchCampaigns();
+    const showToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
+        setToast({ message, type });
     }, []);
 
-    const fetchCampaigns = async () => {
+    // WebSocket connection for real-time updates
+    useEffect(() => {
+        const token = localStorage.getItem("token");
+        const userStr = localStorage.getItem("user");
+        let orgId = "default";
+
+        try {
+            if (userStr) {
+                const user = JSON.parse(userStr);
+                orgId = user.organization_id || user.organizationId || "default";
+            }
+        } catch (e) { }
+
+        const socket = io(SOCKET_URL, {
+            transports: ["websocket", "polling"],
+            auth: { token }
+        });
+        socketRef.current = socket;
+
+        socket.on("connect", () => {
+            socket.emit("wa:subscribe", { clientId: orgId });
+        });
+
+        // Listen for campaign updates
+        socket.on("campaign:update", (data: Partial<Campaign> & { id: string }) => {
+            setCampaigns(prev => prev.map(c =>
+                c.id === data.id ? { ...c, ...data } : c
+            ));
+        });
+
+        socket.on("connect_error", (err) => {
+            console.error("Socket connection error:", err);
+        });
+
+        return () => {
+            socket.disconnect();
+        };
+    }, []);
+
+    const fetchCampaigns = useCallback(async () => {
         try {
             const token = localStorage.getItem("token");
             const res = await axios.get(`${API_URL}/api/campaigns`, {
@@ -56,16 +123,20 @@ export default function CampaignsPage() {
         } finally {
             setFetching(false);
         }
-    };
+    }, []);
 
-    // Polling for updates
     useEffect(() => {
-        const interval = setInterval(() => {
-            const hasProcessing = campaigns.some(c => c.status === 'processing');
-            if (hasProcessing) fetchCampaigns();
-        }, 3000);
+        fetchCampaigns();
+    }, [fetchCampaigns]);
+
+    // Fallback polling only for processing campaigns (reduced frequency)
+    useEffect(() => {
+        const hasProcessing = campaigns.some(c => c.status === 'processing');
+        if (!hasProcessing) return;
+
+        const interval = setInterval(fetchCampaigns, 5000);
         return () => clearInterval(interval);
-    }, [campaigns]);
+    }, [campaigns, fetchCampaigns]);
 
     const handleResend = async (id: string) => {
         if (!confirm("هل تريد استكمال إرسال هذه الحملة؟ سيتم الإرسال فقط للعملاء الذين لم يستلموا الرسالة.")) return;
@@ -75,27 +146,30 @@ export default function CampaignsPage() {
             await axios.post(`${API_URL}/api/campaigns/${id}/send`, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            alert("تم بدء الإرسال في الخلفية");
+            showToast("تم بدء الإرسال في الخلفية", "success");
             fetchCampaigns();
         } catch (error) {
             console.error("Failed to resend campaign", error);
-            alert("فشل بدء الإرسال");
+            showToast("فشل بدء الإرسال", "error");
         }
     };
 
     const handleDelete = async (id: string) => {
         if (!confirm("هل أنت متأكد من حذف هذه الحملة نهائياً؟ لا يمكن التراجع عن هذا الإجراء.")) return;
 
+        // Optimistic update
+        setCampaigns(prev => prev.filter(c => c.id !== id));
+
         try {
             const token = localStorage.getItem("token");
             await axios.delete(`${API_URL}/api/campaigns/${id}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            alert("تم حذف الحملة بنجاح");
-            fetchCampaigns();
+            showToast("تم حذف الحملة بنجاح", "success");
         } catch (error) {
             console.error("Failed to delete campaign", error);
-            alert("فشل حذف الحملة");
+            showToast("فشل حذف الحملة", "error");
+            fetchCampaigns(); // Revert on error
         }
     };
 
@@ -107,17 +181,21 @@ export default function CampaignsPage() {
             await axios.post(`${API_URL}/api/campaigns/${id}/stop`, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            alert("تم إرسال أمر الإيقاف");
+            showToast("تم إرسال أمر الإيقاف", "info");
             fetchCampaigns();
         } catch (error) {
             console.error("Failed to stop campaign", error);
-            alert("فشل إيقاف الحملة");
+            showToast("فشل إيقاف الحملة", "error");
         }
     };
 
     const handleCreate = async () => {
-        if (!name || !message) {
-            alert("يرجى ملء جميع الحقول");
+        if (!name.trim()) {
+            showToast("يرجى إدخال اسم الحملة", "error");
+            return;
+        }
+        if (!message.trim()) {
+            showToast("يرجى إدخال نص الرسالة", "error");
             return;
         }
 
@@ -127,21 +205,21 @@ export default function CampaignsPage() {
             await axios.post(
                 `${API_URL}/api/campaigns`,
                 {
-                    name,
-                    messageTemplate: message,
+                    name: name.trim(),
+                    messageTemplate: message.trim(),
                     targetGroup,
                     action: "send",
                 },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
-            alert("تم بدء الحملة بنجاح!");
+            showToast("🚀 تم بدء الحملة بنجاح!", "success");
             setName("");
             setMessage("");
             fetchCampaigns();
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to create campaign", error);
-            alert("فشل إنشاء الحملة");
+            showToast(error.response?.data?.error || "فشل إنشاء الحملة", "error");
         } finally {
             setLoading(false);
         }
@@ -158,7 +236,7 @@ export default function CampaignsPage() {
             setCampaignLogs(res.data.logs || []);
         } catch (error) {
             console.error("Failed to fetch logs", error);
-            alert("فشل تحميل سجلات الحملة");
+            showToast("فشل تحميل سجلات الحملة", "error");
         } finally {
             setLoadingLogs(false);
         }
@@ -166,6 +244,9 @@ export default function CampaignsPage() {
 
     return (
         <div className="h-screen overflow-hidden flex flex-col bg-slate-50/30">
+            {/* Toast Notification */}
+            {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
             <div className="bg-white border-b border-slate-200 px-8 py-5 flex justify-between items-center">
                 <div>
                     <div className="flex items-center gap-2 mb-1">

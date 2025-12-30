@@ -225,11 +225,6 @@ export default function ChatPage() {
     }
   }, [selectedChat, pathname, router, searchParams]);
 
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
   const statusBadge = useMemo(() => statusLabels[status], [status]);
 
   // Socket.io connection for real-time updates
@@ -239,23 +234,34 @@ export default function ChatPage() {
     const token = localStorage.getItem("token");
     const socket = io(socketUrl, {
       transports: ["websocket", "polling"],
-      auth: { token }
+      auth: { token },
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
     });
     socketRef.current = socket;
 
-    socket.on("connect", () => {
+    // Handler functions (for proper cleanup)
+    const handleConnect = () => {
       console.log("Socket connected:", socket.id);
       socket.emit("wa:subscribe", { clientId });
-    });
+    };
 
-    socket.on("wa:state", (data: any) => {
+    const handleConnectError = (error: Error) => {
+      console.error("Socket connection error:", error.message);
+    };
+
+    const handleDisconnect = (reason: string) => {
+      console.log("Socket disconnected:", reason);
+    };
+
+    const handleStateUpdate = (data: any) => {
       console.log("State update:", data);
       if (data.status) {
         setStatus(data.status as Status);
       }
-    });
+    };
 
-    socket.on("wa:message", (data: any) => {
+    const handleNewMessage = (data: any) => {
       console.log("New message received:", data);
       if (data.message) {
         const msg = data.message;
@@ -291,10 +297,24 @@ export default function ChatPage() {
           });
         }
       }
-    });
+    };
 
+    // Attach listeners
+    socket.on("connect", handleConnect);
+    socket.on("connect_error", handleConnectError);
+    socket.on("disconnect", handleDisconnect);
+    socket.on("wa:state", handleStateUpdate);
+    socket.on("wa:message", handleNewMessage);
+
+    // Cleanup: Remove ALL listeners before disconnecting
     return () => {
+      socket.off("connect", handleConnect);
+      socket.off("connect_error", handleConnectError);
+      socket.off("disconnect", handleDisconnect);
+      socket.off("wa:state", handleStateUpdate);
+      socket.off("wa:message", handleNewMessage);
       socket.disconnect();
+      socketRef.current = null;
     };
   }, [clientId]);
 
@@ -485,13 +505,23 @@ export default function ChatPage() {
   const fetchMessages = useCallback(
     async (chatId: string, limit = 50) => {
       if (clientId === "default" || status !== "ready") return;
+
+      // Store the chatId we're fetching for - to handle race conditions
+      const fetchingForChat = chatId;
+
       setLoadingMessages(true);
       setErrorMsg(null);
       try {
-        // API endpoints now use token for auth/orgId
         const res = await fetch(`${apiBase}/whatsapp/messages/${chatId}?limit=${limit}`, {
           headers: getAuthHeaders()
         });
+
+        // Race condition check: Only update if we're still viewing the same chat
+        if (selectedChatRef.current !== fetchingForChat) {
+          console.log("[Chat] Ignoring stale response for:", fetchingForChat);
+          return;
+        }
+
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.message || "تعذر جلب الرسائل");
@@ -499,9 +529,15 @@ export default function ChatPage() {
         const data = await res.json();
         setMessages(data.messages || []);
       } catch (err: any) {
-        setErrorMsg(err?.message || "فشل تحميل الرسائل");
+        // Only show error if still on the same chat
+        if (selectedChatRef.current === fetchingForChat) {
+          setErrorMsg(err?.message || "فشل تحميل الرسائل");
+        }
       } finally {
-        setLoadingMessages(false);
+        // Only clear loading if still on the same chat
+        if (selectedChatRef.current === fetchingForChat) {
+          setLoadingMessages(false);
+        }
       }
     },
     [clientId, status]
