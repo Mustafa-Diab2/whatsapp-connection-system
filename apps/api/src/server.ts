@@ -120,6 +120,61 @@ app.disable('x-powered-by');
 // Create HTTP server
 const httpServer = http.createServer(app);
 
+// ============ PHONE NUMBER UTILITIES ============
+/**
+ * Normalize phone number for database storage
+ * Returns null if phone is invalid
+ */
+function normalizePhoneForDB(phone: string): string | null {
+  if (!phone) return null;
+
+  // Remove all non-digits
+  let cleanPhone = String(phone).replace(/\D/g, '');
+
+  // Detect and reject WhatsApp internal LIDs (very long numbers)
+  if (cleanPhone.length > 14) {
+    // Try to extract Egyptian number
+    const egyptMatch = cleanPhone.match(/(20[1][0-9]{9})/);
+    if (egyptMatch) {
+      cleanPhone = egyptMatch[1];
+    }
+    // Try to extract Saudi number
+    else if (cleanPhone.includes('966')) {
+      const saudiMatch = cleanPhone.match(/(966[5][0-9]{8})/);
+      if (saudiMatch) {
+        cleanPhone = saudiMatch[1];
+      } else {
+        console.warn(`[normalizePhoneForDB] Invalid LID: ${phone}`);
+        return null;
+      }
+    } else {
+      console.warn(`[normalizePhoneForDB] Invalid LID: ${phone}`);
+      return null;
+    }
+  }
+
+  // Egyptian normalization
+  if (cleanPhone.startsWith('01') && cleanPhone.length === 11) {
+    cleanPhone = '20' + cleanPhone.substring(1);
+  } else if (cleanPhone.startsWith('1') && cleanPhone.length === 10) {
+    cleanPhone = '20' + cleanPhone;
+  }
+  // Saudi normalization
+  else if (cleanPhone.startsWith('05') && cleanPhone.length === 10) {
+    cleanPhone = '966' + cleanPhone.substring(1);
+  } else if (cleanPhone.startsWith('5') && cleanPhone.length === 9) {
+    cleanPhone = '966' + cleanPhone;
+  }
+
+  // Validate final length
+  if (cleanPhone.length < 10 || cleanPhone.length > 13) {
+    console.warn(`[normalizePhoneForDB] Invalid length: ${cleanPhone}`);
+    return null;
+  }
+
+  return cleanPhone;
+}
+
 // --- [SCHEMA FIX] Ensure DB Columns Exist ---
 async function ensureSchema() {
   try {
@@ -847,8 +902,18 @@ app.get("/api/customers/:id", verifyToken, async (req, res) => {
 
 app.post("/api/customers", verifyToken, validate(createCustomerSchema), async (req, res) => {
   const orgId = getOrgId(req);
-  const { name, phone, email, status, notes } = req.body;
+  const { name, email, status, notes } = req.body;
+  let { phone } = req.body;
+
   try {
+    // Normalize phone number before saving
+    if (phone) {
+      phone = normalizePhoneForDB(phone);
+      if (!phone) {
+        return res.status(400).json({ message: "رقم الهاتف غير صالح" });
+      }
+    }
+
     const customer = await db.createCustomer({ name, phone, email, status, notes, organization_id: orgId });
     res.json({ ok: true, customer });
   } catch (err: any) {
