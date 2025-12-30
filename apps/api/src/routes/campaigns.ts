@@ -362,8 +362,15 @@ router.post("/", verifyToken, validate(createCampaignSchema), async (req: Reques
 
         if (action === "send") {
             // Trigger background sending (non-blocking)
+            const group = targetGroup || 'all';
             setImmediate(() => {
-                sendCampaign(orgId, campaign.id, messageTemplate.trim(), targetGroup || 'all', (req as any).whatsappManager);
+                // Use direct WhatsApp chats method for "all" - NO LID ISSUES!
+                if (group === 'all') {
+                    sendCampaignToChats(orgId, campaign.id, messageTemplate.trim(), (req as any).whatsappManager);
+                } else {
+                    // Use database-based method for filtered groups
+                    sendCampaign(orgId, campaign.id, messageTemplate.trim(), group, (req as any).whatsappManager);
+                }
             });
         }
 
@@ -555,6 +562,170 @@ router.post("/:id/stop", verifyToken, async (req: Request, res: Response) => {
 export { stoppedCampaigns };
 
 // ========== BACKGROUND SENDER ==========
+
+/**
+ * Send campaign using WhatsApp Chats directly (BEST METHOD - No LID issues!)
+ * This method sends to all active WhatsApp conversations
+ */
+async function sendCampaignToChats(
+    orgId: string,
+    campaignId: string,
+    message: string,
+    manager: WhatsAppManager
+) {
+    console.log(`[Campaign ${campaignId}] Starting broadcast to WhatsApp chats...`);
+
+    try {
+        await db.updateCampaignStatus(campaignId, "processing");
+
+        // Check WhatsApp connection first
+        const { ready, error: connectionError } = await waitForWhatsAppReady(manager, orgId);
+
+        if (!ready) {
+            console.error(`[Campaign ${campaignId}] Aborting: WhatsApp not ready - ${connectionError}`);
+            await db.updateCampaignStatus(campaignId, "error", {
+                error_message: connectionError || "واتساب غير متصل. يرجى الاتصال أولاً."
+            });
+            return;
+        }
+
+        // Get all WhatsApp chats
+        console.log(`[Campaign ${campaignId}] Fetching all WhatsApp chats...`);
+        const chats = await manager.getAllChats(orgId);
+
+        console.log(`[Campaign ${campaignId}] Found ${chats.length} chats`);
+
+        // Update total recipients
+        await db.updateCampaignStatus(campaignId, "processing", {
+            total_recipients: chats.length
+        });
+
+        let successCount = 0;
+        let failCount = 0;
+        let batchCount = 0;
+        let messagesSinceDbUpdate = 0;
+        const errorLog: string[] = [];
+
+        // Send to each chat
+        for (let i = 0; i < chats.length; i++) {
+            const chat = chats[i];
+
+            // Check if campaign was stopped
+            if (i % 10 === 0 && await isCampaignStopped(campaignId)) {
+                console.log(`[Campaign ${campaignId}] Campaign stopped by user.`);
+                stoppedCampaigns.delete(campaignId);
+                await db.updateCampaignStatus(campaignId, "stopped", {
+                    successful_sends: successCount,
+                    failed_sends: failCount,
+                    error_message: "تم إيقاف الحملة يدوياً"
+                });
+                return;
+            }
+
+            // Rate limiting
+            batchCount++;
+            if (batchCount >= RATE_LIMIT_CONFIG.BATCH_SIZE) {
+                console.log(`[Campaign ${campaignId}] Batch complete, taking break...`);
+                await new Promise(r => setTimeout(r, RATE_LIMIT_CONFIG.BATCH_BREAK_MS));
+                batchCount = 0;
+            } else {
+                const delay = getRandomDelay();
+                console.log(`[Campaign ${campaignId}] [${i + 1}/${chats.length}] Waiting ${delay}ms...`);
+                await new Promise(r => setTimeout(r, delay));
+            }
+
+            // Personalize message
+            const text = message.replace(/{name}/g, chat.name || "عزيزي العميل");
+
+            console.log(`[Campaign ${campaignId}] Sending to chat: ${chat.name} (${chat.id})`);
+
+            // Send directly to chat (NO LID ISSUES!)
+            try {
+                await manager.sendMessageToChat(orgId, chat.id, text);
+                successCount++;
+
+                // Log success
+                await db.logCampaignResult({
+                    campaign_id: campaignId,
+                    customer_id: null, // We don't have customer ID from chats
+                    phone: chat.phone || chat.id,
+                    status: "sent"
+                }).catch(e => console.error("[Campaign] Failed to log success:", e));
+
+            } catch (error: any) {
+                failCount++;
+                const errMsg = error.message || "Unknown error";
+                errorLog.push(`[${chat.name}] ${errMsg}`);
+
+                console.error(`[Campaign ${campaignId}] Failed to send to ${chat.name}: ${errMsg}`);
+
+                // Log failure
+                await db.logCampaignResult({
+                    campaign_id: campaignId,
+                    customer_id: null,
+                    phone: chat.phone || chat.id,
+                    status: "failed",
+                    error_message: errMsg
+                }).catch(e => console.error("[Campaign] Failed to log error:", e));
+            }
+
+            // Update campaign stats in batches
+            messagesSinceDbUpdate++;
+            if (messagesSinceDbUpdate >= RATE_LIMIT_CONFIG.DB_UPDATE_BATCH) {
+                await supabase.from('campaigns').update({
+                    successful_sends: successCount,
+                    failed_sends: failCount,
+                    error_message: errorLog.length > 0 ? errorLog.slice(-5).join(' | ') : null,
+                    updated_at: new Date().toISOString()
+                }).eq('id', campaignId);
+
+                messagesSinceDbUpdate = 0;
+            }
+
+            // Check if WhatsApp still connected
+            if (i % 5 === 0 && manager.getState(orgId).status !== 'ready') {
+                console.error(`[Campaign ${campaignId}] WhatsApp disconnected mid-campaign!`);
+
+                await supabase.from('campaigns').update({
+                    successful_sends: successCount,
+                    failed_sends: failCount,
+                    error_message: errorLog.slice(-5).join(' | '),
+                    updated_at: new Date().toISOString()
+                }).eq('id', campaignId);
+
+                await db.updateCampaignStatus(campaignId, "error", {
+                    successful_sends: successCount,
+                    failed_sends: failCount,
+                    error_message: "انقطع اتصال واتساب أثناء الإرسال."
+                });
+                return;
+            }
+        }
+
+        // Final update
+        if (messagesSinceDbUpdate > 0) {
+            await supabase.from('campaigns').update({
+                successful_sends: successCount,
+                failed_sends: failCount,
+                error_message: errorLog.length > 0 ? errorLog.slice(-5).join(' | ') : null,
+                updated_at: new Date().toISOString()
+            }).eq('id', campaignId);
+        }
+
+        // Complete
+        await db.updateCampaignStatus(campaignId, "completed", {
+            successful_sends: successCount,
+            failed_sends: failCount
+        });
+        console.log(`[Campaign ${campaignId}] ✅ Completed. Success: ${successCount}, Failed: ${failCount}`);
+
+    } catch (error: any) {
+        console.error(`[Campaign ${campaignId}] Fatal error:`, error);
+        await db.updateCampaignStatus(campaignId, "error", {
+            error_message: `خطأ غير متوقع: ${error.message}`
+        });
+    }
+}
 
 async function sendCampaign(
     orgId: string,

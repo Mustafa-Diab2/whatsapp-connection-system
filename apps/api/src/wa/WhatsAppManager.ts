@@ -1281,6 +1281,96 @@ export default class WhatsAppManager {
   }
 
   /**
+   * Send message directly to a chat by chat ID (BEST METHOD - No LID issues!)
+   * This is the most reliable way to send messages
+   */
+  async sendMessageToChat(clientId: string, chatId: string, text: string): Promise<{ ok: boolean; messageId?: string }> {
+    const client = this.ensureReadyClient(clientId);
+
+    try {
+      console.log(`[${clientId}] [SEND_TO_CHAT] Sending to chat: ${chatId}`);
+
+      // Get chat directly - no contact lookup needed!
+      const chat = await client.getChatById(chatId);
+
+      // Send message directly to the chat
+      const msg = await chat.sendMessage(text);
+
+      console.log(`[${clientId}] [SEND_TO_CHAT] Success! MessageId: ${msg.id._serialized}`);
+      return { ok: true, messageId: msg.id._serialized };
+
+    } catch (err: any) {
+      console.error(`[${clientId}] [SEND_TO_CHAT] Failed to send to ${chatId}:`, err.message);
+      throw new Error(`فشل إرسال الرسالة: ${err.message}`);
+    }
+  }
+
+  /**
+   * Get all WhatsApp chats (conversations) - BEST for campaigns!
+   * Returns all active chats with their IDs and info
+   */
+  async getAllChats(clientId: string): Promise<Array<{
+    id: string;
+    name: string;
+    phone?: string;
+    isGroup: boolean;
+    unreadCount: number;
+    timestamp: number;
+  }>> {
+    const client = this.ensureReadyClient(clientId);
+
+    try {
+      console.log(`[${clientId}] Fetching all chats...`);
+      const chats = await client.getChats();
+
+      console.log(`[${clientId}] Found ${chats.length} total chats, processing...`);
+
+      const processedChats = [];
+
+      for (const chat of chats) {
+        try {
+          // Skip group chats and status broadcasts
+          if (chat.isGroup) {
+            continue;
+          }
+
+          // Get contact info
+          const contact = await chat.getContact();
+
+          // Extract phone number if possible
+          let phone: string | undefined = undefined;
+          try {
+            const formatted = await contact.getFormattedNumber();
+            phone = formatted.replace(/\D/g, '');
+          } catch (e) {
+            // If can't get phone, use the chat ID user part
+            phone = chat.id.user;
+          }
+
+          processedChats.push({
+            id: chat.id._serialized,
+            name: chat.name || contact.name || contact.pushname || phone || 'Unknown',
+            phone,
+            isGroup: chat.isGroup,
+            unreadCount: chat.unreadCount,
+            timestamp: chat.timestamp
+          });
+
+        } catch (err) {
+          console.warn(`[${clientId}] Error processing chat ${chat.id._serialized}:`, err);
+        }
+      }
+
+      console.log(`[${clientId}] Successfully processed ${processedChats.length} valid chats`);
+      return processedChats;
+
+    } catch (err: any) {
+      console.error(`[${clientId}] Failed to get chats:`, err);
+      throw new Error(`فشل في جلب المحادثات: ${err.message}`);
+    }
+  }
+
+  /**
    * Fetch all WhatsApp contacts with names and phone numbers
    * Returns contacts with resolved phone numbers (handling LIDs)
    */

@@ -654,6 +654,57 @@ app.get("/whatsapp/contacts", verifyToken, async (req, res) => {
   }
 });
 
+// Get all WhatsApp chats (conversations)
+app.get("/whatsapp/chats", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  try {
+    console.log(`[${orgId}] Fetching all WhatsApp chats...`);
+    const chats = await manager.getAllChats(orgId);
+
+    res.json({
+      ok: true,
+      chats,
+      total: chats.length
+    });
+  } catch (err: any) {
+    console.error(`[${orgId}] Get chats error:`, err);
+    res.status(500).json({
+      ok: false,
+      message: err?.message || "Failed to get chats"
+    });
+  }
+});
+
+// Send message to a specific chat by chat ID
+app.post("/whatsapp/send-to-chat", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  const { chatId, text } = req.body;
+
+  if (!chatId || !text) {
+    return res.status(400).json({
+      ok: false,
+      message: "chatId and text are required"
+    });
+  }
+
+  try {
+    console.log(`[${orgId}] Sending message to chat: ${chatId}`);
+    const result = await manager.sendMessageToChat(orgId, chatId, text);
+
+    res.json({
+      ok: true,
+      message: "تم إرسال الرسالة بنجاح",
+      ...result
+    });
+  } catch (err: any) {
+    console.error(`[${orgId}] Send to chat error:`, err);
+    res.status(500).json({
+      ok: false,
+      message: err?.message || "Failed to send message"
+    });
+  }
+});
+
 // Sync WhatsApp contacts to database
 app.post("/whatsapp/contacts/sync", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
