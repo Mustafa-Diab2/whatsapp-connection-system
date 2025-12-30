@@ -1127,9 +1127,31 @@ export default class WhatsAppManager {
     try {
       console.log(`[${clientId}] [SEND] Attempting to send to: ${chatId}`);
 
+      // ✅ NEW: Use getNumberId() to validate and get the proper WhatsApp ID
+      // This is the RECOMMENDED method to avoid LID errors entirely
+      let validatedChatId: string | null = null;
+
+      try {
+        console.log(`[${clientId}] [SEND] Validating number with getNumberId()...`);
+        const numberId = await client.getNumberId(cleanNumber);
+
+        if (numberId && numberId._serialized) {
+          validatedChatId = numberId._serialized;
+          console.log(`[${clientId}] [SEND] ✅ Number validated: ${cleanNumber} -> ${validatedChatId}`);
+        } else {
+          console.warn(`[${clientId}] [SEND] ⚠️ getNumberId() returned null - number may not be registered on WhatsApp`);
+        }
+      } catch (validationErr: any) {
+        console.warn(`[${clientId}] [SEND] ⚠️ getNumberId() failed:`, validationErr.message);
+        // Continue with original chatId if validation fails
+      }
+
+      // Use validated ID if available, otherwise fall back to original
+      const finalChatId = validatedChatId || chatId;
+
       // Check cache first for optimization
       const cached = this.getCachedContact(clientId, cleanNumber);
-      if (cached) {
+      if (cached && !validatedChatId) {
         console.log(`[${clientId}] [SEND] Using cached contact info for ${cleanNumber}`);
         chatId = cached.id;
       }
@@ -1139,7 +1161,7 @@ export default class WhatsAppManager {
        * Instead of direct sendMessage, we get the Contact, then the Chat.
        * This forces WA Web to internalize the chat state, preventing "Evaluation failed".
        */
-      const contact = await client.getContactById(chatId);
+      const contact = await client.getContactById(finalChatId);
 
       // Cache contact info for future use
       try {
@@ -1157,9 +1179,9 @@ export default class WhatsAppManager {
       }
 
       // If the contact gives us a different serialized ID (like resolving LID to real JID), use it
-      const targetJid = contact.id._serialized || chatId;
-      if (targetJid !== chatId) {
-        console.log(`[${clientId}] [SEND] JID resolved via contact: ${chatId} -> ${targetJid}`);
+      const targetJid = contact.id._serialized || finalChatId;
+      if (targetJid !== finalChatId) {
+        console.log(`[${clientId}] [SEND] JID resolved via contact: ${finalChatId} -> ${targetJid}`);
       }
 
       const chat = await contact.getChat();
@@ -1291,7 +1313,11 @@ export default class WhatsAppManager {
       console.log(`[${clientId}] [SEND_TO_CHAT] Sending to chat: ${chatId}`);
 
       // Get chat directly - no contact lookup needed!
+      // This method AVOIDS LID issues entirely by using chat IDs directly
       const chat = await client.getChatById(chatId);
+
+      // Artificial delay to mimic human behavior
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       // Send message directly to the chat
       const msg = await chat.sendMessage(text);
@@ -1301,7 +1327,19 @@ export default class WhatsAppManager {
 
     } catch (err: any) {
       console.error(`[${clientId}] [SEND_TO_CHAT] Failed to send to ${chatId}:`, err.message);
-      throw new Error(`فشل إرسال الرسالة: ${err.message}`);
+
+      const errMsg = err.message || "";
+
+      // Provide specific error messages for common issues
+      if (errMsg.includes("chat not found") || errMsg.includes("not found")) {
+        throw new Error("المحادثة غير موجودة أو تم حذفها");
+      } else if (errMsg.includes("Evaluation failed")) {
+        throw new Error("فشل الاتصال بالمحادثة. حاول إعادة تحميل WhatsApp.");
+      } else if (errMsg.includes("getIsMyContact is not a function")) {
+        throw new Error("خطأ داخلي في مكتبة WhatsApp. حاول إعادة الاتصال.");
+      }
+
+      throw new Error(`فشل إرسال الرسالة: ${errMsg}`);
     }
   }
 

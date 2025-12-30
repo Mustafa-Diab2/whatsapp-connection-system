@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file.
   - "Evaluation failed" → Clearer explanation
   - "getIsMyContact" errors → Handled gracefully
 - **Phone Number Validation**: Pre-send validation to prevent invalid messages
+- **🆕 getNumberId() Validation**: Implemented WhatsApp's recommended `getNumberId()` method to validate phone numbers before sending
+  - Prevents "No LID for user" errors completely
+  - Validates numbers are registered on WhatsApp before attempting send
+  - Falls back gracefully if validation fails
 
 #### Added
 - **Phone Cleanup Endpoint**: `POST /whatsapp/contacts/clean`
@@ -23,9 +27,19 @@ All notable changes to this project will be documented in this file.
   - Command-line tool for database cleanup
   - Supports `--dry-run` and `--fix` flags
   - Processes both customers and contacts tables
+- **🆕 getNumberId() Pre-validation**: Added phone number validation using WhatsApp's official API before sending
+  - Resolves proper WhatsApp ID (`_serialized`) for each number
+  - Avoids LID errors by using validated IDs
+  - Improved success rate for message delivery
 
 #### Changed
-- **sendMessage**: Added upfront validation for phone numbers >15 digits
+- **sendMessage**:
+  - Added upfront validation for phone numbers >15 digits
+  - **🆕 Now uses `getNumberId()` to validate and resolve proper WhatsApp IDs**
+  - Improved error handling with specific Arabic messages
+- **sendMessageToChat**:
+  - Added artificial delay (500ms) to mimic human behavior
+  - Enhanced error messages for common chat-related failures
 - **Error Handling**: More specific error messages in Arabic for better UX
 
 ---

@@ -23,7 +23,10 @@
       "Bash(git push:*)",
       "Bash(npm audit fix:*)",
       "Bash(cat:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm update:*)",
+      "Bash(npm view:*)"
     ]
   }
 }
