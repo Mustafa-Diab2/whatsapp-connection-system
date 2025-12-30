@@ -19,6 +19,7 @@ interface Campaign {
 interface CampaignLog {
     id: string;
     phone: string;
+    customer_name?: string;
     status: 'sent' | 'failed';
     error_message?: string;
     sent_at: string;
@@ -79,6 +80,22 @@ export default function CampaignsPage() {
         } catch (error) {
             console.error("Failed to resend campaign", error);
             alert("فشل بدء الإرسال");
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!confirm("هل أنت متأكد من حذف هذه الحملة نهائياً؟ لا يمكن التراجع عن هذا الإجراء.")) return;
+
+        try {
+            const token = localStorage.getItem("token");
+            await axios.delete(`${API_URL}/api/campaigns/${id}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            alert("تم حذف الحملة بنجاح");
+            fetchCampaigns();
+        } catch (error) {
+            console.error("Failed to delete campaign", error);
+            alert("فشل حذف الحملة");
         }
     };
 
@@ -304,13 +321,19 @@ export default function CampaignsPage() {
                                                                 onClick={() => fetchLogs(camp)}
                                                                 className="h-10 px-4 bg-slate-100 border border-slate-200 rounded-xl text-xs font-black text-slate-600 hover:bg-white hover:border-brand-blue hover:text-brand-blue hover:shadow-md active:scale-95 transition-all"
                                                             >
-                                                                📊 تقرير العودة
+                                                                📊 تقرير
                                                             </button>
                                                             <button
                                                                 onClick={() => handleResend(camp.id)}
-                                                                className="h-10 px-4 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-600 hover:border-brand-blue hover:text-brand-blue hover:shadow-md active:scale-95 transition-all transition-colors"
+                                                                className="h-10 px-4 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-600 hover:border-brand-blue hover:text-brand-blue hover:shadow-md active:scale-95 transition-all"
                                                             >
-                                                                إعادة إرسال ↺
+                                                                ↺ إرسال
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDelete(camp.id)}
+                                                                className="h-10 px-4 bg-white border border-red-200 rounded-xl text-xs font-black text-red-500 hover:bg-red-50 hover:border-red-300 hover:shadow-md active:scale-95 transition-all"
+                                                            >
+                                                                🗑️ حذف
                                                             </button>
                                                         </div>
                                                     )}
@@ -366,8 +389,9 @@ export default function CampaignsPage() {
                                                     {log.status === 'sent' ? '✓' : '✕'}
                                                 </div>
                                                 <div>
-                                                    <p className="text-sm font-black text-slate-700" dir="ltr">{log.phone}</p>
-                                                    <p className="text-[10px] font-bold text-slate-400 mt-0.5 uppercase">{new Date(log.sent_at).toLocaleString('ar-EG')}</p>
+                                                    <p className="text-sm font-black text-slate-700">{log.customer_name || 'غير معروف'}</p>
+                                                    <p className="text-[11px] font-bold text-slate-500 mt-0.5" dir="ltr">{log.phone}</p>
+                                                    <p className="text-[10px] font-bold text-slate-400 mt-0.5">{new Date(log.sent_at).toLocaleString('ar-EG')}</p>
                                                 </div>
                                             </div>
                                             <div>

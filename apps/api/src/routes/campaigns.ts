@@ -71,20 +71,92 @@ router.post("/:id/send", verifyToken, validate(sendCampaignSchema), async (req: 
     }
 });
 
-// Get campaign logs
+// Get campaign logs with customer names
 router.get("/:id/logs", verifyToken, async (req: Request, res: Response) => {
     try {
         const orgId = (req as any).user.organizationId;
         const { id } = req.params;
+
+        // Get logs
         const { data: logs, error } = await supabase
             .from('campaign_logs')
             .select('*')
             .eq('campaign_id', id)
             .order('sent_at', { ascending: false });
         if (error) throw error;
-        res.json({ logs });
+
+        // Get customer names for each log
+        const logsWithNames = await Promise.all((logs || []).map(async (log) => {
+            let customerName = null;
+
+            // Try to find in customers table
+            if (log.customer_id) {
+                const { data: customer } = await supabase
+                    .from('customers')
+                    .select('name')
+                    .eq('id', log.customer_id)
+                    .single();
+                if (customer) customerName = customer.name;
+            }
+
+            // If no customer_id or not found, try to find by phone
+            if (!customerName && log.phone) {
+                const normalizedPhone = log.phone.replace(/\D/g, '');
+                const { data: customer } = await supabase
+                    .from('customers')
+                    .select('name')
+                    .eq('organization_id', orgId)
+                    .ilike('phone', `%${normalizedPhone.slice(-10)}%`)
+                    .limit(1)
+                    .single();
+                if (customer) customerName = customer.name;
+
+                // Also check contacts table
+                if (!customerName) {
+                    const { data: contact } = await supabase
+                        .from('contacts')
+                        .select('name')
+                        .eq('organization_id', orgId)
+                        .ilike('phone', `%${normalizedPhone.slice(-10)}%`)
+                        .limit(1)
+                        .single();
+                    if (contact) customerName = contact.name;
+                }
+            }
+
+            return { ...log, customer_name: customerName };
+        }));
+
+        res.json({ logs: logsWithNames });
     } catch (error: any) {
         res.status(500).json({ error: error.message || "Failed to fetch logs" });
+    }
+});
+
+// Delete Campaign
+router.delete("/:id", verifyToken, async (req: Request, res: Response) => {
+    try {
+        const orgId = (req as any).user.organizationId;
+        const { id } = req.params;
+
+        // First delete related logs
+        await supabase
+            .from('campaign_logs')
+            .delete()
+            .eq('campaign_id', id);
+
+        // Then delete the campaign
+        const { error } = await supabase
+            .from('campaigns')
+            .delete()
+            .eq('id', id)
+            .eq('organization_id', orgId);
+
+        if (error) throw error;
+
+        res.json({ message: "Campaign deleted successfully" });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message || "Failed to delete campaign" });
     }
 });
 
