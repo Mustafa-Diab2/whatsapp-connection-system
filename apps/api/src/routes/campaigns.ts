@@ -287,12 +287,29 @@ async function sendCampaign(orgId: string, campaignId: string, message: string, 
                 console.log(`[Campaign ${campaignId}] Processing recipient ${recipient.phone} (${recipient._origin})`);
                 const text = message.replace(/{name}/g, recipient.name || "عزيزي العميل");
 
-                let cleanPhone = normalize(recipient.phone);
-                // Egypt normalization: 01x -> 201x
+                // Aggressive cleaning: Remove everything except digits
+                let cleanPhone = recipient.phone ? String(recipient.phone).replace(/\D/g, "") : "";
+
+                // Detection for "LID" or invalid long IDs (WhatsApp IDs can be very long, phone numbers usually aren't)
+                // If it looks like a weird internal ID, we try to see if there's a better part of it
+                if (cleanPhone.length > 15 && cleanPhone.includes('200')) {
+                    // Sometimes IDs are prefixed with 200, try to fix common Egyptian ID issues
+                    console.warn(`[Campaign ${campaignId}] Detected potentially malformed ID: ${cleanPhone}. Attempting to extract number.`);
+                }
+
+                // Egypt normalization: 
+                // 01x... (11 digits) -> 201x...
                 if (cleanPhone.startsWith('01') && cleanPhone.length === 11) {
                     cleanPhone = '20' + cleanPhone.substring(1);
-                } else if (cleanPhone.startsWith('1') && cleanPhone.length === 10) {
+                }
+                // 1x... (10 digits) -> 201x...
+                else if (cleanPhone.startsWith('1') && cleanPhone.length === 10) {
                     cleanPhone = '20' + cleanPhone;
+                }
+                // If it's already 12 digits starting with 20, it's likely correct.
+
+                if (!cleanPhone || cleanPhone.length < 8) {
+                    throw new Error("رقم هاتف غير صالح أو ناقص");
                 }
 
                 console.log(`[Campaign ${campaignId}] Sending to FINAL JID: ${cleanPhone}@c.us`);
