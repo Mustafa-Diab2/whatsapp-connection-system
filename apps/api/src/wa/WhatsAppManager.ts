@@ -58,6 +58,15 @@ export default class WhatsAppManager {
   private readonly qrTimeoutMs = 60_000;
   private isShuttingDown = false;
 
+  // Contact caching: clientId -> Map<phone, contactInfo>
+  private contactsCache = new Map<string, Map<string, {
+    id: string;
+    name: string;
+    phone: string;
+    cachedAt: number;
+  }>>();
+  private readonly CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
   constructor(io: Server) {
     this.io = io;
     this.setupGracefulShutdown();
@@ -1049,29 +1058,90 @@ export default class WhatsAppManager {
     return client;
   }
 
+  /**
+   * Get cached contact info or null if not cached/expired
+   */
+  private getCachedContact(clientId: string, phone: string) {
+    const clientCache = this.contactsCache.get(clientId);
+    if (!clientCache) return null;
+
+    const cached = clientCache.get(phone);
+    if (!cached) return null;
+
+    // Check if expired
+    if (Date.now() - cached.cachedAt > this.CACHE_TTL_MS) {
+      clientCache.delete(phone);
+      return null;
+    }
+
+    return cached;
+  }
+
+  /**
+   * Cache contact info
+   */
+  private cacheContact(clientId: string, phone: string, contactInfo: { id: string; name: string; phone: string }) {
+    let clientCache = this.contactsCache.get(clientId);
+    if (!clientCache) {
+      clientCache = new Map();
+      this.contactsCache.set(clientId, clientCache);
+    }
+
+    clientCache.set(phone, {
+      ...contactInfo,
+      cachedAt: Date.now()
+    });
+  }
+
   async sendMessage(clientId: string, to: string, text: string): Promise<{ ok: boolean; messageId?: string }> {
     const client = this.ensureReadyClient(clientId);
 
     // Normalize JID
     let chatId = to;
+    let cleanNumber = to;
+
     if (!to.includes("@")) {
-      const cleanNumber = to.replace(/\D/g, "");
+      cleanNumber = to.replace(/\D/g, "");
       if (cleanNumber.length >= 15) {
         chatId = `${cleanNumber}@lid`;
       } else {
         chatId = `${cleanNumber}@c.us`;
       }
+    } else {
+      cleanNumber = to.split('@')[0].replace(/\D/g, '');
     }
 
     try {
       console.log(`[${clientId}] [SEND] Attempting to send to: ${chatId}`);
 
-      /** 
-       * STRATEGY: 
+      // Check cache first for optimization
+      const cached = this.getCachedContact(clientId, cleanNumber);
+      if (cached) {
+        console.log(`[${clientId}] [SEND] Using cached contact info for ${cleanNumber}`);
+        chatId = cached.id;
+      }
+
+      /**
+       * STRATEGY:
        * Instead of direct sendMessage, we get the Contact, then the Chat.
        * This forces WA Web to internalize the chat state, preventing "Evaluation failed".
        */
       const contact = await client.getContactById(chatId);
+
+      // Cache contact info for future use
+      try {
+        const formatted = await contact.getFormattedNumber();
+        const realPhone = formatted.replace(/\D/g, '');
+        if (realPhone && realPhone.length >= 8 && realPhone.length <= 15) {
+          this.cacheContact(clientId, realPhone, {
+            id: contact.id._serialized,
+            name: contact.name || contact.pushname || realPhone,
+            phone: realPhone
+          });
+        }
+      } catch (e) {
+        // Cache attempt failed, continue
+      }
 
       // If the contact gives us a different serialized ID (like resolving LID to real JID), use it
       const targetJid = contact.id._serialized || chatId;
@@ -1091,20 +1161,58 @@ export default class WhatsAppManager {
     } catch (err: any) {
       console.error(`[${clientId}] [SEND] Failed to send to ${chatId}:`, err.message);
 
-      // Final fallback: try raw direct send if the complex way failed
-      try {
-        console.warn(`[${clientId}] [SEND] Trying raw fallback for ${chatId}...`);
-        const msg = await client.sendMessage(chatId, text);
-        return { ok: true, messageId: msg.id._serialized };
-      } catch (fallbackErr: any) {
-        console.error(`[${clientId}] [SEND] Raw fallback also failed for ${chatId}:`, fallbackErr.message);
-
-        const errMsg = fallbackErr.message || "";
-        if (errMsg.includes("No LID") || errMsg.includes("not found") || errMsg.includes("invalid") || errMsg.includes("Evaluation failed")) {
-          throw new Error("فشل واتساب في الوصول للمحادثة. تأكد من صحة الرقم أو المعرف (LID).");
+      // Enhanced error handling with retries
+      const retryStrategies = [
+        // Strategy 1: Try with @c.us suffix
+        async () => {
+          const altChatId = `${cleanNumber}@c.us`;
+          if (altChatId === chatId) throw new Error("Same as original");
+          console.log(`[${clientId}] [SEND] Retry 1: Trying ${altChatId}...`);
+          const contact = await client.getContactById(altChatId);
+          const chat = await contact.getChat();
+          await new Promise(r => setTimeout(r, 500));
+          return await chat.sendMessage(text);
+        },
+        // Strategy 2: Try with @lid suffix for long numbers
+        async () => {
+          if (cleanNumber.length < 15) throw new Error("Not a LID");
+          const altChatId = `${cleanNumber}@lid`;
+          if (altChatId === chatId) throw new Error("Same as original");
+          console.log(`[${clientId}] [SEND] Retry 2: Trying ${altChatId}...`);
+          const contact = await client.getContactById(altChatId);
+          const chat = await contact.getChat();
+          await new Promise(r => setTimeout(r, 500));
+          return await chat.sendMessage(text);
+        },
+        // Strategy 3: Raw direct send
+        async () => {
+          console.log(`[${clientId}] [SEND] Retry 3: Raw send to ${chatId}...`);
+          return await client.sendMessage(chatId, text);
         }
-        throw fallbackErr;
+      ];
+
+      // Try each strategy
+      for (let i = 0; i < retryStrategies.length; i++) {
+        try {
+          const msg = await retryStrategies[i]();
+          console.log(`[${clientId}] [SEND] Success with retry strategy ${i + 1}!`);
+          return { ok: true, messageId: msg.id._serialized };
+        } catch (retryErr: any) {
+          console.warn(`[${clientId}] [SEND] Retry strategy ${i + 1} failed:`, retryErr.message);
+        }
       }
+
+      // All strategies failed
+      const errMsg = err.message || "";
+      if (errMsg.includes("No LID") || errMsg.includes("not found") || errMsg.includes("invalid")) {
+        throw new Error("رقم غير صحيح أو غير مسجل على واتساب");
+      } else if (errMsg.includes("Evaluation failed")) {
+        throw new Error("فشل الاتصال بالمحادثة. حاول مرة أخرى.");
+      } else if (errMsg.includes("not registered")) {
+        throw new Error("الرقم غير مسجل على واتساب");
+      }
+
+      throw new Error(`فشل إرسال الرسالة: ${errMsg}`);
     }
   }
 
@@ -1150,6 +1258,168 @@ export default class WhatsAppManager {
 
       console.error(`[${clientId}] Failed to send media to ${chatId}:`, err.message || err);
       throw err;
+    }
+  }
+
+  /**
+   * Fetch all WhatsApp contacts with names and phone numbers
+   * Returns contacts with resolved phone numbers (handling LIDs)
+   */
+  async getAllContacts(clientId: string): Promise<Array<{
+    id: string;
+    name: string;
+    phone: string;
+    pushname?: string;
+    isMyContact: boolean;
+    isWAContact: boolean;
+  }>> {
+    const client = this.ensureReadyClient(clientId);
+
+    try {
+      console.log(`[${clientId}] Fetching all contacts...`);
+      const contacts = await client.getContacts();
+
+      console.log(`[${clientId}] Found ${contacts.length} total contacts, processing...`);
+
+      const processedContacts = [];
+      let processed = 0;
+
+      for (const contact of contacts) {
+        try {
+          // Skip group contacts and status broadcast
+          if (contact.isGroup || contact.id._serialized === 'status@broadcast') {
+            continue;
+          }
+
+          // Try to get About to force server-side populate
+          try { await contact.getAbout(); } catch (e) { }
+
+          // Get the best phone number
+          let realPhone = contact.id.user || '';
+
+          // Strategy 1: getFormattedNumber (usually the most readable)
+          try {
+            const formatted = await contact.getFormattedNumber();
+            const cleanFormatted = formatted.replace(/\D/g, '');
+
+            if (cleanFormatted && cleanFormatted.length >= 8 && cleanFormatted.length <= 15 && !cleanFormatted.startsWith('4203')) {
+              realPhone = cleanFormatted;
+            }
+          } catch (e) { }
+
+          // Strategy 2: contact.number (raw physical number)
+          if (contact.number) {
+            const rawNumber = contact.number.replace(/\D/g, '');
+            if (rawNumber && rawNumber.length >= 8 && rawNumber.length <= 15 && !rawNumber.startsWith('4203')) {
+              realPhone = rawNumber;
+            }
+          }
+
+          // Only include if we have a valid phone
+          if (realPhone && realPhone.length >= 8 && realPhone.length <= 15) {
+            processedContacts.push({
+              id: contact.id._serialized,
+              name: contact.name || contact.pushname || realPhone,
+              phone: realPhone,
+              pushname: contact.pushname || undefined,
+              isMyContact: contact.isMyContact,
+              isWAContact: contact.isWAContact
+            });
+          }
+
+          processed++;
+          if (processed % 100 === 0) {
+            console.log(`[${clientId}] Processed ${processed}/${contacts.length} contacts...`);
+          }
+
+        } catch (err) {
+          console.warn(`[${clientId}] Error processing contact ${contact.id._serialized}:`, err);
+        }
+      }
+
+      console.log(`[${clientId}] Successfully processed ${processedContacts.length} valid contacts`);
+      return processedContacts;
+
+    } catch (err: any) {
+      console.error(`[${clientId}] Failed to get contacts:`, err);
+      throw new Error(`فشل في جلب جهات الاتصال: ${err.message}`);
+    }
+  }
+
+  /**
+   * Sync all WhatsApp contacts to database (contacts table)
+   * Returns count of synced contacts
+   */
+  async syncContactsToDatabase(clientId: string): Promise<{
+    synced: number;
+    updated: number;
+    failed: number;
+    total: number;
+  }> {
+    try {
+      console.log(`[${clientId}] Starting contact sync to database...`);
+
+      const contacts = await this.getAllContacts(clientId);
+
+      let synced = 0;
+      let updated = 0;
+      let failed = 0;
+
+      for (const contact of contacts) {
+        try {
+          // Check if contact exists
+          const { data: existing } = await supabase
+            .from('contacts')
+            .select('id, phone, name')
+            .eq('organization_id', clientId)
+            .eq('phone', contact.phone)
+            .single();
+
+          if (existing) {
+            // Update if name changed or was empty
+            if (!existing.name || existing.name !== contact.name) {
+              await supabase
+                .from('contacts')
+                .update({
+                  name: contact.name,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', existing.id);
+              updated++;
+            }
+          } else {
+            // Create new contact
+            await supabase
+              .from('contacts')
+              .insert({
+                organization_id: clientId,
+                name: contact.name,
+                phone: contact.phone,
+                source: 'whatsapp_sync',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              });
+            synced++;
+          }
+
+        } catch (err) {
+          console.warn(`[${clientId}] Failed to sync contact ${contact.phone}:`, err);
+          failed++;
+        }
+      }
+
+      console.log(`[${clientId}] Contact sync complete: ${synced} new, ${updated} updated, ${failed} failed (Total: ${contacts.length})`);
+
+      return {
+        synced,
+        updated,
+        failed,
+        total: contacts.length
+      };
+
+    } catch (err: any) {
+      console.error(`[${clientId}] Contact sync failed:`, err);
+      throw new Error(`فشل في مزامنة جهات الاتصال: ${err.message}`);
     }
   }
 

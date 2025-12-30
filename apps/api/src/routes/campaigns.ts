@@ -13,6 +13,12 @@ const RATE_LIMIT_CONFIG = {
     MAX_DELAY_MS: 8000,  // Maximum delay between messages (8 seconds)
     BATCH_SIZE: 10,      // Send 10 messages then take a break
     BATCH_BREAK_MS: 30000, // 30 second break after each batch
+    DB_UPDATE_BATCH: 5,  // Update DB every 5 messages instead of every message
+    MAX_RETRIES: 3,      // Maximum retry attempts for failed messages
+    RETRY_DELAY_MS: 2000, // Delay between retries (2 seconds)
+    MESSAGE_TIMEOUT_MS: 30000, // Timeout for sending a single message (30 seconds)
+    CONNECTION_WAIT_MS: 60000, // Max wait time for WhatsApp to be ready (60 seconds)
+    RECIPIENTS_PAGE_SIZE: 1000, // Load recipients in chunks of 1000
 };
 
 // Phone validation patterns
@@ -43,20 +49,32 @@ function normalizePhoneNumber(phone: string): { valid: boolean; normalized: stri
     // Detect WhatsApp internal LID (very long numbers that aren't real phones)
     // WhatsApp LIDs are typically 14+ digits and often start with specific patterns
     if (cleanPhone.length > 14) {
-        // Try to extract real phone number from LID
-        // Pattern 1: Egyptian numbers embedded (201xxxxxxxxx - 12 digits)
-        const egyptMatch = cleanPhone.match(/(20[1][0-9]{9})/);
-        if (egyptMatch) {
-            cleanPhone = egyptMatch[1];
+        // Try to extract real phone number from LID - Enhanced patterns
+        const patterns = [
+            /(20[1][0-9]{9})/,      // Egypt: 201xxxxxxxxx
+            /(966[5][0-9]{8})/,     // Saudi: 9665xxxxxxxx
+            /(971[5][0-9]{8})/,     // UAE: 9715xxxxxxxx
+            /(965[569][0-9]{7})/,   // Kuwait: 9655xxxxxxx, 9656xxxxxxx, 9659xxxxxxx
+            /(968[79][0-9]{7})/,    // Oman: 9687xxxxxxx, 9689xxxxxxx
+            /(974[3567][0-9]{7})/,  // Qatar: 9743xxxxxxx, etc.
+            /(973[3][0-9]{7})/,     // Bahrain: 9733xxxxxxx
+            /(962[7][0-9]{8})/,     // Jordan: 9627xxxxxxxx
+            /(961[3-9][0-9]{7})/,   // Lebanon: 9613xxxxxxx to 9619xxxxxxx
+            /(212[6-7][0-9]{8})/,   // Morocco: 2126xxxxxxxx, 2127xxxxxxxx
+            /(213[5-7][0-9]{8})/,   // Algeria: 2135xxxxxxxx to 2137xxxxxxxx
+            /(216[2-9][0-9]{7})/,   // Tunisia: 2162xxxxxxx to 2169xxxxxxx
+        ];
+
+        for (const pattern of patterns) {
+            const match = cleanPhone.match(pattern);
+            if (match) {
+                cleanPhone = match[1];
+                break;
+            }
         }
-        // Pattern 2: Saudi numbers (966xxxxxxxxx - 12 digits)
-        else if (cleanPhone.includes('966')) {
-            const saudiMatch = cleanPhone.match(/(966[5][0-9]{8})/);
-            if (saudiMatch) cleanPhone = saudiMatch[1];
-        }
-        // Pattern 3: Look for country code at start
-        else {
-            // If still too long, it's an invalid LID - skip it
+
+        // If still too long after pattern matching, it's invalid
+        if (cleanPhone.length > 14) {
             console.warn(`[normalizePhoneNumber] Detected LID/invalid ID: ${phone} - skipping`);
             return { valid: false, normalized: cleanPhone, error: 'رقم WhatsApp ID داخلي غير صالح للإرسال' };
         }
@@ -121,21 +139,97 @@ function getRandomDelay(): number {
 
 /**
  * Check if campaign was stopped (checks both memory and DB)
+ * Fixed race condition by ensuring atomic checks
  */
 async function isCampaignStopped(campaignId: string): Promise<boolean> {
-    // Check memory first (faster)
-    if (stoppedCampaigns.get(campaignId)) {
-        return true;
-    }
-
-    // Check database for persistence across restarts
+    // Check database first for authoritative state
     const { data } = await supabase
         .from('campaigns')
         .select('status')
         .eq('id', campaignId)
         .single();
 
-    return data?.status === 'stopped';
+    const dbStopped = data?.status === 'stopped';
+
+    // Sync memory state with DB state
+    if (dbStopped) {
+        stoppedCampaigns.set(campaignId, true);
+    } else {
+        stoppedCampaigns.delete(campaignId);
+    }
+
+    return dbStopped;
+}
+
+/**
+ * Send message with timeout and retry logic
+ */
+async function sendMessageWithRetry(
+    manager: WhatsAppManager,
+    orgId: string,
+    phone: string,
+    text: string,
+    retries: number = RATE_LIMIT_CONFIG.MAX_RETRIES
+): Promise<{ success: boolean; error?: string }> {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            // Create timeout promise
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error('Message timeout')), RATE_LIMIT_CONFIG.MESSAGE_TIMEOUT_MS);
+            });
+
+            // Race between sending message and timeout
+            await Promise.race([
+                manager.sendMessage(orgId, phone, text),
+                timeoutPromise
+            ]);
+
+            return { success: true };
+        } catch (error: any) {
+            const isLastAttempt = attempt === retries;
+            const errorMsg = error.message || 'Unknown error';
+
+            if (isLastAttempt) {
+                console.error(`[sendMessageWithRetry] Failed after ${retries + 1} attempts to ${phone}: ${errorMsg}`);
+                return { success: false, error: errorMsg };
+            }
+
+            console.warn(`[sendMessageWithRetry] Attempt ${attempt + 1} failed for ${phone}: ${errorMsg}. Retrying...`);
+            await new Promise(r => setTimeout(r, RATE_LIMIT_CONFIG.RETRY_DELAY_MS));
+        }
+    }
+
+    return { success: false, error: 'Max retries exceeded' };
+}
+
+/**
+ * Wait for WhatsApp to be ready with timeout
+ */
+async function waitForWhatsAppReady(
+    manager: WhatsAppManager,
+    orgId: string,
+    maxWaitMs: number = RATE_LIMIT_CONFIG.CONNECTION_WAIT_MS
+): Promise<{ ready: boolean; error?: string }> {
+    const startTime = Date.now();
+    const checkInterval = 2000; // Check every 2 seconds
+
+    while (Date.now() - startTime < maxWaitMs) {
+        const state = manager.getState(orgId);
+
+        if (state.status === 'ready') {
+            return { ready: true };
+        }
+
+        if (state.status === 'disconnected' || state.status === 'error') {
+            return { ready: false, error: `WhatsApp في حالة ${state.status}` };
+        }
+
+        // Still connecting/loading, wait and check again
+        console.log(`[waitForWhatsAppReady] WhatsApp status: ${state.status}, waiting...`);
+        await new Promise(r => setTimeout(r, checkInterval));
+    }
+
+    return { ready: false, error: 'انتهت مهلة الانتظار للاتصال بواتساب' };
 }
 
 /**
@@ -170,36 +264,25 @@ async function batchGetCustomerNames(
     // Batch fetch customers by phone (only for ones we don't have yet)
     const missingPhones = phones.filter(p => !phoneToName.has(p));
     if (missingPhones.length > 0) {
-        // Create OR conditions for phone matching
-        const phoneConditions = missingPhones.map(p => `phone.ilike.%${p.slice(-10)}%`);
+        // Process in chunks to avoid query length limits
+        const chunkSize = 50; // Process 50 phones at a time
 
-        const { data: customersByPhone } = await supabase
-            .from('customers')
-            .select('name, phone')
-            .eq('organization_id', orgId)
-            .or(phoneConditions.join(','));
+        for (let i = 0; i < missingPhones.length; i += chunkSize) {
+            const phoneChunk = missingPhones.slice(i, i + chunkSize);
 
-        customersByPhone?.forEach(c => {
-            if (c.phone) {
-                const normalized = c.phone.replace(/\D/g, '');
-                if (!phoneToName.has(normalized)) {
-                    phoneToName.set(normalized, c.name);
-                }
-            }
-        });
+            // Create OR conditions for phone matching - use last 9 digits for better matching
+            const phoneConditions = phoneChunk.map(p => {
+                const last9 = p.slice(-9);
+                return `phone.like.%${last9}%`;
+            });
 
-        // Also check contacts table
-        const stillMissing = missingPhones.filter(p => !phoneToName.has(p));
-        if (stillMissing.length > 0) {
-            const contactConditions = stillMissing.map(p => `phone.ilike.%${p.slice(-10)}%`);
-
-            const { data: contacts } = await supabase
-                .from('contacts')
+            const { data: customersByPhone } = await supabase
+                .from('customers')
                 .select('name, phone')
                 .eq('organization_id', orgId)
-                .or(contactConditions.join(','));
+                .or(phoneConditions.join(','));
 
-            contacts?.forEach(c => {
+            customersByPhone?.forEach(c => {
                 if (c.phone) {
                     const normalized = c.phone.replace(/\D/g, '');
                     if (!phoneToName.has(normalized)) {
@@ -207,6 +290,33 @@ async function batchGetCustomerNames(
                     }
                 }
             });
+        }
+
+        // Also check contacts table for still missing phones
+        const stillMissing = missingPhones.filter(p => !phoneToName.has(p));
+        if (stillMissing.length > 0) {
+            for (let i = 0; i < stillMissing.length; i += 50) {
+                const phoneChunk = stillMissing.slice(i, i + 50);
+                const contactConditions = phoneChunk.map(p => {
+                    const last9 = p.slice(-9);
+                    return `phone.like.%${last9}%`;
+                });
+
+                const { data: contacts } = await supabase
+                    .from('contacts')
+                    .select('name, phone')
+                    .eq('organization_id', orgId)
+                    .or(contactConditions.join(','));
+
+                contacts?.forEach(c => {
+                    if (c.phone) {
+                        const normalized = c.phone.replace(/\D/g, '');
+                        if (!phoneToName.has(normalized)) {
+                            phoneToName.set(normalized, c.name);
+                        }
+                    }
+                });
+            }
         }
     }
 
@@ -458,27 +568,63 @@ async function sendCampaign(
     try {
         await db.updateCampaignStatus(campaignId, "processing");
 
-        // 1. Fetch Recipients from both Customers and Contacts
-        const [customersRes, contactsRes] = await Promise.all([
-            supabase.from('customers').select('id, name, phone, status, customer_type').eq('organization_id', orgId),
-            supabase.from('contacts').select('id, name, phone').eq('organization_id', orgId)
-        ]);
+        // 1. Fetch Recipients from both Customers and Contacts with PAGINATION
+        let allRecipients: any[] = [];
+        let page = 0;
+        const pageSize = RATE_LIMIT_CONFIG.RECIPIENTS_PAGE_SIZE;
 
-        const customers = (customersRes.data || []).map(c => ({ ...c, _origin: 'customer' as const }));
-        const contacts = (contactsRes.data || []).map(c => ({ ...c, _origin: 'contact' as const }));
+        while (true) {
+            const from = page * pageSize;
+            const to = from + pageSize - 1;
 
-        // Apply filters
-        let filteredRecipients: any[] = [];
-        if (targetGroup === 'all') {
-            filteredRecipients = [...customers, ...contacts];
-        } else if (targetGroup === 'active') {
-            filteredRecipients = customers.filter(c => c.status === 'active');
-        } else if (targetGroup.startsWith('type_')) {
-            const requestedType = targetGroup.replace('type_', '');
-            filteredRecipients = customers.filter(c => c.customer_type === requestedType);
-        } else {
-            filteredRecipients = [...customers];
+            let customersQuery = supabase
+                .from('customers')
+                .select('id, name, phone, status, customer_type')
+                .eq('organization_id', orgId);
+
+            // Apply filters at query level for better performance
+            if (targetGroup === 'active') {
+                customersQuery = customersQuery.eq('status', 'active');
+            } else if (targetGroup.startsWith('type_')) {
+                const requestedType = targetGroup.replace('type_', '');
+                customersQuery = customersQuery.eq('customer_type', requestedType);
+            }
+
+            const customersPromise = customersQuery.range(from, to);
+
+            // Only fetch contacts if targetGroup is 'all'
+            const contactsPromise = targetGroup === 'all'
+                ? supabase.from('contacts').select('id, name, phone').eq('organization_id', orgId).range(from, to)
+                : Promise.resolve({ data: [], error: null });
+
+            const [customersRes, contactsRes] = await Promise.all([customersPromise, contactsPromise]);
+
+            if (customersRes.error && customersRes.error.code !== 'PGRST116') {
+                throw new Error(`Failed to fetch customers: ${customersRes.error.message}`);
+            }
+
+            const customers = (customersRes.data || []).map(c => ({ ...c, _origin: 'customer' as const }));
+            const contacts = (contactsRes.data || []).map(c => ({ ...c, _origin: 'contact' as const }));
+
+            const pageRecipients = [...customers, ...contacts];
+
+            if (pageRecipients.length === 0) {
+                break; // No more data
+            }
+
+            allRecipients.push(...pageRecipients);
+
+            console.log(`[Campaign ${campaignId}] Loaded page ${page + 1}: ${pageRecipients.length} recipients (Total: ${allRecipients.length})`);
+
+            // If we got less than a full page, we're done
+            if (pageRecipients.length < pageSize) {
+                break;
+            }
+
+            page++;
         }
+
+        const filteredRecipients = allRecipients;
 
         // Validate and normalize phone numbers, de-duplicate
         const validRecipients: any[] = [];
@@ -525,17 +671,18 @@ async function sendCampaign(
             return;
         }
 
-        // Check WhatsApp connection
-        const state = manager.getState(orgId);
-        console.log(`[Campaign ${campaignId}] WhatsApp Status: ${state.status}`);
+        // Check WhatsApp connection - Wait if connecting
+        const { ready, error: connectionError } = await waitForWhatsAppReady(manager, orgId);
 
-        if (state.status !== 'ready') {
-            console.error(`[Campaign ${campaignId}] Aborting: WhatsApp not ready (${state.status})`);
+        if (!ready) {
+            console.error(`[Campaign ${campaignId}] Aborting: WhatsApp not ready - ${connectionError}`);
             await db.updateCampaignStatus(campaignId, "failed", {
-                error_message: "واتساب غير متصل. يرجى الاتصال أولاً."
+                error_message: connectionError || "واتساب غير متصل. يرجى الاتصال أولاً."
             });
             return;
         }
+
+        console.log(`[Campaign ${campaignId}] WhatsApp ready, starting campaign...`);
 
         await db.updateCampaignStatus(campaignId, "processing", {
             total_recipients: validRecipients.length
@@ -544,13 +691,15 @@ async function sendCampaign(
         let successCount = sentPhones.size;
         let failCount = 0;
         let batchCount = 0;
+        let messagesSinceDbUpdate = 0;
+        const errorLog: string[] = []; // Track all errors
 
         // 2. Loop and Send with improved rate limiting
         for (let i = 0; i < pendingRecipients.length; i++) {
             const recipient = pendingRecipients[i];
 
-            // Check if campaign was stopped
-            if (await isCampaignStopped(campaignId)) {
+            // Check if campaign was stopped (check every 10 messages to reduce DB load)
+            if (i % 10 === 0 && await isCampaignStopped(campaignId)) {
                 console.log(`[Campaign ${campaignId}] Campaign stopped by user.`);
                 stoppedCampaigns.delete(campaignId);
                 await db.updateCampaignStatus(campaignId, "stopped", {
@@ -573,63 +722,95 @@ async function sendCampaign(
                 await new Promise(r => setTimeout(r, delay));
             }
 
-            try {
-                const text = message.replace(/{name}/g, recipient.name || "عزيزي العميل");
-                const cleanPhone = recipient.normalizedPhone;
+            const text = message.replace(/{name}/g, recipient.name || "عزيزي العميل");
+            const cleanPhone = recipient.normalizedPhone;
 
-                console.log(`[Campaign ${campaignId}] Sending to: ${cleanPhone}`);
-                await manager.sendMessage(orgId, cleanPhone, text);
+            console.log(`[Campaign ${campaignId}] Sending to: ${cleanPhone}`);
 
+            // Send with retry logic and timeout
+            const { success, error: sendError } = await sendMessageWithRetry(manager, orgId, cleanPhone, text);
+
+            if (success) {
                 successCount++;
 
-                // Update DB
-                await Promise.all([
-                    supabase.from('campaigns').update({
-                        successful_sends: successCount,
-                        updated_at: new Date().toISOString()
-                    }).eq('id', campaignId),
+                // Log success to DB
+                await db.logCampaignResult({
+                    campaign_id: campaignId,
+                    customer_id: recipient._origin === 'customer' ? recipient.id : null,
+                    phone: cleanPhone,
+                    status: "sent"
+                }).catch(e => console.error("[Campaign] Failed to log success:", e));
 
-                    db.logCampaignResult({
-                        campaign_id: campaignId,
-                        customer_id: recipient._origin === 'customer' ? recipient.id : null,
-                        phone: cleanPhone,
-                        status: "sent"
-                    })
-                ]);
-
-            } catch (err: any) {
-                console.error(`[Campaign ${campaignId}] Error sending to ${recipient.phone}:`, err.message);
+            } else {
                 failCount++;
+                const errMsg = sendError || "Unknown error";
+                errorLog.push(`[${cleanPhone}] ${errMsg}`);
 
-                const errMsg = `${err.message || "Unknown error"}`;
+                console.error(`[Campaign ${campaignId}] Failed to send to ${recipient.phone}: ${errMsg}`);
 
-                // Update DB
-                await Promise.all([
-                    supabase.from('campaigns').update({
-                        failed_sends: failCount,
-                        error_message: `[${recipient.normalizedPhone}] ${errMsg}`,
-                        updated_at: new Date().toISOString()
-                    }).eq('id', campaignId),
-
-                    db.logCampaignResult({
-                        campaign_id: campaignId,
-                        customer_id: recipient._origin === 'customer' ? recipient.id : null,
-                        phone: recipient.normalizedPhone,
-                        status: "failed",
-                        error_message: errMsg
-                    }).catch(e => console.error("Failed to log error:", e))
-                ]);
+                // Log failure to DB
+                await db.logCampaignResult({
+                    campaign_id: campaignId,
+                    customer_id: recipient._origin === 'customer' ? recipient.id : null,
+                    phone: recipient.normalizedPhone,
+                    status: "failed",
+                    error_message: errMsg
+                }).catch(e => console.error("[Campaign] Failed to log error:", e));
             }
 
-            // Check if WhatsApp still connected
-            if (manager.getState(orgId).status !== 'ready') {
+            // Update campaign stats in batches (every N messages) instead of every message
+            messagesSinceDbUpdate++;
+            if (messagesSinceDbUpdate >= RATE_LIMIT_CONFIG.DB_UPDATE_BATCH) {
+                const { error: updateError } = await supabase.from('campaigns').update({
+                    successful_sends: successCount,
+                    failed_sends: failCount,
+                    error_message: errorLog.length > 0 ? errorLog.slice(-5).join(' | ') : null, // Keep last 5 errors
+                    updated_at: new Date().toISOString()
+                }).eq('id', campaignId);
+
+                if (updateError) {
+                    console.error("[Campaign] Failed to update stats:", updateError);
+                }
+
+                messagesSinceDbUpdate = 0;
+            }
+
+            // Check if WhatsApp still connected (every 5 messages)
+            if (i % 5 === 0 && manager.getState(orgId).status !== 'ready') {
                 console.error(`[Campaign ${campaignId}] WhatsApp disconnected mid-campaign!`);
+
+                // Final DB update before stopping
+                const { error: finalUpdateError } = await supabase.from('campaigns').update({
+                    successful_sends: successCount,
+                    failed_sends: failCount,
+                    error_message: errorLog.slice(-5).join(' | '),
+                    updated_at: new Date().toISOString()
+                }).eq('id', campaignId);
+
+                if (finalUpdateError) {
+                    console.error("[Campaign] Failed final update:", finalUpdateError);
+                }
+
                 await db.updateCampaignStatus(campaignId, "failed", {
                     successful_sends: successCount,
                     failed_sends: failCount,
                     error_message: "انقطع اتصال واتساب أثناء الإرسال. أعد الاتصال وأعد الإرسال."
                 });
                 return;
+            }
+        }
+
+        // Final update for any remaining messages
+        if (messagesSinceDbUpdate > 0) {
+            const { error: finalStatsError } = await supabase.from('campaigns').update({
+                successful_sends: successCount,
+                failed_sends: failCount,
+                error_message: errorLog.length > 0 ? errorLog.slice(-5).join(' | ') : null,
+                updated_at: new Date().toISOString()
+            }).eq('id', campaignId);
+
+            if (finalStatsError) {
+                console.error("[Campaign] Failed final stats update:", finalStatsError);
             }
         }
 

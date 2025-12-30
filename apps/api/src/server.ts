@@ -633,6 +633,48 @@ app.get("/whatsapp/stories", verifyToken, async (req, res) => {
   }
 });
 
+// Get all WhatsApp contacts
+app.get("/whatsapp/contacts", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  try {
+    console.log(`[${orgId}] Fetching all WhatsApp contacts...`);
+    const contacts = await manager.getAllContacts(orgId);
+
+    res.json({
+      ok: true,
+      contacts,
+      total: contacts.length
+    });
+  } catch (err: any) {
+    console.error(`[${orgId}] Get contacts error:`, err);
+    res.status(500).json({
+      ok: false,
+      message: err?.message || "Failed to get contacts"
+    });
+  }
+});
+
+// Sync WhatsApp contacts to database
+app.post("/whatsapp/contacts/sync", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  try {
+    console.log(`[${orgId}] Starting contact sync...`);
+    const result = await manager.syncContactsToDatabase(orgId);
+
+    res.json({
+      ok: true,
+      message: "تم مزامنة جهات الاتصال بنجاح",
+      ...result
+    });
+  } catch (err: any) {
+    console.error(`[${orgId}] Sync contacts error:`, err);
+    res.status(500).json({
+      ok: false,
+      message: err?.message || "Failed to sync contacts"
+    });
+  }
+});
+
 // Get WhatsApp contact presence status
 app.get("/whatsapp/contact-status/:phone", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
