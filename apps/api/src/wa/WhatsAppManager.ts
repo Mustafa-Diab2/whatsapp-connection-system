@@ -171,9 +171,9 @@ export default class WhatsAppManager {
     };
     this.states.set(clientId, next);
 
-    if (next.status === "initializing" || next.status === "waiting_qr") {
+    if ((next.status === "initializing" || next.status === "waiting_qr") && prev.status !== "waiting_qr") {
       this.startQrTimeout(clientId);
-    } else {
+    } else if (!["initializing", "waiting_qr"].includes(next.status)) {
       this.clearQrTimeout(clientId);
     }
 
@@ -234,10 +234,15 @@ export default class WhatsAppManager {
 
   private attachClientEvents(clientId: string, client: Client) {
     client.on("qr", async (qr: string) => {
-      console.log(`[${clientId}] QR received`);
-      const qrDataUrl = await QRCode.toDataURL(qr);
-      this.setState(clientId, { status: "waiting_qr", qrDataUrl, lastError: undefined });
-      this.emitQr(clientId, qrDataUrl);
+      console.log(`[${clientId}] QR received (length: ${qr.length})`);
+      try {
+        const qrDataUrl = await QRCode.toDataURL(qr);
+        this.setState(clientId, { status: "waiting_qr", qrDataUrl, lastError: undefined });
+        // Emit again explicitly to ensure delivery
+        this.emitQr(clientId, qrDataUrl);
+      } catch (err) {
+        console.error(`[${clientId}] Error generating QR DataURL`, err);
+      }
     });
 
     client.on("authenticated", () => {
