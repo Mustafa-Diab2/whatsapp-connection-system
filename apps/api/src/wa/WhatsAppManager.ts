@@ -171,9 +171,11 @@ export default class WhatsAppManager {
     };
     this.states.set(clientId, next);
 
-    if ((next.status === "initializing" || next.status === "waiting_qr") && prev.status !== "waiting_qr") {
+    // Only start timeout if we are specifically waiting for a QR scan.
+    // Initialization can take time on slow servers, we don't want to reset while loading session.
+    if (next.status === "waiting_qr" && prev.status !== "waiting_qr") {
       this.startQrTimeout(clientId);
-    } else if (!["initializing", "waiting_qr"].includes(next.status)) {
+    } else if (next.status !== "waiting_qr" && next.status !== "initializing") {
       this.clearQrTimeout(clientId);
     }
 
@@ -285,10 +287,14 @@ export default class WhatsAppManager {
       }
     });
 
-    client.on("auth_failure", (msg: string) => {
-      console.error(`[${clientId}] Auth failure: ${msg}`);
-      this.setState(clientId, { status: "error", lastError: msg || "خطأ في المصادقة", qrDataUrl: undefined });
-      void this.resetSession(clientId, { preserveAttempts: false });
+    client.on("auth_failure", (msg) => {
+      console.error(`[${clientId}] Authentication failure:`, msg);
+      // Don't reset immediately, let the user try to reconnect
+      this.setState(clientId, { status: "error", lastError: "فشل المصادقة، يرجى إعادة المحاولة" });
+    });
+
+    client.on("loading_screen", (percent, message) => {
+      console.log(`[${clientId}] Loading session: ${percent}% - ${message}`);
     });
 
     client.on("disconnected", (reason: string) => {
