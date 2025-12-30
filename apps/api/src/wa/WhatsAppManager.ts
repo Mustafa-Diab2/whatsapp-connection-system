@@ -1052,6 +1052,7 @@ export default class WhatsAppManager {
   async sendMessage(clientId: string, to: string, text: string): Promise<{ ok: boolean; messageId?: string }> {
     const client = this.ensureReadyClient(clientId);
 
+    // Normalize JID
     let chatId = to;
     if (!to.includes("@")) {
       const cleanNumber = to.replace(/\D/g, "");
@@ -1063,37 +1064,47 @@ export default class WhatsAppManager {
     }
 
     try {
-      console.log(`[${clientId}] [SEND] To: ${chatId}`);
+      console.log(`[${clientId}] [SEND] Attempting to send to: ${chatId}`);
 
-      // CRITICAL: Ensure chat is loaded in WA Web before sending
-      // This solves the "Evaluation failed" error where WA Web JS tries to access unloaded chat data
+      /** 
+       * STRATEGY: 
+       * Instead of direct sendMessage, we get the Contact, then the Chat.
+       * This forces WA Web to internalize the chat state, preventing "Evaluation failed".
+       */
+      const contact = await client.getContactById(chatId);
+
+      // If the contact gives us a different serialized ID (like resolving LID to real JID), use it
+      const targetJid = contact.id._serialized || chatId;
+      if (targetJid !== chatId) {
+        console.log(`[${clientId}] [SEND] JID resolved via contact: ${chatId} -> ${targetJid}`);
+      }
+
+      const chat = await contact.getChat();
+
+      // Artificial delay to mimic human behavior and allow WA to load
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const msg = await chat.sendMessage(text);
+      console.log(`[${clientId}] [SEND] Success! MessageId: ${msg.id._serialized}`);
+      return { ok: true, messageId: msg.id._serialized };
+
+    } catch (err: any) {
+      console.error(`[${clientId}] [SEND] Failed to send to ${chatId}:`, err.message);
+
+      // Final fallback: try raw direct send if the complex way failed
       try {
-        const chat = await client.getChatById(chatId);
-        const msg = await chat.sendMessage(text);
-        return { ok: true, messageId: msg.id._serialized };
-      } catch (innerErr: any) {
-        // Fallback to direct client send if getChatById fails or isn't applicable
+        console.warn(`[${clientId}] [SEND] Trying raw fallback for ${chatId}...`);
         const msg = await client.sendMessage(chatId, text);
         return { ok: true, messageId: msg.id._serialized };
-      }
-    } catch (err: any) {
-      console.warn(`[${clientId}] Send failed to ${chatId}: ${err.message}. Attempting contact resolution...`);
+      } catch (fallbackErr: any) {
+        console.error(`[${clientId}] [SEND] Raw fallback also failed for ${chatId}:`, fallbackErr.message);
 
-      try {
-        const contact = await client.getContactById(chatId);
-        // Try sending to the resolved JID
-        const chat = await contact.getChat();
-        const msg = await chat.sendMessage(text);
-        return { ok: true, messageId: msg.id._serialized };
-      } catch (resErr: any) {
-        console.error(`[${clientId}] Resolution failed for ${chatId}: ${resErr.message}`);
+        const errMsg = fallbackErr.message || "";
+        if (errMsg.includes("No LID") || errMsg.includes("not found") || errMsg.includes("invalid") || errMsg.includes("Evaluation failed")) {
+          throw new Error("فشل واتساب في الوصول للمحادثة. تأكد من صحة الرقم أو المعرف (LID).");
+        }
+        throw fallbackErr;
       }
-
-      const errMsg = err.message || "";
-      if (errMsg.includes("No LID") || errMsg.includes("not found") || errMsg.includes("invalid") || errMsg.includes("Evaluation failed")) {
-        throw new Error("فشل واتساب في معالجة الرقم. تأكد أن الرقم صحيح ومفتوح له محادثة سابقة.");
-      }
-      throw err;
     }
   }
 
