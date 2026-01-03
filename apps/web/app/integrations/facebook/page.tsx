@@ -57,6 +57,15 @@ export default function FacebookIntegrationPage() {
   });
   const [savingSettings, setSavingSettings] = useState(false);
 
+  // Manual page token form
+  const [showManualToken, setShowManualToken] = useState(false);
+  const [manualTokenForm, setManualTokenForm] = useState({
+    page_id: "",
+    page_name: "",
+    access_token: "",
+  });
+  const [savingManualToken, setSavingManualToken] = useState(false);
+
   // Link generator form
   const [linkForm, setLinkForm] = useState({
     phone: "",
@@ -198,6 +207,32 @@ export default function FacebookIntegrationPage() {
       window.location.href = response.data.data.authUrl;
     } catch (err: any) {
       setError(err.response?.data?.error || "فشل في بدء عملية الربط");
+    }
+  };
+
+  // Save manual page token
+  const saveManualPageToken = async () => {
+    if (!manualTokenForm.page_id || !manualTokenForm.page_name || !manualTokenForm.access_token) {
+      setError("جميع الحقول مطلوبة");
+      return;
+    }
+
+    setSavingManualToken(true);
+    setError(null);
+    try {
+      const response = await axios.post(
+        `${API_URL}/api/facebook/pages/manual`,
+        manualTokenForm,
+        { headers: getAuthHeaders() }
+      );
+      setSuccess(response.data.message || "تم إضافة الصفحة بنجاح");
+      setShowManualToken(false);
+      setManualTokenForm({ page_id: "", page_name: "", access_token: "" });
+      await fetchPages();
+    } catch (err: any) {
+      setError(err.response?.data?.error || "فشل في إضافة الصفحة");
+    } finally {
+      setSavingManualToken(false);
     }
   };
 
@@ -413,16 +448,113 @@ export default function FacebookIntegrationPage() {
         <div className="bg-white rounded-xl shadow-sm p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">صفحات الفيسبوك المتصلة</h2>
-            <button
-              onClick={connectFacebook}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-              </svg>
-              ربط صفحة جديدة
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowManualToken(true)}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+                title="إضافة Token يدوياً من Graph API Explorer"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+                إضافة Token يدوي
+              </button>
+              <button
+                onClick={connectFacebook}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                </svg>
+                ربط عبر OAuth
+              </button>
+            </div>
           </div>
+
+          {/* Manual Token Form */}
+          {showManualToken && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <h3 className="font-semibold text-green-800 mb-4">إضافة صفحة يدوياً (من Graph API Explorer)</h3>
+              <p className="text-sm text-green-700 mb-4">
+                يمكنك الحصول على Page Access Token من{" "}
+                <a 
+                  href="https://developers.facebook.com/tools/explorer/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 underline hover:text-blue-800"
+                >
+                  Graph API Explorer
+                </a>
+                {" "}باختيار الصفحة والصلاحيات المطلوبة
+              </p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Page ID <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={manualTokenForm.page_id}
+                    onChange={(e) => setManualTokenForm({ ...manualTokenForm, page_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    placeholder="123456789012345"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    تجده في رابط الصفحة أو في Graph API Explorer
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    اسم الصفحة <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={manualTokenForm.page_name}
+                    onChange={(e) => setManualTokenForm({ ...manualTokenForm, page_name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    placeholder="اسم صفحتك على فيسبوك"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Page Access Token <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={manualTokenForm.access_token}
+                    onChange={(e) => setManualTokenForm({ ...manualTokenForm, access_token: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 font-mono text-xs"
+                    placeholder="EAAR..."
+                    rows={3}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    الـ Token من Graph API Explorer بعد اختيار الصفحة والصلاحيات
+                  </p>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={saveManualPageToken}
+                    disabled={savingManualToken}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {savingManualToken ? "جاري الحفظ..." : "إضافة الصفحة"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowManualToken(false);
+                      setManualTokenForm({ page_id: "", page_name: "", access_token: "" });
+                    }}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {pages.length === 0 ? (
             <div className="text-center py-8 text-gray-500">

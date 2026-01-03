@@ -148,6 +148,60 @@ router.get("/auth/url", verifyToken, async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/facebook/pages/manual
+ * Manually add a Facebook page with token from Graph API Explorer
+ */
+router.post("/pages/manual", verifyToken, async (req: Request, res: Response) => {
+  try {
+    const orgId = (req as any).user.organizationId;
+    const { page_id, page_name, access_token } = req.body;
+    
+    if (!page_id || !page_name || !access_token) {
+      return res.status(400).json({
+        error: "page_id, page_name, and access_token are required",
+      });
+    }
+    
+    // Encrypt the access token
+    const encryptedToken = FacebookManager.encryptToken(access_token);
+    
+    // Calculate expiry (assume 60 days for long-lived tokens)
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 60);
+    
+    // Save to database
+    const { error } = await supabase
+      .from("facebook_pages")
+      .upsert({
+        organization_id: orgId,
+        page_id: page_id,
+        page_name: page_name,
+        access_token_encrypted: encryptedToken,
+        token_expires_at: expiresAt.toISOString(),
+        is_active: true,
+        webhook_subscribed: false,
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: "organization_id,page_id",
+      });
+    
+    if (error) {
+      throw new Error(`Failed to save page: ${error.message}`);
+    }
+    
+    res.json({
+      ok: true,
+      message: `تم إضافة صفحة "${page_name}" بنجاح`,
+    });
+  } catch (error: any) {
+    console.error("Error adding page manually:", error);
+    res.status(500).json({
+      error: error.message || "Failed to add page",
+    });
+  }
+});
+
+/**
  * POST /api/facebook/auth/callback
  * Handle OAuth callback and save connected pages
  */
