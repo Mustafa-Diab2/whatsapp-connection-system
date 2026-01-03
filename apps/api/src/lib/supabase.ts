@@ -254,11 +254,13 @@ export const db = {
                     
                     // Update tracking link conversion count
                     if (attribution.short_code) {
-                        await supabase.rpc('increment_conversion_count', {
-                            p_short_code: attribution.short_code
-                        }).catch(() => {
+                        try {
+                            await supabase.rpc('increment_conversion_count', {
+                                p_short_code: attribution.short_code
+                            });
+                        } catch {
                             // RPC might not exist, that's okay
-                        });
+                        }
                     }
                 }
             }

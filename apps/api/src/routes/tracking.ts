@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import crypto from "crypto";
-import { verifyToken } from "../middleware";
+import { verifyToken } from "./auth";
 import { validate } from "../middleware/validate";
 import { supabase } from "../lib/supabase";
 import { createTrackingLinkSchema, recordClickSchema } from "../schemas/facebookSchemas";
