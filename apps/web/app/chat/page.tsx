@@ -11,7 +11,25 @@ import { encodeId, decodeId } from "../../lib/obfuscator";
 type Status = "idle" | "initializing" | "waiting_qr" | "ready" | "error" | "disconnected";
 
 type ChatItem = { id: string; name: string; isGroup: boolean; unreadCount: number; customer_id?: string; customer?: any };
-type MessageItem = { id: string; body: string; fromMe: boolean; timestamp: number; author?: string; senderName?: string | null; type?: string; from?: string; to?: string; ack?: number; hasMedia?: boolean };
+type MessageItem = {
+  id: string;
+  body: string;
+  fromMe: boolean;
+  timestamp: number;
+  author?: string;
+  senderName?: string | null;
+  type?: string;
+  from?: string;
+  to?: string;
+  ack?: number;
+  status?: 'sent' | 'delivered' | 'read' | 'failed';
+  hasMedia?: boolean;
+  is_internal?: boolean;
+  quotedMsgId?: string | null;
+  quotedBody?: string | null;
+  reactions?: Array<{ char: string; sender: string }>;
+  location?: { lat: number; lng: number; name?: string };
+};
 type QuickReply = { id: string; title: string; body: string; shortcut?: string };
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -170,6 +188,7 @@ export default function ChatPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const [replyingTo, setReplyingTo] = useState<MessageItem | null>(null);
+  const [noteMode, setNoteMode] = useState(false);
   const currentChatObj = useMemo(() => chats.find(c => c.id === selectedChat), [chats, selectedChat]);
 
   // Keep ref in sync with state for socket callback
@@ -299,12 +318,28 @@ export default function ChatPage() {
       }
     };
 
+    const handleMessageAck = (data: any) => {
+      console.log("Message ACK received:", data);
+      setMessages(prev => prev.map(m =>
+        m.id === data.messageId ? { ...m, status: data.status, ack: data.ack } : m
+      ));
+    };
+
+    const handleReaction = (data: any) => {
+      console.log("Reaction received:", data);
+      setMessages(prev => prev.map(m =>
+        m.id === data.messageId ? { ...m, reactions: data.reactions } : m
+      ));
+    };
+
     // Attach listeners
     socket.on("connect", handleConnect);
     socket.on("connect_error", handleConnectError);
     socket.on("disconnect", handleDisconnect);
     socket.on("wa:state", handleStateUpdate);
     socket.on("wa:message", handleNewMessage);
+    socket.on("wa:message_ack", handleMessageAck);
+    socket.on("wa:reaction", handleReaction);
 
     // Cleanup: Remove ALL listeners before disconnecting
     return () => {
@@ -313,6 +348,8 @@ export default function ChatPage() {
       socket.off("disconnect", handleDisconnect);
       socket.off("wa:state", handleStateUpdate);
       socket.off("wa:message", handleNewMessage);
+      socket.off("wa:message_ack", handleMessageAck);
+      socket.off("wa:reaction", handleReaction);
       socket.disconnect();
       socketRef.current = null;
     };
@@ -590,15 +627,20 @@ export default function ChatPage() {
     setSending(true);
     setErrorMsg(null);
     try {
-      const res = await fetch(`${apiBase}/whatsapp/send`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
+      const endpoint = noteMode ? "/api/chat/internal-note" : "/whatsapp/send";
+      const payload = noteMode
+        ? { chatId: selectedChat, body: messageInput.trim() }
+        : {
           clientId,
           chatId: selectedChat,
           message: messageInput.trim(),
           quotedMessageId: replyingTo?.id
-        }),
+        };
+
+      const res = await fetch(`${apiBase}${endpoint}`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -606,13 +648,13 @@ export default function ChatPage() {
       }
       setMessageInput("");
       setReplyingTo(null);
-      // Don't refetch - wait for socket event or add optimistically
+      // setNoteMode(false); // keep it on if they are writing notes? usually turn off
     } catch (err: any) {
       setErrorMsg(err?.message || "فشل إرسال الرسالة");
     } finally {
       setSending(false);
     }
-  }, [selectedChat, messageInput, clientId, replyingTo]);
+  }, [selectedChat, messageInput, clientId, replyingTo, noteMode]);
 
   const startRecording = async () => {
     try {
@@ -1173,16 +1215,45 @@ export default function ChatPage() {
                   </div>
                   <div className={`flex flex-col max-w-[88%] sm:max-w-[75%] ${msg.fromMe ? "items-end text-right" : "items-start text-left"}`}>
                     <div
-                      className={`relative rounded-3xl px-5 py-3.5 text-sm shadow-sm transition-all hover:shadow-md ${msg.fromMe
-                        ? "bg-brand-blue text-white rounded-tr-none"
-                        : "bg-white text-slate-800 rounded-tl-none border border-slate-100"
+                      className={`relative rounded-3xl px-5 py-3.5 text-sm shadow-sm transition-all hover:shadow-md ${msg.is_internal
+                        ? "bg-amber-50 text-amber-900 border-2 border-dashed border-amber-200 rounded-xl"
+                        : msg.fromMe
+                          ? "bg-brand-blue text-white rounded-tr-none"
+                          : "bg-white text-slate-800 rounded-tl-none border border-slate-100"
                         }`}
                     >
+                      {msg.is_internal && (
+                        <div className="flex items-center gap-1.5 mb-1.5 opacity-60">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-amber-700">🔒 Internal Note / ملاحظة داخلية</span>
+                        </div>
+                      )}
                       {msg.author && !msg.fromMe && (
                         <div className="mb-1.5">
                           <span className={`text-[10px] font-black tracking-widest uppercase ${getAuthorColor(msg.author)}`}>
                             {msg.senderName || msg.author.split('@')[0]}
                           </span>
+                        </div>
+                      )}
+
+                      {msg.quotedMsgId && (
+                        <div className={`mb-2 bg-black/5 rounded-xl border-r-4 ${msg.fromMe ? 'border-white/30' : 'border-brand-blue/30'} p-2 text-[11px] opacity-80 line-clamp-2`}>
+                          {messages.find(m => m.id === msg.quotedMsgId)?.body || "رسالة سابقة"}
+                        </div>
+                      )}
+
+                      {msg.location && (
+                        <div className="mb-2 rounded-2xl overflow-hidden border border-black/5 bg-slate-50 p-2">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-lg">📍</span>
+                            <span className="font-bold text-xs">الموقع الجغرافي</span>
+                          </div>
+                          <a
+                            href={`https://www.google.com/maps?q=${msg.location.lat},${msg.location.lng}`}
+                            target="_blank"
+                            className="text-[10px] text-brand-blue hover:underline block truncate"
+                          >
+                            {msg.location.name || `${msg.location.lat}, ${msg.location.lng}`}
+                          </a>
                         </div>
                       )}
 
@@ -1196,11 +1267,21 @@ export default function ChatPage() {
                         {msg.body || (msg.hasMedia ? "" : <span className="text-[10px] opacity-40 italic">رسالة غير مدعومة</span>)}
                       </p>
 
+                      {msg.reactions && msg.reactions.length > 0 && (
+                        <div className={`mt-2 flex flex-wrap gap-1 ${msg.fromMe ? 'justify-end' : 'justify-start'}`}>
+                          {msg.reactions.map((r, i) => (
+                            <span key={i} className="bg-white/90 shadow-sm rounded-full px-1.5 py-0.5 text-xs ring-1 ring-black/5 animate-in zoom-in-50">
+                              {r.char}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
                       <div className={`mt-2 flex items-center justify-end gap-2 text-[9px] ${msg.fromMe ? "text-blue-100" : "text-slate-400"}`}>
                         <span className="font-black tracking-tight">{formatFriendlyTime(msg.timestamp)}</span>
                         {msg.fromMe && (
-                          <span className={`${msg.ack === 3 ? "text-blue-300" : "text-slate-300"}`}>
-                            {msg.ack === 0 ? "🕒" : msg.ack === 1 ? "✓" : "✓✓"}
+                          <span className={`text-[11px] ${msg.status === 'read' ? "text-cyan-300" : msg.status === 'delivered' ? "text-slate-300" : "text-slate-300 opacity-60"}`}>
+                            {msg.status === 'read' ? '✓✓' : msg.status === 'delivered' ? '✓✓' : '✓'}
                           </span>
                         )}
                       </div>
@@ -1254,6 +1335,7 @@ export default function ChatPage() {
 
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+                <button onClick={() => setNoteMode(!noteMode)} className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black transition-all ${noteMode ? 'bg-amber-500 text-white shadow-lg' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'}`}>📝 ملاحظة داخلية</button>
                 <button onClick={() => setShowQuickReplies(!showQuickReplies)} className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black transition-all ${showQuickReplies ? 'bg-brand-blue text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>⚡ الردود</button>
                 <button onClick={() => fileInputRef.current?.click()} className="shrink-0 px-4 py-1.5 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 text-[10px] font-black">📎 ملفات</button>
                 <button onClick={sendLocation} className="shrink-0 px-4 py-1.5 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 text-[10px] font-black">📍 الموقع</button>
@@ -1275,9 +1357,12 @@ export default function ChatPage() {
               <div className="flex items-end gap-3">
                 <div className="relative flex-1 group">
                   <textarea
-                    className={`w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-3.5 text-sm outline-none focus:ring-4 focus:ring-brand-blue/5 focus:border-brand-blue/30 focus:bg-white transition-all font-bold resize-none custom-scrollbar min-h-[56px] ${replyingTo ? 'rounded-tl-none' : ''}`}
+                    className={`w-full rounded-2xl border px-5 py-3.5 text-sm outline-none focus:ring-4 transition-all font-bold resize-none custom-scrollbar min-h-[56px] ${noteMode
+                      ? 'border-amber-300 bg-amber-50/50 focus:ring-amber-500/10 focus:border-amber-500 focus:bg-white text-amber-900 placeholder:text-amber-400'
+                      : 'border-slate-200 bg-slate-50/50 focus:ring-brand-blue/5 focus:border-brand-blue/30 focus:bg-white'
+                      } ${replyingTo ? 'rounded-tl-none' : ''}`}
                     rows={1}
-                    placeholder="اكتب رسالتك للعميل هنا..."
+                    placeholder={noteMode ? "اكتب ملاحظة داخلية خاصة للفريق..." : "اكتب رسالتك للعميل هنا..."}
                     value={messageInput}
                     onChange={(e) => setMessageInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); } }}
@@ -1295,8 +1380,8 @@ export default function ChatPage() {
                 ) : (
                   <div className="flex items-center gap-2">
                     {messageInput.trim() ? (
-                      <button onClick={handleSend} className="h-[56px] w-[56px] flex items-center justify-center rounded-2xl bg-brand-blue text-white shadow-xl shadow-blue-200 hover:scale-105 active:scale-95 transition-all">
-                        <span className="text-xl">🚀</span>
+                      <button onClick={handleSend} className={`h-[56px] w-[56px] flex items-center justify-center rounded-2xl text-white shadow-xl transition-all hover:scale-105 active:scale-95 ${noteMode ? 'bg-amber-500 shadow-amber-200' : 'bg-brand-blue shadow-blue-200'}`}>
+                        <span className="text-xl">{noteMode ? "📝" : "🚀"}</span>
                       </button>
                     ) : (
                       <button onClick={startRecording} disabled={!selectedChat || status !== "ready"} className="h-[56px] w-[56px] flex items-center justify-center rounded-2xl bg-slate-100 text-slate-400 hover:bg-blue-50 hover:text-brand-blue transition-all active:scale-95">

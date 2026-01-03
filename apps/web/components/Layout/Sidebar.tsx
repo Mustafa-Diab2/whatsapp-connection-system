@@ -97,18 +97,7 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
             </nav>
           </div>
 
-          {/* User Status / Plan Card */}
-          <div className="p-4 mt-auto border-t border-slate-50">
-            <div className="rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 p-5 text-white shadow-xl overflow-hidden relative">
-              <div className="absolute top-0 right-0 w-20 h-20 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Current Plan</p>
-              <h4 className="font-black text-sm mb-3">Enterprise Suite</h4>
-              <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden mb-2">
-                <div className="h-full w-2/3 bg-brand-blue rounded-full"></div>
-              </div>
-              <p className="text-[9px] font-black text-slate-400">65% of monthly messages used</p>
-            </div>
-          </div>
+
 
           {/* Version Footer */}
           <div className="px-5 py-4 bg-slate-50/30">

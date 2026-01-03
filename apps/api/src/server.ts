@@ -982,7 +982,7 @@ app.get("/whatsapp/contact-status/:phone", verifyToken, async (req, res) => {
 });
 
 
-// Get messages for a chat
+// Get messages for a chat (Database First to support Internal Notes)
 app.get("/whatsapp/messages/:chatId", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
   const chatId = req.params.chatId;
@@ -993,34 +993,104 @@ app.get("/whatsapp/messages/:chatId", verifyToken, async (req, res) => {
   }
 
   try {
-    const client = manager.ensureReadyClient(orgId);
-    const chat = await client.getChatById(chatId);
-    const messages = await chat.fetchMessages({ limit });
-    const simplified = await Promise.all(messages.map(async (m) => {
-      let senderName = null;
-      try {
-        if (m.author && !m.fromMe) {
-          const contact = await m.getContact();
-          senderName = contact.name || contact.pushname || contact.number;
-        }
-      } catch (e) { }
+    // 1. Fetch from Database
+    const { data: dbMessages, error } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("organization_id", orgId)
+      .or(`from_phone.eq.${chatId},to_phone.eq.${chatId}`)
+      .order("created_at", { ascending: false })
+      .limit(limit);
 
-      return {
-        id: m.id._serialized,
-        body: m.body || (m as any).caption || "",
-        fromMe: m.fromMe,
-        timestamp: m.timestamp,
-        type: m.type,
-        author: m.author,
-        senderName,
-        ack: m.ack,
-        hasMedia: m.hasMedia,
-      };
+    if (error) throw error;
+
+    // 2. If DB is empty or has very few messages, try to sync from phone (Initial Sync)
+    if (!dbMessages || dbMessages.length < 5) {
+      try {
+        const client = manager.ensureReadyClient(orgId);
+        const chat = await client.getChatById(chatId);
+        const messages = await chat.fetchMessages({ limit: 20 });
+        // WhatsAppManager already upserts on message events, but for historical fetch we might need to manually trigger if needed.
+        // For now, we return what's on the phone as a fallback
+        const simplified = messages.map(m => ({
+          id: m.id._serialized,
+          body: m.body || (m as any).caption || "",
+          fromMe: m.fromMe,
+          timestamp: m.timestamp,
+          type: m.type,
+          ack: m.ack,
+          status: m.ack >= 3 ? 'read' : m.ack === 2 ? 'delivered' : 'sent',
+          hasMedia: m.hasMedia,
+          is_internal: false
+        }));
+        return res.json({ messages: simplified.reverse() });
+      } catch (e) {
+        console.warn("Failed live fetch, returning DB results anyway.");
+      }
+    }
+
+    // 3. Map DB results to UI format
+    const simplified = (dbMessages || []).map(m => ({
+      id: m.wa_message_id,
+      body: m.body,
+      fromMe: !m.is_from_customer,
+      timestamp: Math.floor(new Date(m.created_at).getTime() / 1000),
+      type: m.message_type,
+      status: m.status,
+      quotedMsgId: m.quoted_message_id,
+      reactions: m.reactions,
+      location: m.location_lat ? { lat: m.location_lat, lng: m.location_lng, name: m.location_name } : null,
+      hasMedia: m.message_type !== 'text' && m.message_type !== 'chat',
+      is_internal: m.is_internal
     }));
-    res.json({ messages: simplified });
+
+    res.json({ messages: simplified.reverse() });
   } catch (err: any) {
     console.error(`[${orgId}] Get messages error:`, err);
     res.status(400).json({ message: err?.message || "Failed to get messages" });
+  }
+});
+
+// POST Internal Note
+app.post("/api/chat/internal-note", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  const { chatId, body } = req.body;
+
+  try {
+    const { data: message, error } = await supabase
+      .from("messages")
+      .insert({
+        organization_id: orgId,
+        wa_message_id: `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        body,
+        from_phone: "system", // Internal note origin
+        to_phone: chatId,
+        is_from_customer: false,
+        is_internal: true,
+        message_type: 'text',
+        status: 'read'
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Emit to socket so it appears for all team members
+    io.to(orgId).emit("wa:message", {
+      clientId: orgId,
+      message: {
+        id: message.wa_message_id,
+        body: message.body,
+        fromMe: true, // Shown as if from "us"
+        timestamp: Math.floor(new Date(message.created_at).getTime() / 1000),
+        type: 'text',
+        is_internal: true
+      }
+    });
+
+    res.json({ ok: true, message });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
   }
 });
 

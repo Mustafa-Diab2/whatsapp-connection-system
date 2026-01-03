@@ -2,10 +2,11 @@ import fs from "fs-extra";
 import path from "path";
 import crypto from "crypto";
 import QRCode from "qrcode";
-import { Client, LocalAuth, Message, MessageMedia } from "whatsapp-web.js";
+import { Client, LocalAuth, Message, MessageMedia, Buttons, List } from "whatsapp-web.js";
 import type { Server } from "socket.io";
 import { db, supabase } from "../lib/supabase";
 import { ai } from "../lib/ai";
+import { WorkflowEngine } from "../services/WorkflowEngine";
 
 export type WaStatus =
   | "idle"
@@ -402,25 +403,38 @@ export default class WhatsAppManager {
     // Handle incoming messages for webhook and real-time
     client.on("message", async (message: Message) => {
       let senderName = null;
-      // Resolve true phone and Sync Customer
-      // Trick: Check if message.author exists and is different from message.from (sometimes author contains the real JID)
       let waChatIdToSync = message.from;
       if (message.author && message.author !== message.from && !message.from.includes("@g.us")) {
-        // If from is 1-on-1 LID and author is JID, prioritize author for syncing
         waChatIdToSync = message.author;
       }
 
-      const { realPhone } = await this.getOrCreateAndSyncCustomer(clientId, waChatIdToSync);
+      const { conversation, realPhone } = await this.getOrCreateAndSyncCustomer(clientId, waChatIdToSync);
 
       try {
         const contact = await message.getContact();
         senderName = contact.name || contact.pushname || contact.number;
       } catch (e) { }
 
+      // Advanced Data: Quoted Message
+      let quotedMsgId = null;
+      if ((message as any)._data?.quotedMsg) {
+        quotedMsgId = (message as any)._data.quotedStanzaID;
+      }
+
+      // Advanced Data: Location
+      let locationData = null;
+      if (message.type === 'location' && message.location) {
+        locationData = {
+          lat: message.location.latitude,
+          lng: message.location.longitude,
+          name: (message as any).locationName || (message as any).body
+        };
+      }
+
       const messageData = {
         id: message.id._serialized,
         from: message.from,
-        phone: realPhone, // Added resolved phone
+        phone: realPhone,
         to: message.to,
         body: message.body || (message as any).caption || "",
         timestamp: message.timestamp,
@@ -430,7 +444,34 @@ export default class WhatsAppManager {
         senderName,
         ack: message.ack,
         hasMedia: message.hasMedia,
+        quotedMsgId,
+        location: locationData,
+        vCards: message.vCards
       };
+
+      try {
+        await supabase.from('messages').upsert({
+          organization_id: clientId,
+          customer_id: conversation.customer?.id,
+          wa_message_id: message.id._serialized,
+          body: messageData.body,
+          from_phone: message.from,
+          to_phone: message.to,
+          is_from_customer: !message.fromMe,
+          message_type: message.type,
+          status: 'sent', // Incoming is always 'sent' from their perspective
+          quoted_message_id: quotedMsgId,
+          location_lat: locationData?.lat,
+          location_lng: locationData?.lng,
+          location_name: locationData?.name,
+          metadata: {
+            vCards: message.vCards,
+            author: message.author
+          }
+        }, { onConflict: 'wa_message_id' });
+      } catch (e: any) {
+        console.error(`[${clientId}] Failed to persist incoming message:`, e.message);
+      }
 
       // Emit to socket for real-time updates
       this.io.to(clientId).emit("wa:message", {
@@ -456,8 +497,16 @@ export default class WhatsAppManager {
 
       // Add delay to prevent immediate reply overlap
       setTimeout(() => {
+        // Run Engines
         void this.handleBotReply(clientId, message);
         void this.handleAutoAssign(clientId, message);
+
+        // Workflow Engine (Keywords)
+        const workflow = WorkflowEngine.getInstance(this);
+        void workflow.trigger(clientId, 'keyword', {}, {
+          chatId: message.from,
+          message: { body: message.body }
+        });
       }, 1000);
     });
 
@@ -466,8 +515,13 @@ export default class WhatsAppManager {
       if (message.fromMe) {
         console.log(`[${clientId}] Message sent to ${message.to}`);
 
-        // Sync Customer for sent message
-        const { realPhone } = await this.getOrCreateAndSyncCustomer(clientId, message.to);
+        const { conversation, realPhone } = await this.getOrCreateAndSyncCustomer(clientId, message.to);
+
+        // Capture Quoted if sending as reply
+        let quotedMsgId = null;
+        if ((message as any)._data?.quotedMsg) {
+          quotedMsgId = (message as any)._data.quotedStanzaID;
+        }
 
         const messageData = {
           id: message.id._serialized,
@@ -481,9 +535,29 @@ export default class WhatsAppManager {
           author: message.author,
           ack: message.ack,
           hasMedia: message.hasMedia,
+          quotedMsgId
         };
 
-        // Emit to socket for real-time updates
+        // Persistence
+        try {
+          await supabase.from('messages').upsert({
+            organization_id: clientId,
+            customer_id: conversation.customer?.id,
+            wa_message_id: message.id._serialized,
+            body: message.body,
+            from_phone: message.from,
+            to_phone: message.to,
+            is_from_customer: false,
+            message_type: message.type,
+            status: 'sent',
+            quoted_message_id: quotedMsgId,
+            metadata: { author: message.author }
+          }, { onConflict: 'wa_message_id' });
+        } catch (e: any) {
+          console.error(`[${clientId}] Persistence error on message_create:`, e.message);
+        }
+
+        // Emit to socket
         this.io.to(clientId).emit("wa:message", {
           clientId,
           message: messageData,
@@ -493,6 +567,71 @@ export default class WhatsAppManager {
         void db.incrementDailyStat("messages_sent", 1, clientId);
       }
     });
+
+    // 1. Receipts: Listen for ACKs
+    client.on("message_ack", async (msg, ack) => {
+      let status: 'sent' | 'delivered' | 'read' = 'sent';
+      if (ack === 2) status = 'delivered';
+      if (ack >= 3) status = 'read';
+
+      console.log(`[${clientId}] Message ACK: ${msg.id._serialized} -> ${status} (${ack})`);
+
+      // Update DB
+      await supabase
+        .from("messages")
+        .update({ status })
+        .eq("wa_message_id", msg.id._serialized);
+
+      // Notify UI
+      this.io.to(clientId).emit("wa:message_ack", {
+        clientId,
+        messageId: msg.id._serialized,
+        status,
+        ack
+      });
+    });
+
+    // 2. Reactions: Sync Emoji Reactions
+    client.on("message_reaction", async (reaction) => {
+      console.log(`[${clientId}] Reaction received: ${reaction.reaction} on ${reaction.msgId._serialized}`);
+
+      // Fetch current reactions
+      const { data: msg } = await supabase
+        .from("messages")
+        .select("reactions")
+        .eq("wa_message_id", reaction.msgId._serialized)
+        .single();
+
+      let reactions = msg?.reactions || [];
+      if (!Array.isArray(reactions)) reactions = [];
+
+      // Add or Update reaction (if same sender reacts differently)
+      const sender = (reaction as any).senderId || 'unknown';
+      const index = reactions.findIndex((r: any) => r.sender === sender);
+
+      if (reaction.reaction === "") {
+        // Reaction removed
+        if (index > -1) reactions.splice(index, 1);
+      } else {
+        if (index > -1) {
+          reactions[index].char = reaction.reaction;
+        } else {
+          reactions.push({ char: reaction.reaction, sender });
+        }
+      }
+
+      await supabase
+        .from("messages")
+        .update({ reactions })
+        .eq("wa_message_id", reaction.msgId._serialized);
+
+      this.io.to(clientId).emit("wa:reaction", {
+        clientId,
+        messageId: reaction.msgId._serialized,
+        reactions
+      });
+    });
+
   }
 
   private async handleQrTimeout(clientId: string) {
@@ -1123,6 +1262,28 @@ export default class WhatsAppManager {
     }
 
     return { realPhone, conversation };
+  }
+
+  // Interactive: Send Buttons
+  async sendButtonsMessage(clientId: string, to: string, text: string, buttons: { id: string, body: string }[], title?: string, footer?: string) {
+    const client = this.ensureReadyClient(clientId);
+    const buttonObj = new Buttons(text, buttons, title, footer);
+    return await client.sendMessage(to, buttonObj);
+  }
+
+  // Interactive: Send List Menu
+  async sendListMenu(
+    clientId: string,
+    to: string,
+    body: string,
+    buttonText: string,
+    sections: { title?: string, rows: { id: string, title: string, description?: string }[] }[],
+    title?: string,
+    footer?: string
+  ) {
+    const client = this.ensureReadyClient(clientId);
+    const list = new List(body, buttonText, sections, title, footer);
+    return await client.sendMessage(to, list);
   }
 
   ensureReadyClient(clientId: string): Client {
