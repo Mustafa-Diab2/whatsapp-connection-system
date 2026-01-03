@@ -750,7 +750,7 @@ async function sendCampaign(
 
             let customersQuery = supabase
                 .from('customers')
-                .select('id, name, phone, status, customer_type')
+                .select('id, name, phone, status, customer_type, wa_chat_id')
                 .eq('organization_id', orgId);
 
             // Apply filters at query level for better performance
@@ -894,12 +894,16 @@ async function sendCampaign(
             }
 
             const text = message.replace(/{name}/g, recipient.name || "عزيزي العميل");
-            const cleanPhone = recipient.normalizedPhone;
 
-            console.log(`[Campaign ${campaignId}] Sending to: ${cleanPhone}`);
+            // CRITICAL: Use wa_chat_id if available (proper @c.us format), otherwise use normalizedPhone
+            // wa_chat_id is the BEST option as it's already validated by WhatsApp
+            const sendTo = recipient.wa_chat_id || recipient.normalizedPhone;
+            const isUsingChatId = !!recipient.wa_chat_id;
+
+            console.log(`[Campaign ${campaignId}] Sending to: ${sendTo} (using ${isUsingChatId ? 'wa_chat_id' : 'phone'})`);
 
             // Send with retry logic and timeout
-            const { success, error: sendError } = await sendMessageWithRetry(manager, orgId, cleanPhone, text);
+            const { success, error: sendError } = await sendMessageWithRetry(manager, orgId, sendTo, text);
 
             if (success) {
                 successCount++;
@@ -908,14 +912,14 @@ async function sendCampaign(
                 await db.logCampaignResult({
                     campaign_id: campaignId,
                     customer_id: recipient._origin === 'customer' ? recipient.id : null,
-                    phone: cleanPhone,
+                    phone: recipient.normalizedPhone,
                     status: "sent"
                 }).catch(e => console.error("[Campaign] Failed to log success:", e));
 
             } else {
                 failCount++;
                 const errMsg = sendError || "Unknown error";
-                errorLog.push(`[${cleanPhone}] ${errMsg}`);
+                errorLog.push(`[${sendTo}] ${errMsg}`);
 
                 console.error(`[Campaign ${campaignId}] Failed to send to ${recipient.phone}: ${errMsg}`);
 

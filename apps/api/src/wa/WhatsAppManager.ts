@@ -67,6 +67,90 @@ export default class WhatsAppManager {
   }>>();
   private readonly CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
+  // ========== CHAT ID NORMALIZATION (CRITICAL FOR PROPER SENDING) ==========
+
+  /**
+   * Normalize raw input to either a valid ChatId (@c.us/@g.us) or clean digits
+   * @param rawTo - Raw phone number, ChatId, or any input
+   * @returns Normalized string (ChatId or digits) or null if invalid
+   */
+  private normalizeToChatId(rawTo: unknown): string | null {
+    const to = String(rawTo ?? "").trim();
+
+    // Already a valid ChatId format
+    if (to.endsWith("@c.us") || to.endsWith("@g.us")) return to;
+
+    // Clean to digits only (remove +, spaces, dashes, etc.)
+    const digits = to.replace(/\D/g, "");
+    if (!digits) return null;
+
+    // Reject if looks like internal WhatsApp LID (too long)
+    if (digits.length > 15) {
+      console.warn(`[normalizeToChatId] Rejecting LID-like number: ${to} (${digits.length} digits)`);
+      return null;
+    }
+
+    return digits; // Still just digits, will be resolved in resolveChatId
+  }
+
+  /**
+   * Resolve raw input to a valid WhatsApp ChatId using getNumberId()
+   * This is the SAFEST method as it validates the number with WhatsApp servers
+   * @param clientId - Organization/Client ID
+   * @param rawTo - Raw phone number or ChatId
+   * @returns Validated ChatId (@c.us/@g.us) or null if invalid
+   */
+  private async resolveChatId(clientId: string, rawTo: unknown): Promise<string | null> {
+    const normalized = this.normalizeToChatId(rawTo);
+    if (!normalized) return null;
+
+    // Already a valid JID format
+    if (normalized.endsWith("@c.us") || normalized.endsWith("@g.us")) {
+      return normalized;
+    }
+
+    // Get client instance
+    const client = this.clients.get(clientId);
+    if (!client) {
+      console.error(`[resolveChatId] No client found for ${clientId}`);
+      return null;
+    }
+
+    // Use getNumberId() to validate and get proper WhatsApp ID
+    // This is the RECOMMENDED method per whatsapp-web.js documentation
+    try {
+      console.log(`[${clientId}] [resolveChatId] Validating number: ${normalized}`);
+      const numberId = await client.getNumberId(normalized);
+
+      if (numberId && numberId._serialized) {
+        console.log(`[${clientId}] [resolveChatId] ✅ Resolved: ${normalized} -> ${numberId._serialized}`);
+        return numberId._serialized;
+      } else {
+        console.warn(`[${clientId}] [resolveChatId] ⚠️ getNumberId returned null - number may not be on WhatsApp`);
+
+        // Fallback: construct JID directly (may fail but worth trying)
+        const fallbackJid = `${normalized}@c.us`;
+        console.log(`[${clientId}] [resolveChatId] Using fallback JID: ${fallbackJid}`);
+        return fallbackJid;
+      }
+    } catch (err: any) {
+      console.warn(`[${clientId}] [resolveChatId] getNumberId failed:`, err.message);
+
+      // Fallback: construct JID directly
+      const fallbackJid = `${normalized}@c.us`;
+      console.log(`[${clientId}] [resolveChatId] Using fallback JID after error: ${fallbackJid}`);
+      return fallbackJid;
+    }
+  }
+
+  /**
+   * Validate that a chatId ends with proper suffix
+   */
+  private isValidChatId(chatId: string | null): boolean {
+    if (!chatId) return false;
+    return chatId.endsWith("@c.us") || chatId.endsWith("@g.us");
+  }
+
   constructor(io: Server) {
     this.io = io;
     this.setupGracefulShutdown();
@@ -1093,77 +1177,39 @@ export default class WhatsAppManager {
     });
   }
 
+  /**
+   * Send a text message to a phone number or chat ID
+   * Uses resolveChatId() to ensure proper @c.us/@g.us format
+   * This is the RECOMMENDED method for campaign sending
+   */
   async sendMessage(clientId: string, to: string, text: string): Promise<{ ok: boolean; messageId?: string }> {
     const client = this.ensureReadyClient(clientId);
 
-    // Normalize JID
-    let chatId = to;
-    let cleanNumber = to;
+    console.log(`[${clientId}] [SEND] Request to send to: ${to}`);
 
-    if (!to.includes("@")) {
-      cleanNumber = to.replace(/\D/g, "");
+    // ========== STEP 1: Resolve to Valid Chat ID ==========
+    // Use resolveChatId() which validates with getNumberId()
+    const resolvedChatId = await this.resolveChatId(clientId, to);
 
-      // Reject invalid LIDs (too long numbers that are WhatsApp internal IDs)
-      if (cleanNumber.length > 15) {
-        console.error(`[${clientId}] [SEND] Rejecting invalid LID/phone: ${to} (length: ${cleanNumber.length})`);
-        throw new Error("رقم WhatsApp ID داخلي غير صالح للإرسال. يرجى استخدام رقم هاتف حقيقي.");
-      }
-
-      if (cleanNumber.length >= 15) {
-        chatId = `${cleanNumber}@lid`;
-      } else {
-        chatId = `${cleanNumber}@c.us`;
-      }
-    } else {
-      cleanNumber = to.split('@')[0].replace(/\D/g, '');
-
-      // Also check extracted numbers
-      if (cleanNumber.length > 15) {
-        console.error(`[${clientId}] [SEND] Rejecting invalid extracted number: ${cleanNumber} (length: ${cleanNumber.length})`);
-        throw new Error("رقم WhatsApp ID داخلي غير صالح للإرسال. يرجى استخدام رقم هاتف حقيقي.");
-      }
+    if (!resolvedChatId) {
+      console.error(`[${clientId}] [SEND] Invalid recipient: ${to}`);
+      throw new Error(`رقم غير صالح للإرسال: ${to}. يرجى استخدام رقم هاتف حقيقي.`);
     }
 
+    // Ensure it ends with @c.us or @g.us
+    if (!this.isValidChatId(resolvedChatId)) {
+      console.error(`[${clientId}] [SEND] Resolved ID is not valid: ${resolvedChatId}`);
+      throw new Error(`معرف المحادثة غير صالح: ${resolvedChatId}. يجب أن ينتهي بـ @c.us أو @g.us`);
+    }
+
+    console.log(`[${clientId}] [SEND] ✅ Resolved chat ID: ${to} -> ${resolvedChatId}`);
+
+    // ========== STEP 2: Send Message ==========
     try {
-      console.log(`[${clientId}] [SEND] Attempting to send to: ${chatId}`);
+      // Get contact and chat for proper sending
+      const contact = await client.getContactById(resolvedChatId);
 
-      // ✅ NEW: Use getNumberId() to validate and get the proper WhatsApp ID
-      // This is the RECOMMENDED method to avoid LID errors entirely
-      let validatedChatId: string | null = null;
-
-      try {
-        console.log(`[${clientId}] [SEND] Validating number with getNumberId()...`);
-        const numberId = await client.getNumberId(cleanNumber);
-
-        if (numberId && numberId._serialized) {
-          validatedChatId = numberId._serialized;
-          console.log(`[${clientId}] [SEND] ✅ Number validated: ${cleanNumber} -> ${validatedChatId}`);
-        } else {
-          console.warn(`[${clientId}] [SEND] ⚠️ getNumberId() returned null - number may not be registered on WhatsApp`);
-        }
-      } catch (validationErr: any) {
-        console.warn(`[${clientId}] [SEND] ⚠️ getNumberId() failed:`, validationErr.message);
-        // Continue with original chatId if validation fails
-      }
-
-      // Use validated ID if available, otherwise fall back to original
-      const finalChatId = validatedChatId || chatId;
-
-      // Check cache first for optimization
-      const cached = this.getCachedContact(clientId, cleanNumber);
-      if (cached && !validatedChatId) {
-        console.log(`[${clientId}] [SEND] Using cached contact info for ${cleanNumber}`);
-        chatId = cached.id;
-      }
-
-      /**
-       * STRATEGY:
-       * Instead of direct sendMessage, we get the Contact, then the Chat.
-       * This forces WA Web to internalize the chat state, preventing "Evaluation failed".
-       */
-      const contact = await client.getContactById(finalChatId);
-
-      // Cache contact info for future use
+      // Cache contact for future use
       try {
         const formatted = await contact.getFormattedNumber();
         const realPhone = formatted.replace(/\D/g, '');
@@ -1178,79 +1224,59 @@ export default class WhatsAppManager {
         // Cache attempt failed, continue
       }
 
-      // If the contact gives us a different serialized ID (like resolving LID to real JID), use it
-      const targetJid = contact.id._serialized || finalChatId;
-      if (targetJid !== finalChatId) {
-        console.log(`[${clientId}] [SEND] JID resolved via contact: ${finalChatId} -> ${targetJid}`);
-      }
-
+      // Get chat from contact
       const chat = await contact.getChat();
 
-      // Artificial delay to mimic human behavior and allow WA to load
+      // Small delay to mimic human behavior
       await new Promise(resolve => setTimeout(resolve, 500));
 
+      // Send message
       const msg = await chat.sendMessage(text);
-      console.log(`[${clientId}] [SEND] Success! MessageId: ${msg.id._serialized}`);
+      console.log(`[${clientId}] [SEND] ✅ Success! MessageId: ${msg.id._serialized}`);
       return { ok: true, messageId: msg.id._serialized };
 
     } catch (err: any) {
-      console.error(`[${clientId}] [SEND] Failed to send to ${chatId}:`, err.message);
+      console.error(`[${clientId}] [SEND] Failed to send to ${resolvedChatId}:`, err.message);
 
-      // Enhanced error handling with retries
+      // ========== STEP 3: Retry with Alternative Strategies ==========
+      const cleanNumber = to.replace(/\D/g, '');
+
       const retryStrategies = [
-        // Strategy 1: Try with @c.us suffix
+        // Strategy 1: Direct sendMessage to resolved ID
+        async () => {
+          console.log(`[${clientId}] [SEND] Retry 1: Direct sendMessage to ${resolvedChatId}...`);
+          return await client.sendMessage(resolvedChatId, text);
+        },
+        // Strategy 2: Try @c.us if not already
         async () => {
           const altChatId = `${cleanNumber}@c.us`;
-          if (altChatId === chatId) throw new Error("Same as original");
-          console.log(`[${clientId}] [SEND] Retry 1: Trying ${altChatId}...`);
-          const contact = await client.getContactById(altChatId);
-          const chat = await contact.getChat();
-          await new Promise(r => setTimeout(r, 500));
-          return await chat.sendMessage(text);
-        },
-        // Strategy 2: Try with @lid suffix for long numbers
-        async () => {
-          if (cleanNumber.length < 15) throw new Error("Not a LID");
-          const altChatId = `${cleanNumber}@lid`;
-          if (altChatId === chatId) throw new Error("Same as original");
+          if (altChatId === resolvedChatId) throw new Error("Same as resolved");
           console.log(`[${clientId}] [SEND] Retry 2: Trying ${altChatId}...`);
-          const contact = await client.getContactById(altChatId);
-          const chat = await contact.getChat();
-          await new Promise(r => setTimeout(r, 500));
-          return await chat.sendMessage(text);
+          return await client.sendMessage(altChatId, text);
         },
-        // Strategy 3: Raw direct send
-        async () => {
-          console.log(`[${clientId}] [SEND] Retry 3: Raw send to ${chatId}...`);
-          return await client.sendMessage(chatId, text);
-        }
       ];
 
-      // Try each strategy
       for (let i = 0; i < retryStrategies.length; i++) {
         try {
           const msg = await retryStrategies[i]();
-          console.log(`[${clientId}] [SEND] Success with retry strategy ${i + 1}!`);
+          console.log(`[${clientId}] [SEND] ✅ Success with retry strategy ${i + 1}!`);
           return { ok: true, messageId: msg.id._serialized };
         } catch (retryErr: any) {
           console.warn(`[${clientId}] [SEND] Retry strategy ${i + 1} failed:`, retryErr.message);
         }
       }
 
-      // All strategies failed
+      // All strategies failed - provide helpful error message
       const errMsg = err.message || "";
 
-      // Provide specific error messages for common issues
-      if (errMsg.includes("No LID for user")) {
-        throw new Error("رقم WhatsApp ID داخلي غير صالح. استخدم رقم هاتف حقيقي أو قم بمزامنة جهات الاتصال.");
-      } else if (errMsg.includes("No LID") || errMsg.includes("not found") || errMsg.includes("invalid")) {
-        throw new Error("رقم غير صحيح أو غير مسجل على واتساب");
+      if (errMsg.includes("No LID for user") || errMsg.includes("No LID")) {
+        throw new Error("رقم WhatsApp ID داخلي غير صالح. استخدم رقم هاتف حقيقي.");
+      } else if (errMsg.includes("not found") || errMsg.includes("invalid")) {
+        throw new Error("رقم غير موجود أو غير مسجل على واتساب");
       } else if (errMsg.includes("Evaluation failed")) {
-        throw new Error("فشل الاتصال بالمحادثة. الرقم قد يكون غير صحيح أو غير موجود.");
+        throw new Error("فشل الاتصال بالمحادثة. الرقم قد يكون غير صحيح.");
       } else if (errMsg.includes("not registered")) {
         throw new Error("الرقم غير مسجل على واتساب");
-      } else if (errMsg.includes("getIsMyContact is not a function")) {
-        throw new Error("خطأ داخلي في مكتبة WhatsApp. حاول إعادة الاتصال.");
       }
 
       throw new Error(`فشل إرسال الرسالة: ${errMsg}`);
@@ -1259,9 +1285,16 @@ export default class WhatsAppManager {
 
   async sendContact(clientId: string, to: string, contactId: string): Promise<{ ok: boolean; messageId?: string }> {
     const client = this.ensureReadyClient(clientId);
+
+    // Resolve the recipient to a valid chat ID
+    const resolvedTo = await this.resolveChatId(clientId, to);
+    if (!resolvedTo || !this.isValidChatId(resolvedTo)) {
+      throw new Error(`رقم المستلم غير صالح: ${to}`);
+    }
+
     try {
       const contact = await client.getContactById(contactId);
-      const msg = await client.sendMessage(to, contact);
+      const msg = await client.sendMessage(resolvedTo, contact);
       return { ok: true, messageId: msg.id._serialized };
     } catch (err: any) {
       console.error(`[${clientId}] Failed to send contact:`, err.message);
@@ -1272,33 +1305,24 @@ export default class WhatsAppManager {
   async sendMediaMessage(clientId: string, to: string, base64: string, mimetype: string, filename?: string, caption?: string): Promise<{ ok: boolean; messageId?: string }> {
     const client = this.ensureReadyClient(clientId);
 
-    let chatId = to;
-    if (!to.includes("@")) {
-      chatId = to.replace(/\D/g, "") + "@c.us";
+    // Resolve to valid chat ID using getNumberId()
+    const chatId = await this.resolveChatId(clientId, to);
+
+    if (!chatId || !this.isValidChatId(chatId)) {
+      throw new Error(`رقم المستلم غير صالح للإرسال: ${to}`);
     }
+
+    console.log(`[${clientId}] [MEDIA] Sending to: ${to} -> ${chatId}`);
 
     try {
       const media = new MessageMedia(mimetype, base64, filename);
       const options = caption ? { caption } : {};
       const msg = await client.sendMessage(chatId, media, options);
-      console.log(`[${clientId}] Media sent to ${chatId}`);
+      console.log(`[${clientId}] [MEDIA] ✅ Media sent to ${chatId}`);
       return { ok: true, messageId: msg.id._serialized };
     } catch (err: any) {
-      console.warn(`[${clientId}] Media send failed to ${chatId}: ${err.message}. Attempting LID resolution...`);
-      try {
-        const contact = await client.getContactById(chatId);
-        if (contact && contact.number && contact.number !== chatId.split('@')[0]) {
-          const resolvedJid = `${contact.number}@c.us`;
-          console.log(`[${clientId}] Resolved media JID: ${chatId} -> ${resolvedJid}`);
-          const media = new MessageMedia(mimetype, base64, filename);
-          const options = caption ? { caption } : {};
-          const msg = await client.sendMessage(resolvedJid, media, options);
-          return { ok: true, messageId: msg.id._serialized };
-        }
-      } catch (e) { }
-
-      console.error(`[${clientId}] Failed to send media to ${chatId}:`, err.message || err);
-      throw err;
+      console.error(`[${clientId}] [MEDIA] Failed to send media to ${chatId}:`, err.message);
+      throw new Error(`فشل إرسال الوسائط: ${err.message}`);
     }
   }
 
@@ -1636,6 +1660,130 @@ export default class WhatsAppManager {
       console.error("[LocalBot] Failed to process rules:", e);
     }
     return null;
+  }
+
+  /**
+   * Sync all WhatsApp chats to customers/contacts table with proper chat_id
+   * This is CRITICAL for campaign sending - stores chat.id._serialized for reliable sending
+   * Call this periodically or after connection to ensure database has proper chat IDs
+   */
+  async syncAllChatsToDatabase(clientId: string): Promise<{
+    synced: number;
+    updated: number;
+    failed: number;
+    total: number;
+  }> {
+    const client = this.ensureReadyClient(clientId);
+
+    console.log(`[${clientId}] [SYNC] Starting chat sync to database...`);
+
+    let synced = 0;
+    let updated = 0;
+    let failed = 0;
+
+    try {
+      const chats = await client.getChats();
+      console.log(`[${clientId}] [SYNC] Found ${chats.length} chats to process`);
+
+      for (const chat of chats) {
+        // Skip groups and status
+        if (chat.isGroup || chat.id._serialized === 'status@broadcast') {
+          continue;
+        }
+
+        try {
+          const chatId = chat.id._serialized; // This is the exact format we need: xxxxx@c.us
+
+          // Validate it's a proper chat ID
+          if (!this.isValidChatId(chatId)) {
+            console.warn(`[${clientId}] [SYNC] Skipping invalid chat ID: ${chatId}`);
+            continue;
+          }
+
+          // Get contact info
+          const contact = await chat.getContact();
+          let phone = chat.id.user;
+          let name = chat.name || contact.name || contact.pushname || phone;
+
+          // Try to get formatted number
+          try {
+            const formatted = await contact.getFormattedNumber();
+            const cleanFormatted = formatted.replace(/\D/g, '');
+            if (cleanFormatted && cleanFormatted.length >= 8 && cleanFormatted.length <= 15) {
+              phone = cleanFormatted;
+            }
+          } catch (e) { }
+
+          // Skip if phone looks like LID
+          if (phone.length > 15 || phone.startsWith('4203')) {
+            console.warn(`[${clientId}] [SYNC] Skipping LID-like phone: ${phone}`);
+            continue;
+          }
+
+          // Check if customer exists with this phone
+          const { data: existingCustomer } = await supabase
+            .from('customers')
+            .select('id, wa_chat_id, phone')
+            .eq('organization_id', clientId)
+            .eq('phone', phone)
+            .single();
+
+          if (existingCustomer) {
+            // Update wa_chat_id if different or missing
+            if (existingCustomer.wa_chat_id !== chatId) {
+              await supabase
+                .from('customers')
+                .update({
+                  wa_chat_id: chatId,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', existingCustomer.id);
+              updated++;
+              console.log(`[${clientId}] [SYNC] Updated customer ${phone}: wa_chat_id = ${chatId}`);
+            }
+          } else {
+            // Create new customer with wa_chat_id
+            const { error: insertError } = await supabase
+              .from('customers')
+              .insert({
+                organization_id: clientId,
+                name: name,
+                phone: phone,
+                wa_chat_id: chatId,
+                source: 'whatsapp_sync',
+                status: 'active',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              });
+
+            if (insertError) {
+              console.warn(`[${clientId}] [SYNC] Failed to insert customer ${phone}:`, insertError.message);
+              failed++;
+            } else {
+              synced++;
+              console.log(`[${clientId}] [SYNC] Created customer ${phone} with wa_chat_id = ${chatId}`);
+            }
+          }
+
+        } catch (err: any) {
+          console.warn(`[${clientId}] [SYNC] Failed to process chat:`, err.message);
+          failed++;
+        }
+      }
+
+      console.log(`[${clientId}] [SYNC] ✅ Complete! Synced: ${synced}, Updated: ${updated}, Failed: ${failed}`);
+
+      return {
+        synced,
+        updated,
+        failed,
+        total: chats.length
+      };
+
+    } catch (err: any) {
+      console.error(`[${clientId}] [SYNC] Fatal error:`, err);
+      throw new Error(`فشل في مزامنة المحادثات: ${err.message}`);
+    }
   }
 }
 

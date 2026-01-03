@@ -177,6 +177,32 @@ export default function WhatsAppConnectPage() {
     }
   }, [clientId]);
 
+  // Sync chats to database with proper wa_chat_id
+  const [syncResult, setSyncResult] = useState<{ synced?: number; updated?: number; failed?: number } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSyncChats = useCallback(async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch(`${apiBase}/whatsapp/chats/sync`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSyncResult({ synced: data.synced, updated: data.updated, failed: data.failed });
+      } else {
+        setState((prev) => ({ ...prev, lastError: data.message || "فشل المزامنة" }));
+      }
+    } catch (err) {
+      console.error("Sync failed", err);
+      setState((prev) => ({ ...prev, lastError: "تعذر مزامنة المحادثات" }));
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -240,7 +266,42 @@ export default function WhatsAppConnectPage() {
                 <span className="text-lg">🔄</span>
                 تحديث
               </button>
+
+              <button
+                className={`btn flex items-center gap-2 px-6 py-3 shadow-md transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${syncing ? "bg-indigo-100 text-indigo-400" : "bg-indigo-600 text-white hover:bg-indigo-700"
+                  }`}
+                onClick={handleSyncChats}
+                disabled={syncing || state.status !== "ready"}
+              >
+                <span className="text-lg">{syncing ? "⏳" : "🔄"}</span>
+                {syncing ? "جاري المزامنة..." : "مزامنة المحادثات (ID)"}
+              </button>
             </div>
+
+            {syncResult && (
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-sm text-indigo-700 animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center gap-2 font-bold mb-1">
+                  <span>✅</span> تم اكتمال المزامنة بنجاح
+                </div>
+                <div className="grid grid-cols-3 gap-2 mt-2">
+                  <div className="bg-white p-2 rounded border border-indigo-100 text-center">
+                    <div className="text-xs opacity-70">جديد</div>
+                    <div className="text-lg font-bold">{syncResult.synced}</div>
+                  </div>
+                  <div className="bg-white p-2 rounded border border-indigo-100 text-center">
+                    <div className="text-xs opacity-70">مُحدّث</div>
+                    <div className="text-lg font-bold">{syncResult.updated}</div>
+                  </div>
+                  <div className="bg-white p-2 rounded border border-indigo-100 text-center">
+                    <div className="text-xs opacity-70">فشل</div>
+                    <div className="text-lg font-bold text-red-500">{syncResult.failed}</div>
+                  </div>
+                </div>
+                <p className="mt-2 text-xs opacity-80">
+                  تم حفظ معرفات المحادثات (Chat IDs) لضمان وصول رسائل الحملات بنسبة 100%.
+                </p>
+              </div>
+            )}
 
             {state.lastError && (
               <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">

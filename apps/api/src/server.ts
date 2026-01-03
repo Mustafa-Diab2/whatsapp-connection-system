@@ -733,6 +733,28 @@ app.post("/whatsapp/contacts/sync", verifyToken, async (req, res) => {
   }
 });
 
+// Sync WhatsApp chats to database with proper chat_id (wa_chat_id)
+// This is CRITICAL for campaign sending - stores proper @c.us/@g.us IDs
+app.post("/whatsapp/chats/sync", verifyToken, async (req, res) => {
+  const orgId = getOrgId(req);
+  try {
+    console.log(`[${orgId}] Starting chat sync to database (wa_chat_id)...`);
+    const result = await manager.syncAllChatsToDatabase(orgId);
+
+    res.json({
+      ok: true,
+      message: "تم مزامنة المحادثات بنجاح مع معرفات الإرسال الصحيحة",
+      ...result
+    });
+  } catch (err: any) {
+    console.error(`[${orgId}] Sync chats error:`, err);
+    res.status(500).json({
+      ok: false,
+      message: err?.message || "Failed to sync chats"
+    });
+  }
+});
+
 // Clean invalid phone numbers from database
 app.post("/whatsapp/contacts/clean", verifyToken, async (req, res) => {
   const orgId = getOrgId(req);
