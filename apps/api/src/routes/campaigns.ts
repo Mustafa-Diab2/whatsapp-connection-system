@@ -46,85 +46,32 @@ function normalizePhoneNumber(phone: string): { valid: boolean; normalized: stri
     // Remove all non-digits
     let cleanPhone = String(phone).replace(/\D/g, '');
 
-    // Detect WhatsApp internal LID (very long numbers that aren't real phones)
-    // WhatsApp LIDs are typically 14+ digits and often start with specific patterns
-    if (cleanPhone.length > 14) {
-        // Try to extract real phone number from LID - Enhanced patterns
-        const patterns = [
-            /(20[1][0-9]{9})/,      // Egypt: 201xxxxxxxxx
-            /(966[5][0-9]{8})/,     // Saudi: 9665xxxxxxxx
-            /(971[5][0-9]{8})/,     // UAE: 9715xxxxxxxx
-            /(965[569][0-9]{7})/,   // Kuwait: 9655xxxxxxx, 9656xxxxxxx, 9659xxxxxxx
-            /(968[79][0-9]{7})/,    // Oman: 9687xxxxxxx, 9689xxxxxxx
-            /(974[3567][0-9]{7})/,  // Qatar: 9743xxxxxxx, etc.
-            /(973[3][0-9]{7})/,     // Bahrain: 9733xxxxxxx
-            /(962[7][0-9]{8})/,     // Jordan: 9627xxxxxxxx
-            /(961[3-9][0-9]{7})/,   // Lebanon: 9613xxxxxxx to 9619xxxxxxx
-            /(212[6-7][0-9]{8})/,   // Morocco: 2126xxxxxxxx, 2127xxxxxxxx
-            /(213[5-7][0-9]{8})/,   // Algeria: 2135xxxxxxxx to 2137xxxxxxxx
-            /(216[2-9][0-9]{7})/,   // Tunisia: 2162xxxxxxx to 2169xxxxxxx
-        ];
-
-        for (const pattern of patterns) {
-            const match = cleanPhone.match(pattern);
-            if (match) {
-                cleanPhone = match[1];
-                break;
-            }
-        }
-
-        // If still too long after pattern matching, it's invalid
-        if (cleanPhone.length > 14) {
-            console.warn(`[normalizePhoneNumber] Detected LID/invalid ID: ${phone} - skipping`);
-            return { valid: false, normalized: cleanPhone, error: 'رقم WhatsApp ID داخلي غير صالح للإرسال' };
-        }
+    if (cleanPhone.length < 5) {
+        return { valid: false, normalized: cleanPhone, error: 'رقم الهاتف قصير جداً' };
     }
 
     // Egypt normalization
     if (cleanPhone.startsWith('01') && cleanPhone.length === 11) {
         cleanPhone = '20' + cleanPhone.substring(1);
-    } else if (cleanPhone.startsWith('1') && cleanPhone.length === 10) {
+    } else if (cleanPhone.startsWith('10') && cleanPhone.length === 10) {
+        cleanPhone = '20' + cleanPhone;
+    } else if (cleanPhone.startsWith('11') && cleanPhone.length === 10) {
+        cleanPhone = '20' + cleanPhone;
+    } else if (cleanPhone.startsWith('12') && cleanPhone.length === 10) {
+        cleanPhone = '20' + cleanPhone;
+    } else if (cleanPhone.startsWith('15') && cleanPhone.length === 10) {
         cleanPhone = '20' + cleanPhone;
     }
     // Saudi normalization
     else if (cleanPhone.startsWith('05') && cleanPhone.length === 10) {
         cleanPhone = '966' + cleanPhone.substring(1);
-    } else if (cleanPhone.startsWith('5') && cleanPhone.length === 9) {
-        cleanPhone = '966' + cleanPhone;
     }
     // UAE normalization
-    else if (cleanPhone.startsWith('0') && cleanPhone.length === 10 && cleanPhone[1] === '5') {
-        cleanPhone = '971' + cleanPhone.substring(1);
+    else if (cleanPhone.startsWith('05') && cleanPhone.length === 9) {
+        cleanPhone = '971' + cleanPhone;
     }
 
-    // Final length validation
-    if (cleanPhone.length < PHONE_PATTERNS.INTERNATIONAL.minLength) {
-        return { valid: false, normalized: cleanPhone, error: 'رقم الهاتف قصير جداً' };
-    }
-
-    // Maximum valid phone number is 13 digits (country code + number)
-    if (cleanPhone.length > 13) {
-        return { valid: false, normalized: cleanPhone, error: 'رقم الهاتف غير صالح (طويل جداً)' };
-    }
-
-    // Check for obviously invalid patterns (all same digits, etc.)
-    if (/^(\d)\1+$/.test(cleanPhone)) {
-        return { valid: false, normalized: cleanPhone, error: 'رقم هاتف غير صالح' };
-    }
-
-    // Validate that number starts with valid country code
-    const validCountryCodes = ['1', '20', '212', '213', '216', '218', '249', '252', '253', '254', '255',
-        '256', '257', '258', '260', '261', '262', '263', '264', '265', '266', '267', '268', '269',
-        '27', '30', '31', '32', '33', '34', '36', '39', '40', '41', '43', '44', '45', '46', '47', '48', '49',
-        '51', '52', '53', '54', '55', '56', '57', '58', '60', '61', '62', '63', '64', '65', '66',
-        '7', '81', '82', '84', '86', '90', '91', '92', '93', '94', '95', '98',
-        '966', '965', '964', '963', '962', '961', '968', '970', '971', '972', '973', '974'];
-
-    const hasValidCode = validCountryCodes.some(code => cleanPhone.startsWith(code));
-    if (!hasValidCode && cleanPhone.length > 10) {
-        return { valid: false, normalized: cleanPhone, error: 'رقم بدون كود دولة صحيح' };
-    }
-
+    // Allow long IDs (LIDs) and let getNumberId handle them
     return { valid: true, normalized: cleanPhone };
 }
 

@@ -105,7 +105,7 @@ export default class WhatsAppManager {
     const normalized = this.normalizeToChatId(rawTo);
     if (!normalized) return null;
 
-    // Already a valid JID format
+    // If it's already a valid JID format (ends with @c.us or @g.us), return it
     if (normalized.endsWith("@c.us") || normalized.endsWith("@g.us")) {
       return normalized;
     }
@@ -117,10 +117,9 @@ export default class WhatsAppManager {
       return null;
     }
 
-    // Use getNumberId() to validate and get proper WhatsApp ID
-    // This is the RECOMMENDED method per whatsapp-web.js documentation
+    // USER SOLUTION: Use getNumberId() to get the proper _serialized JID
     try {
-      console.log(`[${clientId}] [resolveChatId] Validating number: ${normalized}`);
+      console.log(`[${clientId}] [resolveChatId] Validating number with WhatsApp: ${normalized}`);
       const numberId = await client.getNumberId(normalized);
 
       if (numberId && numberId._serialized) {
@@ -129,18 +128,13 @@ export default class WhatsAppManager {
       } else {
         console.warn(`[${clientId}] [resolveChatId] ⚠️ getNumberId returned null - number may not be on WhatsApp`);
 
-        // Fallback: construct JID directly (may fail but worth trying)
+        // Final fallback: construct JID directly
         const fallbackJid = `${normalized}@c.us`;
-        console.log(`[${clientId}] [resolveChatId] Using fallback JID: ${fallbackJid}`);
         return fallbackJid;
       }
     } catch (err: any) {
       console.warn(`[${clientId}] [resolveChatId] getNumberId failed:`, err.message);
-
-      // Fallback: construct JID directly
-      const fallbackJid = `${normalized}@c.us`;
-      console.log(`[${clientId}] [resolveChatId] Using fallback JID after error: ${fallbackJid}`);
-      return fallbackJid;
+      return `${normalized}@c.us`; // Fallback to direct JID
     }
   }
 
@@ -1340,107 +1334,41 @@ export default class WhatsAppManager {
 
   /**
    * Send a text message to a phone number or chat ID
-   * Uses resolveChatId() to ensure proper @c.us/@g.us format
-   * This is the RECOMMENDED method for campaign sending
+   * Optimized for campaign sending using USER'S RECOMMENDED SOLUTION
    */
-  async sendMessage(clientId: string, to: string, text: string): Promise<{ ok: boolean; messageId?: string }> {
+  async sendMessage(clientId: string, to: string, text: string, options: { quotedMessageId?: string } = {}): Promise<{ ok: boolean; messageId?: string }> {
     const client = this.ensureReadyClient(clientId);
-
     console.log(`[${clientId}] [SEND] Request to send to: ${to}`);
 
-    // ========== STEP 1: Resolve to Valid Chat ID ==========
-    // Use resolveChatId() which validates with getNumberId()
+    // ========== STEP 1: Resolve Chat ID (getNumberId) ==========
     const resolvedChatId = await this.resolveChatId(clientId, to);
-
     if (!resolvedChatId) {
-      console.error(`[${clientId}] [SEND] Invalid recipient: ${to}`);
-      throw new Error(`رقم غير صالح للإرسال: ${to}. يرجى استخدام رقم هاتف حقيقي.`);
+      throw new Error(`رقم غير صالح: ${to}`);
     }
 
-    // Ensure it ends with @c.us or @g.us
-    if (!this.isValidChatId(resolvedChatId)) {
-      console.error(`[${clientId}] [SEND] Resolved ID is not valid: ${resolvedChatId}`);
-      throw new Error(`معرف المحادثة غير صالح: ${resolvedChatId}. يجب أن ينتهي بـ @c.us أو @g.us`);
-    }
-
-    console.log(`[${clientId}] [SEND] ✅ Resolved chat ID: ${to} -> ${resolvedChatId}`);
-
-    // ========== STEP 2: Send Message ==========
+    // ========== STEP 2: Send directly via client (Most stable method) ==========
     try {
-      // Get contact and chat for proper sending
-      const contact = await client.getContactById(resolvedChatId);
+      console.log(`[${clientId}] [SEND] Attempting direct send to ${resolvedChatId}`);
 
-      // Cache contact for future use
-      try {
-        const formatted = await contact.getFormattedNumber();
-        const realPhone = formatted.replace(/\D/g, '');
-        if (realPhone && realPhone.length >= 8 && realPhone.length <= 15) {
-          this.cacheContact(clientId, realPhone, {
-            id: contact.id._serialized,
-            name: contact.name || contact.pushname || realPhone,
-            phone: realPhone
-          });
-        }
-      } catch (e) {
-        // Cache attempt failed, continue
-      }
+      const msg = await client.sendMessage(resolvedChatId, text, {
+        quotedMessageId: options.quotedMessageId
+      });
 
-      // Get chat from contact
-      const chat = await contact.getChat();
-
-      // Small delay to mimic human behavior
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Send message
-      const msg = await chat.sendMessage(text);
       console.log(`[${clientId}] [SEND] ✅ Success! MessageId: ${msg.id._serialized}`);
       return { ok: true, messageId: msg.id._serialized };
 
     } catch (err: any) {
-      console.error(`[${clientId}] [SEND] Failed to send to ${resolvedChatId}:`, err.message);
+      console.error(`[${clientId}] [SEND] Direct send failed for ${resolvedChatId}:`, err.message);
 
-      // ========== STEP 3: Retry with Alternative Strategies ==========
-      const cleanNumber = to.replace(/\D/g, '');
-
-      const retryStrategies = [
-        // Strategy 1: Direct sendMessage to resolved ID
-        async () => {
-          console.log(`[${clientId}] [SEND] Retry 1: Direct sendMessage to ${resolvedChatId}...`);
-          return await client.sendMessage(resolvedChatId, text);
-        },
-        // Strategy 2: Try @c.us if not already
-        async () => {
-          const altChatId = `${cleanNumber}@c.us`;
-          if (altChatId === resolvedChatId) throw new Error("Same as resolved");
-          console.log(`[${clientId}] [SEND] Retry 2: Trying ${altChatId}...`);
-          return await client.sendMessage(altChatId, text);
-        },
-      ];
-
-      for (let i = 0; i < retryStrategies.length; i++) {
-        try {
-          const msg = await retryStrategies[i]();
-          console.log(`[${clientId}] [SEND] ✅ Success with retry strategy ${i + 1}!`);
-          return { ok: true, messageId: msg.id._serialized };
-        } catch (retryErr: any) {
-          console.warn(`[${clientId}] [SEND] Retry strategy ${i + 1} failed:`, retryErr.message);
-        }
+      // Fallback: Human-like interaction (Sometimes bypasses blocks)
+      try {
+        console.log(`[${clientId}] [SEND] Trying fallback via Chat object...`);
+        const chat = await client.getChatById(resolvedChatId);
+        const msg = await chat.sendMessage(text, { quotedMessageId: options.quotedMessageId });
+        return { ok: true, messageId: msg.id._serialized };
+      } catch (fallbackErr: any) {
+        throw new Error(fallbackErr.message || "فشل إرسال الرسالة بعد محاولات متعددة");
       }
-
-      // All strategies failed - provide helpful error message
-      const errMsg = err.message || "";
-
-      if (errMsg.includes("No LID for user") || errMsg.includes("No LID")) {
-        throw new Error("رقم WhatsApp ID داخلي غير صالح. استخدم رقم هاتف حقيقي.");
-      } else if (errMsg.includes("not found") || errMsg.includes("invalid")) {
-        throw new Error("رقم غير موجود أو غير مسجل على واتساب");
-      } else if (errMsg.includes("Evaluation failed")) {
-        throw new Error("فشل الاتصال بالمحادثة. الرقم قد يكون غير صحيح.");
-      } else if (errMsg.includes("not registered")) {
-        throw new Error("الرقم غير مسجل على واتساب");
-      }
-
-      throw new Error(`فشل إرسال الرسالة: ${errMsg}`);
     }
   }
 
