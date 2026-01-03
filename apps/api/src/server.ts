@@ -15,6 +15,11 @@ import documentsRoutes from "./routes/documents";
 import campaignsRoutes from "./routes/campaigns";
 import dealsRouter from "./routes/deals";
 import trainingRouter from "./routes/training";
+import productRoutes from "./routes/products";
+import orderRoutes from "./routes/orders";
+import taskRoutes from "./routes/tasks";
+import invoiceRoutes from "./routes/invoices";
+import purchaseRoutes from "./routes/purchases";
 import { validate } from "./middleware/validate";
 import { createCustomerSchema, updateCustomerSchema } from "./schemas/customerSchemas";
 
@@ -211,6 +216,25 @@ async function ensureSchema() {
           EXCEPTION WHEN duplicate_column THEN
             RAISE NOTICE 'column phone already exists in users table';
           END;
+
+          BEGIN
+            ALTER TABLE customers ADD COLUMN loyalty_points INTEGER DEFAULT 0;
+          EXCEPTION WHEN duplicate_column THEN
+            RAISE NOTICE 'column loyalty_points already exists in customers table';
+          END;
+
+          -- Create loyalty_transactions if not exists
+          IF NOT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'loyalty_transactions') THEN
+            CREATE TABLE loyalty_transactions (
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                organization_id UUID REFERENCES organizations(id),
+                customer_id UUID REFERENCES customers(id),
+                points INTEGER NOT NULL,
+                type VARCHAR(20) NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+          END IF;
         END $$;`
     });
 
@@ -337,6 +361,11 @@ app.use("/api/documents", documentsRoutes);
 app.use("/api/campaigns", campaignsRoutes);
 app.use("/api/deals", dealsRouter);
 app.use("/api/training", trainingRouter);
+app.use("/api/products", productRoutes);
+app.use("/api/orders", orderRoutes);
+app.use("/api/tasks", taskRoutes);
+app.use("/api/invoices", invoiceRoutes);
+app.use("/api/purchases", purchaseRoutes);
 
 // Helper to extract orgId
 const getOrgId = (req: Request): string => {
