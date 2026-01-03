@@ -73,7 +73,7 @@ async function refreshPageToken(page: ExpiringPage): Promise<TokenRefreshResult>
     const currentToken = decryptToken(page.access_token_encrypted);
     
     // Try to exchange for a new long-lived token
-    const { accessToken: newToken, expiresIn } = await getLongLivedToken(currentToken);
+    const { accessToken: newToken, expiresIn } = await getLongLivedToken(page.organization_id, currentToken);
     
     // Calculate new expiry date
     const newExpiryDate = new Date();

@@ -426,7 +426,7 @@ export async function saveConnectedPages(
     
     try {
       // Exchange for long-lived token if we have a short-lived one
-      const longLived = await getLongLivedToken(userAccessToken);
+      const longLived = await getLongLivedToken(organizationId, userAccessToken);
       
       // Get page tokens using long-lived user token
       const pagesWithLongTokens = await getUserPages(longLived.accessToken);
