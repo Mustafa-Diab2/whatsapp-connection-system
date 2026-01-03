@@ -379,6 +379,36 @@ export default function SettingsPage() {
                 </div>
             </div>
 
+            {/* Integrations Section */}
+            <div className="card p-6 space-y-4 border-l-4 border-l-blue-500 bg-blue-50/30">
+                <h2 className="text-lg font-semibold text-slate-800 border-b pb-2 flex items-center gap-2">
+                    🔗 التكاملات الخارجية
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">جديد</span>
+                </h2>
+
+                <div className="space-y-3">
+                    <a 
+                        href="/integrations/facebook" 
+                        className="flex items-center justify-between p-4 bg-white rounded-lg border border-slate-200 hover:border-blue-300 hover:shadow-md transition-all group"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <p className="font-medium text-slate-700 group-hover:text-blue-600">Facebook & Instagram</p>
+                                <p className="text-sm text-slate-500">ربط صفحات الفيسبوك وتتبع الإعلانات</p>
+                            </div>
+                        </div>
+                        <svg className="w-5 h-5 text-slate-400 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                    </a>
+                </div>
+            </div>
+
             {/* Team Management Section */}
             <div className="card p-6 space-y-6">
                 <div className="flex items-center justify-between border-b pb-2">

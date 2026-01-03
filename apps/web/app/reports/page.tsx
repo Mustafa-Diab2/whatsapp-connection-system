@@ -119,6 +119,13 @@ export default function ReportsPage() {
                     <p className="text-slate-500 font-medium">تحليل دقيق للهوامش الربحية، التكاليف، والأداء المالي العام</p>
                 </div>
                 <div className="flex gap-2">
+                    <a 
+                        href="/reports/attribution" 
+                        className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-5 py-2.5 rounded-xl text-xs font-black shadow-lg hover:shadow-xl transition-all flex items-center gap-2"
+                    >
+                        <span>📊</span>
+                        تقارير الإسناد
+                    </a>
                     <div className="bg-white p-1 rounded-2xl border border-slate-100 shadow-sm flex">
                         <button className="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-black">أرباح اليوم</button>
                         <button className="px-6 py-2.5 text-slate-500 text-xs font-black">30 يوم</button>

@@ -50,6 +50,26 @@ export const messageLimiter = rateLimit({
     legacyHeaders: false,
 });
 
+// Facebook API limiter - 200 requests per hour (to stay within Graph API limits)
+export const facebookApiLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 200, // 200 requests per hour
+    message: {
+        error: "تم تجاوز عدد طلبات Facebook API، يرجى المحاولة لاحقاً",
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+// Tracking redirect limiter - high limit for public tracking URLs
+export const trackingLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 100, // 100 requests per minute per IP
+    message: "Too many requests",
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 /**
  * Error handling middleware
  */

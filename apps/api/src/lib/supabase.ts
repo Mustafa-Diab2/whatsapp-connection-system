@@ -143,7 +143,21 @@ export const db = {
     },
 
     // ========== CONVERSATIONS ==========
-    async getOrCreateConversation(waChatId: string, organizationId: string, customerId?: string, physicalPhone?: string) {
+    async getOrCreateConversation(
+        waChatId: string, 
+        organizationId: string, 
+        customerId?: string, 
+        physicalPhone?: string,
+        attributionData?: {
+            source_type?: string;
+            source_campaign_id?: string;
+            source_campaign_name?: string;
+            source_ad_id?: string;
+            fbclid?: string;
+            ctwa_clid?: string;
+            channel?: string;
+        }
+    ) {
         if (!organizationId) throw new Error("Organization ID required");
 
         // Try to find existing conversation
@@ -160,6 +174,7 @@ export const db = {
         let finalCustomerId = customerId;
         const rawPhone = physicalPhone || waChatId.split('@')[0];
         const phoneToUse = rawPhone.replace(/\D/g, ""); // Clean formatting for DB consistency
+        const channel = attributionData?.channel || 'whatsapp';
 
         if (!finalCustomerId) {
             const { data: customer } = await supabase
@@ -172,18 +187,80 @@ export const db = {
             if (customer) {
                 finalCustomerId = customer.id;
             } else {
+                // Check for attribution events for this phone (last 30 days)
+                let attribution: any = null;
+                if (!attributionData?.source_type) {
+                    const { data: attrEvent } = await supabase
+                        .from('click_attribution_events')
+                        .select('*')
+                        .eq('phone', phoneToUse)
+                        .eq('organization_id', organizationId)
+                        .eq('status', 'pending')
+                        .gte('clicked_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+                        .order('clicked_at', { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+                    
+                    if (attrEvent) {
+                        attribution = attrEvent;
+                    }
+                }
+
+                // Build customer data with attribution
+                const customerData: any = {
+                    name: phoneToUse, // Default name to phone
+                    phone: phoneToUse,
+                    organization_id: organizationId,
+                    source: 'whatsapp',
+                    channel: channel,
+                    first_touch_at: new Date().toISOString(),
+                };
+
+                // Apply attribution from parameter or from click events
+                if (attributionData?.source_type || attribution) {
+                    const attrSource = attributionData || attribution;
+                    customerData.source_type = attrSource.source_type || 'facebook';
+                    customerData.source_campaign_id = attrSource.source_campaign_id;
+                    customerData.source_campaign_name = attrSource.source_campaign_name;
+                    customerData.source_ad_id = attrSource.source_ad_id;
+                    customerData.fbclid = attrSource.fbclid;
+                    customerData.ctwa_clid = attrSource.ctwa_clid;
+                    customerData.attribution_data = {
+                        ...attrSource,
+                        matched_at: new Date().toISOString(),
+                    };
+                } else {
+                    customerData.source_type = 'direct';
+                }
+
                 // Auto-create customer
                 const { data: newCustomer } = await supabase
                     .from('customers')
-                    .insert({
-                        name: phoneToUse, // Default name to phone
-                        phone: phoneToUse,
-                        organization_id: organizationId,
-                        source: 'whatsapp'
-                    })
+                    .insert(customerData)
                     .select()
                     .single();
                 finalCustomerId = newCustomer?.id;
+
+                // Mark attribution event as converted
+                if (attribution && finalCustomerId) {
+                    await supabase
+                        .from('click_attribution_events')
+                        .update({
+                            status: 'converted',
+                            converted_at: new Date().toISOString(),
+                            customer_id: finalCustomerId,
+                        })
+                        .eq('id', attribution.id);
+                    
+                    // Update tracking link conversion count
+                    if (attribution.short_code) {
+                        await supabase.rpc('increment_conversion_count', {
+                            p_short_code: attribution.short_code
+                        }).catch(() => {
+                            // RPC might not exist, that's okay
+                        });
+                    }
+                }
             }
         }
 
@@ -193,7 +270,8 @@ export const db = {
             .insert({
                 wa_chat_id: waChatId,
                 customer_id: finalCustomerId,
-                organization_id: organizationId
+                organization_id: organizationId,
+                channel: channel,
             })
             .select('*, customer:customers(*)')
             .single();

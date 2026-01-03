@@ -27,6 +27,11 @@ services:
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
       - WEBHOOK_URL=${WEBHOOK_URL:-}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
+      # Facebook Integration
+      - FACEBOOK_APP_ID=${FACEBOOK_APP_ID:-}
+      - FACEBOOK_APP_SECRET=${FACEBOOK_APP_SECRET:-}
+      - FACEBOOK_VERIFY_TOKEN=${FACEBOOK_VERIFY_TOKEN:-}
+      - FACEBOOK_ENCRYPTION_KEY=${FACEBOOK_ENCRYPTION_KEY:-}
     volumes:
       # Persistent WhatsApp session storage
       - wa_auth:/app/.wwebjs_auth

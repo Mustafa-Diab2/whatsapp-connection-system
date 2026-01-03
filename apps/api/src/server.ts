@@ -20,6 +20,9 @@ import orderRoutes from "./routes/orders";
 import taskRoutes from "./routes/tasks";
 import invoiceRoutes from "./routes/invoices";
 import purchaseRoutes from "./routes/purchases";
+import facebookRoutes from "./routes/facebook";
+import trackingRoutes, { handleTrackingRedirect } from "./routes/tracking";
+import TokenRefreshService from "./services/TokenRefreshService";
 import { validate } from "./middleware/validate";
 import { createCustomerSchema, updateCustomerSchema } from "./schemas/customerSchemas";
 
@@ -366,6 +369,14 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/purchases", purchaseRoutes);
+
+// Facebook Integration Routes
+app.use("/api/facebook", facebookRoutes);
+app.use("/webhooks/facebook", facebookRoutes); // Facebook webhooks (public)
+
+// Tracking Routes
+app.use("/api/tracking", trackingRoutes);
+app.get("/t/:code", handleTrackingRedirect); // Public short URL redirect
 
 // Helper to extract orgId
 const getOrgId = (req: Request): string => {
@@ -1571,4 +1582,12 @@ app.use((req, res) => {
 httpServer.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
   console.log("Ready for connections!");
+  
+  // Start Facebook Token Refresh Service
+  if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
+    TokenRefreshService.start();
+    console.log("[Facebook] Token refresh service started");
+  } else {
+    console.log("[Facebook] Token refresh service not started (credentials not configured)");
+  }
 });

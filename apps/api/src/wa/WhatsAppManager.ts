@@ -402,7 +402,22 @@ export default class WhatsAppManager {
         waChatIdToSync = message.author;
       }
 
-      const { conversation, realPhone } = await this.getOrCreateAndSyncCustomer(clientId, waChatIdToSync);
+      // Extract CTWA (Click-to-WhatsApp) referral data from Facebook/Instagram ads
+      let messageReferral: any = undefined;
+      const rawData = (message as any)._data || (message as any).rawData;
+      if (rawData?.referral) {
+        messageReferral = {
+          source_type: rawData.referral.source_type, // 'ad'
+          source_id: rawData.referral.source_id,
+          source_url: rawData.referral.source_url,
+          headline: rawData.referral.headline,
+          body: rawData.referral.body,
+          ctwa_clid: rawData.referral.ctwa_clid,
+        };
+        console.log(`[${clientId}] CTWA Referral detected:`, messageReferral);
+      }
+
+      const { conversation, realPhone } = await this.getOrCreateAndSyncCustomer(clientId, waChatIdToSync, messageReferral);
 
       try {
         const contact = await message.getContact();
@@ -1208,7 +1223,18 @@ export default class WhatsAppManager {
   }
 
   // Shared helper to resolve real phone and sync customer
-  async getOrCreateAndSyncCustomer(clientId: string, waChatId: string): Promise<{ realPhone: string; conversation: any }> {
+  async getOrCreateAndSyncCustomer(
+    clientId: string, 
+    waChatId: string,
+    messageReferral?: {
+      source_type?: string;
+      source_id?: string;
+      source_url?: string;
+      headline?: string;
+      body?: string;
+      ctwa_clid?: string;
+    }
+  ): Promise<{ realPhone: string; conversation: any }> {
     const client = this.clients.get(clientId);
     let realPhone = waChatId.split('@')[0];
 
@@ -1240,7 +1266,19 @@ export default class WhatsAppManager {
       }
     }
 
-    const conversation = await db.getOrCreateConversation(waChatId, clientId, undefined, realPhone);
+    // Build attribution data from CTWA referral if present
+    let attributionData: any = undefined;
+    if (messageReferral?.ctwa_clid || messageReferral?.source_type === 'ad') {
+      attributionData = {
+        source_type: 'facebook',
+        ctwa_clid: messageReferral.ctwa_clid,
+        source_ad_id: messageReferral.source_id,
+        channel: 'whatsapp',
+      };
+      console.log(`[${clientId}] CTWA Attribution detected:`, attributionData);
+    }
+
+    const conversation = await db.getOrCreateConversation(waChatId, clientId, undefined, realPhone, attributionData);
 
     // Auto-fix existing records
     if (conversation.customer) {

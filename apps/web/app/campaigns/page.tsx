@@ -62,6 +62,7 @@ export default function CampaignsPage() {
     const [name, setName] = useState("");
     const [message, setMessage] = useState("");
     const [targetGroup, setTargetGroup] = useState("all");
+    const [channels, setChannels] = useState<string[]>(["whatsapp"]);
 
     // For detailed logs
     const [selectedCampaignForLogs, setSelectedCampaignForLogs] = useState<Campaign | null>(null);
@@ -71,6 +72,14 @@ export default function CampaignsPage() {
     const showToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
         setToast({ message, type });
     }, []);
+
+    const toggleChannel = (channel: string) => {
+        setChannels(prev => 
+            prev.includes(channel) 
+                ? prev.filter(c => c !== channel)
+                : [...prev, channel]
+        );
+    };
 
     // WebSocket connection for real-time updates
     useEffect(() => {
@@ -198,6 +207,10 @@ export default function CampaignsPage() {
             showToast("يرجى إدخال نص الرسالة", "error");
             return;
         }
+        if (channels.length === 0) {
+            showToast("يرجى اختيار قناة واحدة على الأقل", "error");
+            return;
+        }
 
         setLoading(true);
         try {
@@ -208,6 +221,7 @@ export default function CampaignsPage() {
                     name: name.trim(),
                     messageTemplate: message.trim(),
                     targetGroup,
+                    channels,
                     action: "send",
                 },
                 { headers: { Authorization: `Bearer ${token}` } }
@@ -216,6 +230,7 @@ export default function CampaignsPage() {
             showToast("🚀 تم بدء الحملة بنجاح!", "success");
             setName("");
             setMessage("");
+            setChannels(["whatsapp"]);
             fetchCampaigns();
         } catch (error: any) {
             console.error("Failed to create campaign", error);
@@ -293,6 +308,52 @@ export default function CampaignsPage() {
                                         <option value="type_support">الدعم فني</option>
                                         <option value="type_spam">المزعجون (Spam)</option>
                                     </select>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 px-1">قنوات الإرسال</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleChannel('whatsapp')}
+                                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all ${
+                                                channels.includes('whatsapp')
+                                                    ? 'bg-green-50 border-green-500 text-green-700'
+                                                    : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300'
+                                            }`}
+                                        >
+                                            <span className="text-lg">💬</span>
+                                            <span className="text-sm font-bold">واتساب</span>
+                                            {channels.includes('whatsapp') && <span className="text-green-600">✓</span>}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleChannel('messenger')}
+                                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all ${
+                                                channels.includes('messenger')
+                                                    ? 'bg-blue-50 border-blue-500 text-blue-700'
+                                                    : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300'
+                                            }`}
+                                        >
+                                            <span className="text-lg">💬</span>
+                                            <span className="text-sm font-bold">ماسنجر</span>
+                                            {channels.includes('messenger') && <span className="text-blue-600">✓</span>}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleChannel('instagram')}
+                                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all ${
+                                                channels.includes('instagram')
+                                                    ? 'bg-pink-50 border-pink-500 text-pink-700'
+                                                    : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300'
+                                            }`}
+                                        >
+                                            <span className="text-lg">📸</span>
+                                            <span className="text-sm font-bold">انستجرام</span>
+                                            {channels.includes('instagram') && <span className="text-pink-600">✓</span>}
+                                        </button>
+                                    </div>
+                                    <p className="text-[10px] font-bold text-orange-500 mt-2 px-1">⚠️ تأكد من ربط القنوات من إعدادات التكاملات</p>
                                 </div>
 
                                 <div>
