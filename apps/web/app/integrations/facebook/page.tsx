@@ -33,6 +33,12 @@ interface TrackingLink {
   created_at: string;
 }
 
+interface FacebookSettings {
+  app_id?: string;
+  verify_token?: string;
+  is_configured: boolean;
+}
+
 export default function FacebookIntegrationPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -40,6 +46,16 @@ export default function FacebookIntegrationPage() {
   const [trackingLinks, setTrackingLinks] = useState<TrackingLink[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Facebook Settings
+  const [settings, setSettings] = useState<FacebookSettings>({ is_configured: false });
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsForm, setSettingsForm] = useState({
+    app_id: "",
+    app_secret: "",
+    verify_token: "",
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
 
   // Link generator form
   const [linkForm, setLinkForm] = useState({
@@ -57,6 +73,25 @@ export default function FacebookIntegrationPage() {
     const token = localStorage.getItem("token");
     return { Authorization: `Bearer ${token}` };
   }, []);
+
+  // Fetch Facebook settings
+  const fetchSettings = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/facebook/settings`, {
+        headers: getAuthHeaders(),
+      });
+      setSettings(response.data.data || { is_configured: false });
+      if (response.data.data?.app_id) {
+        setSettingsForm(prev => ({
+          ...prev,
+          app_id: response.data.data.app_id,
+          verify_token: response.data.data.verify_token || "",
+        }));
+      }
+    } catch (err: any) {
+      console.error("Error fetching settings:", err);
+    }
+  }, [getAuthHeaders]);
 
   // Fetch connected pages
   const fetchPages = useCallback(async () => {
@@ -85,11 +120,36 @@ export default function FacebookIntegrationPage() {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchPages(), fetchTrackingLinks()]);
+      await Promise.all([fetchSettings(), fetchPages(), fetchTrackingLinks()]);
       setLoading(false);
     };
     loadData();
-  }, [fetchPages, fetchTrackingLinks]);
+  }, [fetchSettings, fetchPages, fetchTrackingLinks]);
+
+  // Save Facebook settings
+  const saveSettings = async () => {
+    if (!settingsForm.app_id || !settingsForm.app_secret || !settingsForm.verify_token) {
+      setError("جميع الحقول مطلوبة");
+      return;
+    }
+
+    setSavingSettings(true);
+    try {
+      await axios.post(
+        `${API_URL}/api/facebook/settings`,
+        settingsForm,
+        { headers: getAuthHeaders() }
+      );
+      setSuccess("تم حفظ الإعدادات بنجاح");
+      await fetchSettings();
+      setShowSettings(false);
+      setSettingsForm(prev => ({ ...prev, app_secret: "" })); // Clear secret
+    } catch (err: any) {
+      setError(err.response?.data?.error || "فشل في حفظ الإعدادات");
+    } finally {
+      setSavingSettings(false);
+    }
+  };
 
   // Handle OAuth callback (if redirected back)
   useEffect(() => {
@@ -123,6 +183,13 @@ export default function FacebookIntegrationPage() {
 
   // Start OAuth flow
   const connectFacebook = async () => {
+    // Check if settings are configured
+    if (!settings.is_configured) {
+      setError("يجب إعداد تطبيق Facebook أولاً");
+      setShowSettings(true);
+      return;
+    }
+    
     try {
       const response = await axios.get(`${API_URL}/api/facebook/auth/url`, {
         headers: getAuthHeaders(),
@@ -235,6 +302,112 @@ export default function FacebookIntegrationPage() {
             <button onClick={() => setSuccess(null)} className="float-left">×</button>
           </div>
         )}
+
+        {/* Facebook App Settings Section */}
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              ⚙️ إعدادات تطبيق Facebook
+            </h2>
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className="text-blue-600 hover:text-blue-700 text-sm"
+            >
+              {showSettings ? "إخفاء" : settings.is_configured ? "تعديل" : "إعداد"}
+            </button>
+          </div>
+
+          {settings.is_configured && !showSettings && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <p className="text-green-700 flex items-center gap-2">
+                ✅ تم إعداد تطبيق Facebook بنجاح
+              </p>
+              <p className="text-sm text-green-600 mt-1">
+                App ID: {settings.app_id}
+              </p>
+            </div>
+          )}
+
+          {!settings.is_configured && !showSettings && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-yellow-700">
+                ⚠️ لم يتم إعداد تطبيق Facebook بعد. اضغط على &quot;إعداد&quot; لإضافة بيانات التطبيق.
+              </p>
+            </div>
+          )}
+
+          {showSettings && (
+            <div className="space-y-4 mt-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
+                <p className="font-medium mb-2">كيفية الحصول على هذه البيانات:</p>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>اذهب إلى <a href="https://developers.facebook.com" target="_blank" className="underline">developers.facebook.com</a></li>
+                  <li>أنشئ تطبيق جديد أو اختر تطبيق موجود</li>
+                  <li>من App Settings → Basic احصل على App ID و App Secret</li>
+                  <li>اختر Verify Token (أي كلمة سرية)</li>
+                </ol>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  App ID *
+                </label>
+                <input
+                  type="text"
+                  value={settingsForm.app_id}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, app_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="123456789012345"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  App Secret *
+                </label>
+                <input
+                  type="password"
+                  value={settingsForm.app_secret}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, app_secret: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder={settings.is_configured ? "اتركه فارغاً للإبقاء على القيمة الحالية" : "abc123def456..."}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Verify Token *
+                </label>
+                <input
+                  type="text"
+                  value={settingsForm.verify_token}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, verify_token: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="my_secret_token_123"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  هذا نفس الـ Token الذي ستستخدمه في إعدادات Webhooks على Facebook
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={saveSettings}
+                  disabled={savingSettings}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {savingSettings ? "جاري الحفظ..." : "حفظ الإعدادات"}
+                </button>
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Connected Pages Section */}
         <div className="bg-white rounded-xl shadow-sm p-6">

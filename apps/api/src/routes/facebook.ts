@@ -4,7 +4,7 @@ import { Server } from "socket.io";
 import { verifyToken } from "./auth";
 import { validate } from "../middleware/validate";
 import { supabase } from "../lib/supabase";
-import FacebookManager from "../services/FacebookManager";
+import * as FacebookManager from "../services/FacebookManager";
 import TokenRefreshService from "../services/TokenRefreshService";
 import {
   facebookOAuthCallbackSchema,
@@ -24,6 +24,86 @@ export function createFacebookRoutes(socketIo: Server) {
   io = socketIo;
   return router;
 }
+
+// =====================================================
+// Settings Management Routes
+// =====================================================
+
+/**
+ * GET /api/facebook/settings
+ * Get Facebook settings for organization (without exposing secrets)
+ */
+router.get("/settings", verifyToken, async (req: Request, res: Response) => {
+  try {
+    const orgId = (req as any).user.organizationId;
+    const settings = await FacebookManager.getFacebookSettings(orgId);
+    
+    res.json({
+      ok: true,
+      data: settings ? {
+        app_id: settings.app_id,
+        verify_token: settings.verify_token,
+        is_configured: true,
+        // Never expose app_secret
+      } : {
+        is_configured: false,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error fetching Facebook settings:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/facebook/settings
+ * Save Facebook settings for organization
+ */
+router.post("/settings", verifyToken, async (req: Request, res: Response) => {
+  try {
+    const orgId = (req as any).user.organizationId;
+    const { app_id, app_secret, verify_token } = req.body;
+    
+    if (!app_id || !app_secret || !verify_token) {
+      return res.status(400).json({
+        error: "app_id, app_secret, and verify_token are required",
+      });
+    }
+    
+    await FacebookManager.saveFacebookSettings(orgId, {
+      app_id,
+      app_secret,
+      verify_token,
+    });
+    
+    res.json({
+      ok: true,
+      message: "Facebook settings saved successfully",
+    });
+  } catch (error: any) {
+    console.error("Error saving Facebook settings:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * DELETE /api/facebook/settings
+ * Delete Facebook settings for organization
+ */
+router.delete("/settings", verifyToken, async (req: Request, res: Response) => {
+  try {
+    const orgId = (req as any).user.organizationId;
+    await FacebookManager.deleteFacebookSettings(orgId);
+    
+    res.json({
+      ok: true,
+      message: "Facebook settings deleted successfully",
+    });
+  } catch (error: any) {
+    console.error("Error deleting Facebook settings:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // =====================================================
 // OAuth Routes
@@ -50,7 +130,7 @@ router.get("/auth/url", verifyToken, async (req: Request, res: Response) => {
       timestamp: Date.now() 
     })).toString("base64");
     
-    const authUrl = FacebookManager.getOAuthUrl(redirectUri, stateData);
+    const authUrl = await FacebookManager.getOAuthUrl(orgId, redirectUri, stateData);
     
     res.json({
       ok: true,
@@ -104,12 +184,14 @@ router.post(
       
       // Exchange code for access token
       const { accessToken } = await FacebookManager.exchangeCodeForToken(
+        orgId,
         code,
         redirectUri
       );
       
       // Get long-lived token
       const { accessToken: longLivedToken } = await FacebookManager.getLongLivedToken(
+        orgId,
         accessToken
       );
       

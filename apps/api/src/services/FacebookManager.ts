@@ -22,6 +22,12 @@ const ENCRYPTION_ALGORITHM = "aes-256-gcm";
 // Types
 // =====================================================
 
+export interface FacebookSettings {
+  app_id: string;
+  app_secret: string;
+  verify_token: string;
+}
+
 export interface FacebookPage {
   id: string;
   name: string;
@@ -188,11 +194,70 @@ async function callFacebookAPI<T>(
 }
 
 // =====================================================
+// Settings Management (Per-Organization)
+// =====================================================
+
+export async function getFacebookSettings(organizationId: string): Promise<FacebookSettings | null> {
+  const { data, error } = await supabase
+    .from("facebook_settings")
+    .select("app_id, app_secret_encrypted, verify_token")
+    .eq("organization_id", organizationId)
+    .single();
+  
+  if (error || !data) {
+    return null;
+  }
+  
+  return {
+    app_id: data.app_id,
+    app_secret: decryptToken(data.app_secret_encrypted),
+    verify_token: data.verify_token,
+  };
+}
+
+export async function saveFacebookSettings(
+  organizationId: string,
+  settings: { app_id: string; app_secret: string; verify_token: string }
+): Promise<void> {
+  const encryptedSecret = encryptToken(settings.app_secret);
+  
+  const { error } = await supabase
+    .from("facebook_settings")
+    .upsert({
+      organization_id: organizationId,
+      app_id: settings.app_id,
+      app_secret_encrypted: encryptedSecret,
+      verify_token: settings.verify_token,
+      is_configured: true,
+      updated_at: new Date().toISOString(),
+    }, {
+      onConflict: "organization_id",
+    });
+  
+  if (error) {
+    throw new Error(`Failed to save Facebook settings: ${error.message}`);
+  }
+}
+
+export async function deleteFacebookSettings(organizationId: string): Promise<void> {
+  const { error } = await supabase
+    .from("facebook_settings")
+    .delete()
+    .eq("organization_id", organizationId);
+  
+  if (error) {
+    throw new Error(`Failed to delete Facebook settings: ${error.message}`);
+  }
+}
+
+// =====================================================
 // OAuth Methods
 // =====================================================
 
-export function getOAuthUrl(redirectUri: string, state?: string): string {
-  const appId = process.env.FACEBOOK_APP_ID;
+export async function getOAuthUrl(organizationId: string, redirectUri: string, state?: string): Promise<string> {
+  // Try to get settings from database first
+  const settings = await getFacebookSettings(organizationId);
+  const appId = settings?.app_id || process.env.FACEBOOK_APP_ID;
   
   if (!appId) {
     throw new Error("FACEBOOK_APP_ID is not configured");
@@ -220,11 +285,14 @@ export function getOAuthUrl(redirectUri: string, state?: string): string {
 }
 
 export async function exchangeCodeForToken(
+  organizationId: string,
   code: string,
   redirectUri: string
 ): Promise<{ accessToken: string; expiresIn: number }> {
-  const appId = process.env.FACEBOOK_APP_ID;
-  const appSecret = process.env.FACEBOOK_APP_SECRET;
+  // Get settings from database or fallback to env
+  const settings = await getFacebookSettings(organizationId);
+  const appId = settings?.app_id || process.env.FACEBOOK_APP_ID;
+  const appSecret = settings?.app_secret || process.env.FACEBOOK_APP_SECRET;
   
   if (!appId || !appSecret) {
     throw new Error("Facebook App credentials are not configured");
@@ -250,10 +318,13 @@ export async function exchangeCodeForToken(
 }
 
 export async function getLongLivedToken(
+  organizationId: string,
   shortLivedToken: string
 ): Promise<{ accessToken: string; expiresIn: number }> {
-  const appId = process.env.FACEBOOK_APP_ID;
-  const appSecret = process.env.FACEBOOK_APP_SECRET;
+  // Get settings from database or fallback to env
+  const settings = await getFacebookSettings(organizationId);
+  const appId = settings?.app_id || process.env.FACEBOOK_APP_ID;
+  const appSecret = settings?.app_secret || process.env.FACEBOOK_APP_SECRET;
   
   if (!appId || !appSecret) {
     throw new Error("Facebook App credentials are not configured");

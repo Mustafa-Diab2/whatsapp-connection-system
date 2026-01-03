@@ -434,5 +434,31 @@ WHERE c.source_type IS NOT NULL
 GROUP BY c.organization_id, c.source_type, c.source_campaign_name;
 
 -- =====================================================
+-- 15. Create facebook_settings table for per-org credentials
+-- =====================================================
+CREATE TABLE IF NOT EXISTS facebook_settings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE UNIQUE,
+    app_id TEXT NOT NULL,
+    app_secret_encrypted TEXT NOT NULL,
+    verify_token TEXT NOT NULL,
+    is_configured BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable RLS
+ALTER TABLE facebook_settings ENABLE ROW LEVEL SECURITY;
+
+-- Policies
+DROP POLICY IF EXISTS "Users can view own org facebook settings" ON facebook_settings;
+CREATE POLICY "Users can view own org facebook settings" ON facebook_settings
+    FOR SELECT USING (organization_id = current_setting('app.current_organization_id', true)::uuid);
+
+DROP POLICY IF EXISTS "Users can manage own org facebook settings" ON facebook_settings;
+CREATE POLICY "Users can manage own org facebook settings" ON facebook_settings
+    FOR ALL USING (organization_id = current_setting('app.current_organization_id', true)::uuid);
+
+-- =====================================================
 -- Done!
 -- =====================================================
