@@ -263,14 +263,11 @@ export async function getOAuthUrl(organizationId: string, redirectUri: string, s
     throw new Error("FACEBOOK_APP_ID is not configured");
   }
   
+  // Basic permissions that work in development mode
   const permissions = [
     "pages_show_list",
-    "pages_messaging",
-    "pages_manage_metadata",
     "pages_read_engagement",
-    "pages_manage_ads",
-    "ads_read",
-    "leads_retrieval",
+    "pages_manage_posts",
   ].join(",");
   
   const params = new URLSearchParams({
