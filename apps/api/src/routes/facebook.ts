@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import crypto from "crypto";
-import { verifyToken } from "../middleware";
+import { Server } from "socket.io";
+import { verifyToken } from "./auth";
 import { validate } from "../middleware/validate";
 import { supabase } from "../lib/supabase";
 import FacebookManager from "../services/FacebookManager";
@@ -13,7 +14,16 @@ import {
   attributionReportQuerySchema,
 } from "../schemas/facebookSchemas";
 
+// Socket.io instance - will be set by createFacebookRoutes
+let io: Server | null = null;
+
 const router = Router();
+
+// Factory function to create routes with io instance
+export function createFacebookRoutes(socketIo: Server) {
+  io = socketIo;
+  return router;
+}
 
 // =====================================================
 // OAuth Routes
@@ -484,6 +494,199 @@ router.get(
   }
 );
 
+// =====================================================
+// Messenger Messaging Routes
+// =====================================================
+
+/**
+ * POST /api/facebook/messages/send
+ * Send a message via Messenger
+ */
+router.post("/messages/send", verifyToken, async (req: Request, res: Response) => {
+  try {
+    const orgId = (req as any).user.organizationId;
+    const { recipientPsid, message, conversationId } = req.body;
+    
+    if (!recipientPsid || !message) {
+      return res.status(400).json({
+        error: "recipientPsid and message are required",
+      });
+    }
+    
+    // Get the page for this organization
+    const { data: page, error: pageError } = await supabase
+      .from("facebook_pages")
+      .select("id, page_id, access_token_encrypted")
+      .eq("organization_id", orgId)
+      .eq("is_active", true)
+      .single();
+    
+    if (pageError || !page) {
+      return res.status(400).json({
+        error: "No connected Facebook page found",
+      });
+    }
+    
+    // Decrypt access token
+    const accessToken = FacebookManager.decryptToken(page.access_token_encrypted);
+    
+    // Send message via Graph API
+    const response = await fetch(
+      `https://graph.facebook.com/v21.0/${page.page_id}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          recipient: { id: recipientPsid },
+          message: { text: message },
+          access_token: accessToken,
+        }),
+      }
+    );
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.error?.message || "Failed to send message");
+    }
+    
+    // Save message to database
+    const { data: customer } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("organization_id", orgId)
+      .eq("facebook_psid", recipientPsid)
+      .single();
+    
+    const { data: savedMessage } = await supabase
+      .from("messages")
+      .insert({
+        organization_id: orgId,
+        customer_id: customer?.id,
+        conversation_id: conversationId,
+        fb_message_id: result.message_id,
+        body: message,
+        is_from_customer: false,
+        channel: "facebook",
+        timestamp: new Date().toISOString(),
+      })
+      .select("id, body, timestamp")
+      .single();
+    
+    // Emit socket event
+    if (io && savedMessage) {
+      io.to(orgId).emit("fb:message", {
+        clientId: orgId,
+        message: {
+          id: savedMessage.id,
+          fb_message_id: result.message_id,
+          body: message,
+          is_from_customer: false,
+          timestamp: savedMessage.timestamp,
+          channel: "facebook",
+        },
+        conversation: {
+          id: conversationId,
+          channel: "facebook",
+        },
+      });
+    }
+    
+    res.json({
+      ok: true,
+      data: {
+        message_id: result.message_id,
+        recipient_id: result.recipient_id,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error sending Messenger message:", error);
+    res.status(500).json({
+      error: error.message || "Failed to send message",
+    });
+  }
+});
+
+/**
+ * GET /api/facebook/conversations
+ * Get all Facebook/Messenger conversations
+ */
+router.get("/conversations", verifyToken, async (req: Request, res: Response) => {
+  try {
+    const orgId = (req as any).user.organizationId;
+    
+    const { data: conversations, error } = await supabase
+      .from("conversations")
+      .select(`
+        id,
+        customer_id,
+        channel,
+        status,
+        last_message_at,
+        last_customer_message_at,
+        facebook_conversation_id,
+        created_at,
+        customers (
+          id,
+          name,
+          facebook_psid,
+          source_type,
+          source_campaign_name
+        )
+      `)
+      .eq("organization_id", orgId)
+      .eq("channel", "facebook")
+      .order("last_message_at", { ascending: false });
+    
+    if (error) throw error;
+    
+    res.json({
+      ok: true,
+      data: conversations || [],
+    });
+  } catch (error: any) {
+    console.error("Error fetching Messenger conversations:", error);
+    res.status(500).json({
+      error: error.message || "Failed to fetch conversations",
+    });
+  }
+});
+
+/**
+ * GET /api/facebook/conversations/:id/messages
+ * Get messages for a specific conversation
+ */
+router.get("/conversations/:id/messages", verifyToken, async (req: Request, res: Response) => {
+  try {
+    const orgId = (req as any).user.organizationId;
+    const conversationId = req.params.id;
+    const limit = parseInt(req.query.limit as string) || 50;
+    
+    const { data: messages, error } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("organization_id", orgId)
+      .eq("conversation_id", conversationId)
+      .eq("channel", "facebook")
+      .order("timestamp", { ascending: true })
+      .limit(limit);
+    
+    if (error) throw error;
+    
+    res.json({
+      ok: true,
+      data: messages || [],
+    });
+  } catch (error: any) {
+    console.error("Error fetching conversation messages:", error);
+    res.status(500).json({
+      error: error.message || "Failed to fetch messages",
+    });
+  }
+});
+
 /**
  * GET /api/facebook/attribution-report
  * Get detailed attribution report
@@ -628,15 +831,23 @@ async function processMessagingEvent(
 ): Promise<void> {
   try {
     const senderId = messaging.sender?.id;
+    const recipientId = messaging.recipient?.id;
     const message = messaging.message;
+    const timestamp = messaging.timestamp;
     const referral = messaging.referral || message?.referral;
+    
+    // Skip if no message content (e.g., read receipts, typing indicators)
+    if (!message) {
+      console.log(`[Facebook Webhook] Non-message event from ${senderId}, skipping`);
+      return;
+    }
     
     console.log(`[Facebook Webhook] Message from ${senderId} to page ${pageId}`);
     
     // Find the organization for this page
     const { data: page } = await supabase
       .from("facebook_pages")
-      .select("organization_id")
+      .select("organization_id, page_name")
       .eq("page_id", pageId)
       .eq("is_active", true)
       .single();
@@ -675,15 +886,19 @@ async function processMessagingEvent(
       }
     }
     
-    // Check if customer exists by Facebook PSID
+    // Get or create customer by Facebook PSID
+    let customerId: string;
+    let customerName: string;
     const { data: existingCustomer } = await supabase
       .from("customers")
-      .select("id")
+      .select("id, name")
       .eq("organization_id", orgId)
       .eq("facebook_psid", senderId)
       .single();
     
     if (existingCustomer) {
+      customerId = existingCustomer.id;
+      customerName = existingCustomer.name;
       // Update last contact
       await supabase
         .from("customers")
@@ -694,20 +909,149 @@ async function processMessagingEvent(
         .eq("id", existingCustomer.id);
     } else {
       // Create new customer with attribution
-      await supabase.from("customers").insert({
+      const newCustomerName = `Facebook User ${senderId.slice(-4)}`;
+      const { data: newCustomer, error: customerError } = await supabase
+        .from("customers")
+        .insert({
+          organization_id: orgId,
+          name: newCustomerName,
+          facebook_psid: senderId,
+          channel: "facebook",
+          status: "pending",
+          source_type: attributionData?.source_type || "facebook",
+          source_campaign_id: attributionData?.source_campaign_id,
+          source_campaign_name: attributionData?.source_campaign_name,
+          source_ad_id: attributionData?.source_ad_id,
+          ctwa_clid: attributionData?.ctwa_clid,
+          first_touch_at: new Date().toISOString(),
+          attribution_data: attributionData || {},
+        })
+        .select("id")
+        .single();
+      
+      if (customerError || !newCustomer) {
+        console.error("[Facebook Webhook] Error creating customer:", customerError);
+        return;
+      }
+      customerId = newCustomer.id;
+      customerName = newCustomerName;
+    }
+    
+    // Get or create conversation
+    const { data: existingConv } = await supabase
+      .from("conversations")
+      .select("id")
+      .eq("organization_id", orgId)
+      .eq("customer_id", customerId)
+      .eq("channel", "facebook")
+      .single();
+    
+    let conversationId: string;
+    if (existingConv) {
+      conversationId = existingConv.id;
+      // Update last message timestamp
+      await supabase
+        .from("conversations")
+        .update({
+          last_message_at: new Date().toISOString(),
+          last_customer_message_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", conversationId);
+    } else {
+      // Create new conversation
+      const { data: newConv, error: convError } = await supabase
+        .from("conversations")
+        .insert({
+          organization_id: orgId,
+          customer_id: customerId,
+          channel: "facebook",
+          facebook_conversation_id: `${pageId}_${senderId}`,
+          status: "open",
+          last_message_at: new Date().toISOString(),
+          last_customer_message_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+      
+      if (convError || !newConv) {
+        console.error("[Facebook Webhook] Error creating conversation:", convError);
+        return;
+      }
+      conversationId = newConv.id;
+    }
+    
+    // Extract message content
+    const messageBody = message.text || "";
+    const messageId = message.mid;
+    const hasAttachments = message.attachments && message.attachments.length > 0;
+    
+    // Prepare attachments info
+    let attachmentData: any = null;
+    if (hasAttachments) {
+      attachmentData = message.attachments.map((att: any) => ({
+        type: att.type, // image, video, audio, file
+        url: att.payload?.url,
+      }));
+    }
+    
+    // Save message to database
+    const { data: savedMessage, error: msgError } = await supabase
+      .from("messages")
+      .insert({
         organization_id: orgId,
-        name: `Facebook User ${senderId.slice(-4)}`,
-        facebook_psid: senderId,
+        customer_id: customerId,
+        conversation_id: conversationId,
+        fb_message_id: messageId,
+        body: hasAttachments && !messageBody 
+          ? `[${message.attachments[0].type}]` 
+          : messageBody,
+        is_from_customer: true,
         channel: "facebook",
-        status: "pending",
-        source_type: attributionData?.source_type || "facebook",
-        source_campaign_id: attributionData?.source_campaign_id,
-        source_campaign_name: attributionData?.source_campaign_name,
-        source_ad_id: attributionData?.source_ad_id,
-        ctwa_clid: attributionData?.ctwa_clid,
-        first_touch_at: new Date().toISOString(),
-        attribution_data: attributionData || {},
+        media_type: hasAttachments ? message.attachments[0].type : null,
+        media_url: hasAttachments ? message.attachments[0].payload?.url : null,
+        timestamp: new Date(timestamp).toISOString(),
+      })
+      .select("id, body, timestamp, media_type, media_url")
+      .single();
+    
+    if (msgError) {
+      console.error("[Facebook Webhook] Error saving message:", msgError);
+      return;
+    }
+    
+    console.log(`[Facebook Webhook] Saved message ${messageId} for customer ${customerId}`);
+    
+    // Emit socket event to frontend
+    if (io) {
+      const messageData = {
+        id: savedMessage.id,
+        fb_message_id: messageId,
+        body: savedMessage.body,
+        is_from_customer: true,
+        timestamp: savedMessage.timestamp,
+        channel: "facebook",
+        media_type: savedMessage.media_type,
+        media_url: savedMessage.media_url,
+        customer: {
+          id: customerId,
+          name: customerName,
+          facebook_psid: senderId,
+        },
+        conversation_id: conversationId,
+      };
+      
+      io.to(orgId).emit("fb:message", {
+        clientId: orgId,
+        message: messageData,
+        conversation: {
+          id: conversationId,
+          customer_id: customerId,
+          channel: "facebook",
+        },
       });
+      
+      console.log(`[Facebook Webhook] Emitted fb:message to org ${orgId}`);
     }
     
     // Mark webhook as processed

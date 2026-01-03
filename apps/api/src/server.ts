@@ -20,7 +20,7 @@ import orderRoutes from "./routes/orders";
 import taskRoutes from "./routes/tasks";
 import invoiceRoutes from "./routes/invoices";
 import purchaseRoutes from "./routes/purchases";
-import facebookRoutes from "./routes/facebook";
+import facebookRoutes, { createFacebookRoutes } from "./routes/facebook";
 import trackingRoutes, { handleTrackingRedirect } from "./routes/tracking";
 import TokenRefreshService from "./services/TokenRefreshService";
 import { validate } from "./middleware/validate";
@@ -370,9 +370,10 @@ app.use("/api/tasks", taskRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/purchases", purchaseRoutes);
 
-// Facebook Integration Routes
-app.use("/api/facebook", facebookRoutes);
-app.use("/webhooks/facebook", facebookRoutes); // Facebook webhooks (public)
+// Facebook Integration Routes - Initialize with Socket.io
+const facebookRoutesWithIo = createFacebookRoutes(io);
+app.use("/api/facebook", facebookRoutesWithIo);
+app.use("/webhooks/facebook", facebookRoutesWithIo); // Facebook webhooks (public)
 
 // Tracking Routes
 app.use("/api/tracking", trackingRoutes);

@@ -172,6 +172,7 @@ export default function ChatPage() {
   const selectedChatRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [channelFilter, setChannelFilter] = useState<"all" | "whatsapp" | "facebook">("all");
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [showCustomerPanel, setShowCustomerPanel] = useState(false);
@@ -325,6 +326,61 @@ export default function ChatPage() {
       ));
     };
 
+    const handleFacebookMessage = (data: any) => {
+      console.log("Facebook message received:", data);
+      if (data.message) {
+        const msg = data.message;
+        const currentChat = selectedChatRef.current;
+        
+        // Check if message belongs to currently viewed chat (by conversation_id or customer_id)
+        const belongsToChat = currentChat && (
+          msg.conversation_id === currentChat ||
+          (msg.customer && msg.customer.id === currentChat)
+        );
+        
+        if (belongsToChat) {
+          setMessages((prev) => {
+            // Avoid duplicates
+            if (prev.some((m) => m.id === msg.id || m.id === msg.fb_message_id)) return prev;
+            return [...prev, {
+              id: msg.id,
+              body: msg.body,
+              fromMe: !msg.is_from_customer,
+              timestamp: new Date(msg.timestamp).getTime() / 1000,
+              type: msg.media_type || "chat",
+              hasMedia: !!msg.media_url,
+              channel: "facebook",
+            }];
+          });
+        }
+        
+        // Update chat list with new message
+        setChats(prev => {
+          const existingChat = prev.find(c => c.id === msg.conversation_id || c.customer_id === msg.customer?.id);
+          if (existingChat) {
+            return prev.map(c => {
+              if (c.id === msg.conversation_id || c.customer_id === msg.customer?.id) {
+                return { ...c, unreadCount: c.unreadCount + 1 };
+              }
+              return c;
+            });
+          } else if (msg.customer) {
+            // Add new chat to list
+            return [{
+              id: msg.conversation_id,
+              name: msg.customer.name || `Facebook User`,
+              isGroup: false,
+              unreadCount: 1,
+              customer_id: msg.customer.id,
+              customer: msg.customer,
+              channel: "facebook",
+            } as any, ...prev];
+          }
+          return prev;
+        });
+      }
+    };
+
     const handleReaction = (data: any) => {
       console.log("Reaction received:", data);
       setMessages(prev => prev.map(m =>
@@ -340,6 +396,7 @@ export default function ChatPage() {
     socket.on("wa:message", handleNewMessage);
     socket.on("wa:message_ack", handleMessageAck);
     socket.on("wa:reaction", handleReaction);
+    socket.on("fb:message", handleFacebookMessage);
 
     // Cleanup: Remove ALL listeners before disconnecting
     return () => {
@@ -350,6 +407,7 @@ export default function ChatPage() {
       socket.off("wa:message", handleNewMessage);
       socket.off("wa:message_ack", handleMessageAck);
       socket.off("wa:reaction", handleReaction);
+      socket.off("fb:message", handleFacebookMessage);
       socket.disconnect();
       socketRef.current = null;
     };
@@ -526,14 +584,28 @@ export default function ChatPage() {
   }, [clientId]); // Stable dependency
 
   const filteredChats = useMemo(() => {
-    if (!searchQuery.trim()) return chats;
-    const q = searchQuery.toLowerCase();
-    return chats.filter(c =>
-      c.name.toLowerCase().includes(q) ||
-      c.id.toLowerCase().includes(q) ||
-      ((c as any).phone && (c as any).phone.includes(q))
-    );
-  }, [chats, searchQuery]);
+    let filtered = chats;
+    
+    // Filter by channel
+    if (channelFilter !== "all") {
+      filtered = filtered.filter(c => {
+        const chatChannel = (c as any).channel || "whatsapp";
+        return chatChannel === channelFilter;
+      });
+    }
+    
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(c =>
+        c.name.toLowerCase().includes(q) ||
+        c.id.toLowerCase().includes(q) ||
+        ((c as any).phone && (c as any).phone.includes(q))
+      );
+    }
+    
+    return filtered;
+  }, [chats, searchQuery, channelFilter]);
 
   const selectedChatName = useMemo(() => {
     return chats.find(c => c.id === selectedChat)?.name || selectedChat?.split('@')[0] || "المحادثة";
@@ -1000,7 +1072,7 @@ export default function ChatPage() {
 
           {/* Search Area */}
           <div className="px-4 py-4 border-b border-slate-100 shrink-0">
-            <div className="relative group">
+            <div className="relative group mb-3">
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-blue transition-colors">🔍</span>
               <input
                 type="text"
@@ -1009,6 +1081,39 @@ export default function ChatPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
+            </div>
+            {/* Channel Filter Tabs */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setChannelFilter("all")}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${
+                  channelFilter === "all"
+                    ? "bg-slate-800 text-white shadow-md"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                الكل
+              </button>
+              <button
+                onClick={() => setChannelFilter("whatsapp")}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  channelFilter === "whatsapp"
+                    ? "bg-green-600 text-white shadow-md"
+                    : "bg-green-50 text-green-700 hover:bg-green-100"
+                }`}
+              >
+                <span>💬</span> واتساب
+              </button>
+              <button
+                onClick={() => setChannelFilter("facebook")}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  channelFilter === "facebook"
+                    ? "bg-blue-600 text-white shadow-md"
+                    : "bg-blue-50 text-blue-700 hover:bg-blue-100"
+                }`}
+              >
+                <span>💬</span> ماسنجر
+              </button>
             </div>
           </div>
 
@@ -1039,6 +1144,7 @@ export default function ChatPage() {
               {filteredChats.map((chat) => {
                 const active = chat.id === selectedChat;
                 const initials = chat.name.slice(0, 2).toUpperCase();
+                const chatChannel = (chat as any).channel || "whatsapp";
 
                 return (
                   <li
@@ -1047,8 +1153,16 @@ export default function ChatPage() {
                     onClick={() => setSelectedChat(chat.id)}
                   >
                     <div className="flex items-center gap-4">
-                      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl font-black text-white shadow-sm transition-all group-hover:rounded-xl ${active ? "bg-brand-blue shadow-blue-200" : "bg-slate-200"}`}>
-                        {initials}
+                      <div className="relative">
+                        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl font-black text-white shadow-sm transition-all group-hover:rounded-xl ${active ? "bg-brand-blue shadow-blue-200" : "bg-slate-200"}`}>
+                          {initials}
+                        </div>
+                        {/* Channel indicator */}
+                        <div className={`absolute -bottom-1 -right-1 h-5 w-5 rounded-full flex items-center justify-center text-[10px] ring-2 ring-white ${
+                          chatChannel === "facebook" ? "bg-blue-500" : "bg-green-500"
+                        }`}>
+                          {chatChannel === "facebook" ? "f" : "W"}
+                        </div>
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
@@ -1065,7 +1179,7 @@ export default function ChatPage() {
                           <div className="flex items-center gap-2">
                             <span className={`h-2 w-2 rounded-full ${(chat as any).isGroup ? "bg-amber-400" : "bg-emerald-400"}`}></span>
                             <p className="truncate text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                              {(chat as any).isGroup ? "Group" : "Personal"}
+                              {chatChannel === "facebook" ? "Messenger" : (chat as any).isGroup ? "Group" : "Personal"}
                             </p>
                           </div>
                           {(chat as any).phone && !(chat as any).isGroup && (
