@@ -263,8 +263,8 @@ export async function getOAuthUrl(organizationId: string, redirectUri: string, s
     throw new Error("FACEBOOK_APP_ID is not configured");
   }
   
-  // Use only public_profile for initial testing - no special permissions needed
-  const permissions = "public_profile,email";
+  // Request pages_show_list to access user's Facebook pages
+  const permissions = "public_profile,email,pages_show_list";
   
   const params = new URLSearchParams({
     client_id: appId,
