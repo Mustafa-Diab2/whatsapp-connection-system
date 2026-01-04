@@ -1,11 +1,7 @@
 import express from "express";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "../lib/supabase";
 
 const router = express.Router();
-
-const supabaseUrl = process.env.SUPABASE_URL || "";
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY || "";
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Get comprehensive dashboard stats
 router.get("/dashboard", async (req, res) => {
