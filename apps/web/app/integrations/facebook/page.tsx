@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
+import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -236,20 +237,7 @@ export default function FacebookIntegrationPage() {
     }
   };
 
-  // Subscribe page to webhooks
-  const subscribePage = async (pageId: string) => {
-    try {
-      await axios.post(
-        `${API_URL}/api/facebook/pages/${pageId}/subscribe`,
-        { subscribed_fields: ["messages", "messaging_postbacks", "leadgen"] },
-        { headers: getAuthHeaders() }
-      );
-      setSuccess("تم تفعيل استقبال الرسائل بنجاح");
-      await fetchPages();
-    } catch (err: any) {
-      setError(err.response?.data?.error || "فشل في تفعيل الـ Webhooks");
-    }
-  };
+
 
   // Disconnect page
   const disconnectPage = async (pageId: string) => {
@@ -311,17 +299,25 @@ export default function FacebookIntegrationPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">تكامل الفيسبوك</h1>
+            <h1 className="text-2xl font-bold text-gray-900">📘 تكامل Facebook</h1>
             <p className="text-gray-600 mt-1">
-              اربط صفحات الفيسبوك لتتبع مصدر العملاء من الإعلانات
+              اربط صفحات Facebook لتتبع مصدر العملاء من الإعلانات
             </p>
           </div>
-          <button
-            onClick={() => router.push("/settings")}
-            className="text-gray-600 hover:text-gray-900"
-          >
-            ← العودة للإعدادات
-          </button>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/integrations/messenger"
+              className="bg-white border border-blue-200 text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+            >
+              💬 إعدادات Messenger
+            </Link>
+            <button
+              onClick={() => router.push("/settings")}
+              className="text-gray-600 hover:text-gray-900"
+            >
+              ← العودة
+            </button>
+          </div>
         </div>
 
         {/* Alerts */}
@@ -608,14 +604,6 @@ export default function FacebookIntegrationPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {!page.webhook_subscribed && (
-                      <button
-                        onClick={() => subscribePage(page.page_id)}
-                        className="text-blue-600 hover:text-blue-800 px-3 py-1 border border-blue-200 rounded-lg text-sm"
-                      >
-                        تفعيل الاستقبال
-                      </button>
-                    )}
                     <button
                       onClick={() => disconnectPage(page.page_id)}
                       className="text-red-600 hover:text-red-800 px-3 py-1 border border-red-200 rounded-lg text-sm"
