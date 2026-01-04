@@ -22,6 +22,15 @@ import invoiceRoutes from "./routes/invoices";
 import purchaseRoutes from "./routes/purchases";
 import facebookRoutes, { createFacebookRoutes } from "./routes/facebook";
 import trackingRoutes, { handleTrackingRedirect } from "./routes/tracking";
+import paymentsRoutes from "./routes/payments";
+import catalogsRoutes from "./routes/catalogs";
+import quickRepliesRoutes from "./routes/quick-replies";
+import surveysRoutes from "./routes/surveys";
+import appointmentsRoutes from "./routes/appointments";
+import chatbotBuilderRoutes from "./routes/chatbot-builder";
+import aiSalesRoutes from "./routes/ai-sales";
+import reportsRoutes from "./routes/reports";
+import instagramRoutes from "./routes/instagram";
 import TokenRefreshService from "./services/TokenRefreshService";
 import { validate } from "./middleware/validate";
 import { createCustomerSchema, updateCustomerSchema } from "./schemas/customerSchemas";
@@ -378,6 +387,33 @@ app.use("/webhooks/facebook", facebookRoutesWithIo); // Facebook webhooks (publi
 // Tracking Routes
 app.use("/api/tracking", trackingRoutes);
 app.get("/t/:code", handleTrackingRedirect); // Public short URL redirect
+
+// Payment Routes
+app.use("/api/payments", paymentsRoutes);
+
+// Catalog Routes (WhatsApp Shop)
+app.use("/api/catalogs", catalogsRoutes);
+
+// Quick Replies Routes
+app.use("/api/quick-replies", quickRepliesRoutes);
+
+// Surveys Routes
+app.use("/api/surveys", surveysRoutes);
+
+// Appointments Routes
+app.use("/api/appointments", appointmentsRoutes);
+
+// Chatbot Builder Routes
+app.use("/api/chatbot", chatbotBuilderRoutes);
+
+// AI Sales Assistant Routes
+app.use("/api/ai-sales", aiSalesRoutes);
+
+// Reports Routes
+app.use("/api/reports", reportsRoutes);
+
+// Instagram DM Routes
+app.use("/api/instagram", instagramRoutes);
 
 // Helper to extract orgId
 const getOrgId = (req: Request): string => {
