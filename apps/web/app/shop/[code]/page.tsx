@@ -111,7 +111,7 @@ ${orderDetails}
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
-  const categories = ['all', ...new Set(products.map(p => p.category).filter(Boolean))];
+  const categories: string[] = ['all', ...new Set(products.map(p => p.category).filter((c): c is string => Boolean(c)))];
 
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||

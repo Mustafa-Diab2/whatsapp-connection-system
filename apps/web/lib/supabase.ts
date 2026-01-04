@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { useState, useEffect } from 'react';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -8,6 +9,45 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Hook to get Supabase session and organization
+export function useSupabase() {
+    const [session, setSession] = useState<any>(null);
+    const [organizationId, setOrganizationId] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        // Get initial session
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setSession(session);
+            if (session?.user) {
+                // Get organization ID from user metadata or localStorage
+                const orgId = session.user.user_metadata?.organization_id || 
+                              localStorage.getItem('organizationId');
+                setOrganizationId(orgId);
+            }
+            setLoading(false);
+        });
+
+        // Listen for auth changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            (_event, session) => {
+                setSession(session);
+                if (session?.user) {
+                    const orgId = session.user.user_metadata?.organization_id || 
+                                  localStorage.getItem('organizationId');
+                    setOrganizationId(orgId);
+                } else {
+                    setOrganizationId(null);
+                }
+            }
+        );
+
+        return () => subscription.unsubscribe();
+    }, []);
+
+    return { supabase, session, organizationId, loading };
+}
 
 // Helper to subscribe to real-time changes
 export const subscribeToMessages = (callback: (payload: any) => void) => {
