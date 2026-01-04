@@ -261,10 +261,11 @@ router.get("/sales", async (req, res) => {
     orders?.forEach(order => {
       const id = order.customer_id;
       if (id) {
+        const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers;
         if (!customerSales[id]) {
           customerSales[id] = {
-            name: order.customers?.name || 'Unknown',
-            phone: order.customers?.phone || '',
+            name: customer?.name || 'Unknown',
+            phone: customer?.phone || '',
             revenue: 0,
             orders: 0,
           };

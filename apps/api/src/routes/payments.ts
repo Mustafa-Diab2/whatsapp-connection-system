@@ -16,12 +16,12 @@ async function getStripeForOrg(organizationId: string): Promise<Stripe | null> {
   if (!settings?.stripe_secret_key_encrypted) {
     // Fall back to environment variable
     if (process.env.STRIPE_SECRET_KEY) {
-      return new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' });
+      return new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2025-12-15.clover' });
     }
     return null;
   }
 
-  return new Stripe(settings.stripe_secret_key_encrypted, { apiVersion: '2023-10-16' });
+  return new Stripe(settings.stripe_secret_key_encrypted, { apiVersion: '2025-12-15.clover' });
 }
 
 // Generate short code
@@ -300,7 +300,7 @@ router.post('/webhook/stripe', async (req: Request, res: Response) => {
   let event: Stripe.Event;
 
   try {
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2025-12-15.clover' });
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err: any) {
     console.error('Webhook signature verification failed:', err.message);
