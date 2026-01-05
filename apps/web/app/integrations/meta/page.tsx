@@ -135,10 +135,29 @@ export default function MetaIntegrationPage() {
 
   const getAuthHeaders = useCallback(() => {
     const token = localStorage.getItem("token");
-    const orgId = organizationId || localStorage.getItem("organizationId") || "";
+    // Try multiple sources for organizationId
+    let orgId = organizationId || localStorage.getItem("organizationId");
+    
+    // Fallback: try to get from stored user data
+    if (!orgId) {
+      try {
+        const userStr = localStorage.getItem("user");
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          orgId = user.organization_id;
+          // Cache it for future use
+          if (orgId) {
+            localStorage.setItem("organizationId", orgId);
+          }
+        }
+      } catch (e) {
+        console.warn("Could not parse user from localStorage");
+      }
+    }
+    
     return { 
       Authorization: `Bearer ${token}`,
-      "x-organization-id": orgId
+      "x-organization-id": orgId || ""
     };
   }, [organizationId]);
 

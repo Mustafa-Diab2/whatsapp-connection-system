@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { supabase } from "../lib/supabase";
 import crypto from "crypto";
 
@@ -7,12 +7,26 @@ const router = Router();
 // Facebook/Messenger Graph API Base URL
 const GRAPH_API = "https://graph.facebook.com/v21.0";
 
+// Helper to get and validate organization ID
+const getOrgId = (req: Request): string | null => {
+  const orgId = req.headers["x-organization-id"] as string;
+  // Validate UUID format
+  if (orgId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orgId)) {
+    return orgId;
+  }
+  return null;
+};
+
 // ==================== MESSENGER PAGE CONNECTION ====================
 
 // Get connected pages for Messenger
 router.get("/pages", async (req: Request, res: Response) => {
   try {
-    const orgId = req.headers["x-organization-id"] as string;
+    const orgId = getOrgId(req);
+    
+    if (!orgId) {
+      return res.json({ pages: [] });
+    }
     
     const { data, error } = await supabase
       .from("messenger_pages")
@@ -457,7 +471,12 @@ async function sendMessage(page: any, recipientPsid: string, message: any) {
 // Get all conversations
 router.get("/conversations", async (req: Request, res: Response) => {
   try {
-    const orgId = req.headers["x-organization-id"] as string;
+    const orgId = getOrgId(req);
+    
+    if (!orgId) {
+      return res.json({ data: [], total: 0 });
+    }
+    
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = parseInt(req.query.offset as string) || 0;
     

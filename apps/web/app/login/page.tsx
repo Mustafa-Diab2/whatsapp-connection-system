@@ -58,9 +58,14 @@ export default function LoginPage() {
                 throw new Error(data.error || "حدث خطأ");
             }
 
-            // Store token
+            // Store token and user data
             localStorage.setItem("token", data.token);
             localStorage.setItem("user", JSON.stringify(data.user));
+            
+            // Store organizationId for API calls
+            if (data.user?.organization_id) {
+                localStorage.setItem("organizationId", data.user.organization_id);
+            }
 
             // Set cookie for middleware
             document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; samesite=lax`;
