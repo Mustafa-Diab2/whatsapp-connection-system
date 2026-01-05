@@ -511,9 +511,91 @@ router.get("/conversations/:conversationId/messages", async (req: Request, res: 
       .update({ unread_count: 0 })
       .eq("id", conversationId);
     
-    res.json({ messages: (data || []).reverse() });
+    res.json({ data: (data || []).reverse() });
   } catch (error: any) {
     console.error("Error fetching messages:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Send message from conversation (simplified endpoint)
+router.post("/conversations/:conversationId/send", async (req: Request, res: Response) => {
+  try {
+    const orgId = req.headers["x-organization-id"] as string;
+    const { conversationId } = req.params;
+    const { message } = req.body;
+    
+    if (!message || !message.trim()) {
+      return res.status(400).json({ error: "الرسالة مطلوبة" });
+    }
+    
+    // Get conversation with page
+    const { data: conversation, error: convError } = await supabase
+      .from("messenger_conversations")
+      .select("*, messenger_pages(*)")
+      .eq("id", conversationId)
+      .eq("organization_id", orgId)
+      .single();
+    
+    if (convError || !conversation) {
+      return res.status(404).json({ error: "المحادثة غير موجودة" });
+    }
+    
+    const page = conversation.messenger_pages;
+    if (!page?.access_token) {
+      return res.status(400).json({ error: "الصفحة غير متصلة" });
+    }
+    
+    // Send via Messenger API
+    const sendResponse = await fetch(`${GRAPH_API}/me/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipient: { id: conversation.psid },
+        message: { text: message.trim() },
+        access_token: page.access_token,
+      }),
+    });
+    
+    const sendData = await sendResponse.json();
+    
+    if (sendData.error) {
+      throw new Error(sendData.error.message);
+    }
+    
+    // Store in database
+    const { data: savedMessage, error: saveError } = await supabase
+      .from("messenger_messages")
+      .insert({
+        organization_id: orgId,
+        conversation_id: conversationId,
+        message_id: sendData.message_id,
+        sender_id: page.page_id,
+        message_text: message.trim(),
+        message_type: "text",
+        is_from_page: true,
+        direction: "outbound",
+        timestamp: new Date().toISOString(),
+      })
+      .select()
+      .single();
+    
+    // Update conversation last message
+    await supabase
+      .from("messenger_conversations")
+      .update({
+        last_message: message.trim(),
+        last_message_at: new Date().toISOString(),
+      })
+      .eq("id", conversationId);
+    
+    res.json({ 
+      success: true, 
+      message: savedMessage,
+      messageId: sendData.message_id 
+    });
+  } catch (error: any) {
+    console.error("Error sending message:", error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -14,7 +14,7 @@ const menuItems: MenuItem[] = [
   { label: "Dashboard", labelAr: "لوحة التحكم", href: "/dashboard", icon: "📊" },
   { label: "WhatsApp Connection", labelAr: "اتصال الواتساب", href: "/whatsapp-connect", icon: "📱" },
   { label: "Chat", labelAr: "المحادثات", href: "/chat", icon: "💬" },
-  { label: "Meta Platform", labelAr: "منصة Meta", href: "/meta", icon: "🔵" },
+  { label: "Meta Platform", labelAr: "منصة Meta", href: "/integrations/meta", icon: "🔵" },
   { label: "Mini CRM", labelAr: "إدارة العملاء", href: "/crm", icon: "👥" },
   { label: "Contacts", labelAr: "جهة اتصال", href: "/contacts", icon: "📇" },
   { label: "Knowledge Base", labelAr: "قاعدة المعرفة", href: "/documents", icon: "📚" },

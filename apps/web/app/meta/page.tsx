@@ -1,46 +1,24 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import {
-  MessageCircle,
-  Send,
-  Settings,
-  BarChart2,
-  Users,
-  Plus,
-  Link2,
-  Unlink,
-  Search,
-  MoreVertical,
-  RefreshCw,
-  ChevronLeft,
-  Facebook,
-  Instagram,
-  Menu,
-  Bell,
-  Zap,
-  Type,
-  CheckCircle,
-  XCircle,
-  ExternalLink,
-  Globe,
-  Shield,
-  Key,
-  Webhook,
-  MessageSquare,
-  Image,
-  Heart,
-  Share2,
-  TrendingUp,
-  Calendar,
-  Clock,
-  AlertCircle,
-  Check,
-  Copy,
-  Eye,
-  EyeOff,
-} from 'lucide-react';
-import { useSupabase } from '@/lib/supabase';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+
+export default function MetaRedirectPage() {
+  const router = useRouter();
+  
+  useEffect(() => {
+    router.replace('/integrations/meta');
+  }, [router]);
+  
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-gray-600">جاري التحويل لمنصة Meta...</p>
+      </div>
+    </div>
+  );
+}
 
 // Types
 interface MessengerPage {
