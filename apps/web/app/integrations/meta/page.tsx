@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
+import { useSupabase } from "@/lib/supabase";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -129,10 +130,17 @@ export default function MetaIntegrationPage() {
   // Sync states
   const [syncingPageId, setSyncingPageId] = useState<string | null>(null);
 
+  // Get organization ID
+  const { organizationId } = useSupabase();
+
   const getAuthHeaders = useCallback(() => {
     const token = localStorage.getItem("token");
-    return { Authorization: `Bearer ${token}` };
-  }, []);
+    const orgId = organizationId || localStorage.getItem("organizationId") || "";
+    return { 
+      Authorization: `Bearer ${token}`,
+      "x-organization-id": orgId
+    };
+  }, [organizationId]);
 
   // =====================================================
   // Data Fetching
