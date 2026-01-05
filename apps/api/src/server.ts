@@ -31,6 +31,7 @@ import chatbotBuilderRoutes from "./routes/chatbot-builder";
 import aiSalesRoutes from "./routes/ai-sales";
 import reportsRoutes from "./routes/reports";
 import instagramRoutes from "./routes/instagram";
+import messengerRoutes from "./routes/messenger";
 import TokenRefreshService from "./services/TokenRefreshService";
 import { validate } from "./middleware/validate";
 import { createCustomerSchema, updateCustomerSchema } from "./schemas/customerSchemas";
@@ -414,6 +415,9 @@ app.use("/api/reports", reportsRoutes);
 
 // Instagram DM Routes
 app.use("/api/instagram", instagramRoutes);
+
+// Messenger Routes
+app.use("/api/messenger", messengerRoutes);
 
 // Helper to extract orgId
 const getOrgId = (req: Request): string => {
