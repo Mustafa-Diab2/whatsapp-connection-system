@@ -77,6 +77,7 @@ export default function MessengerPage() {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [analytics, setAnalytics] = useState<any>(null);
@@ -213,6 +214,32 @@ export default function MessengerPage() {
       fetchPages();
     } catch (error) {
       console.error('Error disconnecting page:', error);
+    }
+  };
+
+  const syncMessages = async (pageId: string, quickSync = false) => {
+    setSyncing(true);
+    try {
+      const endpoint = quickSync ? 'quick-sync' : 'sync';
+      const res = await fetch(`${API_URL}/api/messenger/pages/${pageId}/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`,
+          'x-organization-id': organizationId || '',
+        },
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+        fetchConversations();
+      } else {
+        alert('حدث خطأ: ' + (data.error || 'غير معروف'));
+      }
+    } catch (error) {
+      console.error('Error syncing messages:', error);
+      alert('حدث خطأ أثناء المزامنة');
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -523,12 +550,33 @@ export default function MessengerPage() {
                           </p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => disconnectPage(page.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                      >
-                        <Unlink className="w-5 h-5" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => syncMessages(page.id, true)}
+                          disabled={syncing}
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg disabled:opacity-50"
+                          title="مزامنة سريعة (آخر 7 أيام)"
+                        >
+                          <RefreshCw className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm('هل تريد مزامنة جميع الرسائل القديمة؟ قد يستغرق هذا بعض الوقت.')) {
+                              syncMessages(page.id, false);
+                            }
+                          }}
+                          disabled={syncing}
+                          className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {syncing ? 'جاري المزامنة...' : 'مزامنة الكل'}
+                        </button>
+                        <button
+                          onClick={() => disconnectPage(page.id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                        >
+                          <Unlink className="w-5 h-5" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

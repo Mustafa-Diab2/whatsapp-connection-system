@@ -844,4 +844,294 @@ router.get("/analytics", async (req: Request, res: Response) => {
   }
 });
 
+// ==================== SYNC HISTORICAL MESSAGES ====================
+
+// Sync all historical conversations and messages from Facebook
+router.post("/pages/:pageId/sync", async (req: Request, res: Response) => {
+  try {
+    const orgId = req.headers["x-organization-id"] as string;
+    const { pageId } = req.params;
+    
+    // Get page from database
+    const { data: page, error: pageError } = await supabase
+      .from("messenger_pages")
+      .select("*")
+      .eq("id", pageId)
+      .eq("organization_id", orgId)
+      .single();
+    
+    if (pageError || !page) {
+      return res.status(404).json({ error: "الصفحة غير موجودة" });
+    }
+    
+    const accessToken = page.access_token;
+    let totalConversations = 0;
+    let totalMessages = 0;
+    
+    // Step 1: Get all conversations
+    let conversationsUrl = `${GRAPH_API}/${page.page_id}/conversations?fields=id,participants,updated_time,message_count&access_token=${accessToken}&limit=100`;
+    
+    while (conversationsUrl) {
+      const convResponse = await fetch(conversationsUrl);
+      const convData = await convResponse.json();
+      
+      if (convData.error) {
+        console.error("Error fetching conversations:", convData.error);
+        break;
+      }
+      
+      for (const conv of convData.data || []) {
+        // Get participant (the user, not the page)
+        const participant = conv.participants?.data?.find((p: any) => p.id !== page.page_id);
+        if (!participant) continue;
+        
+        const psid = participant.id;
+        
+        // Get user profile
+        let profileData: any = { name: participant.name || "Unknown" };
+        try {
+          const profileResponse = await fetch(
+            `${GRAPH_API}/${psid}?fields=first_name,last_name,name,profile_pic&access_token=${accessToken}`
+          );
+          const profile = await profileResponse.json();
+          if (!profile.error) {
+            profileData = profile;
+          }
+        } catch (e) {
+          console.warn("Could not fetch profile for", psid);
+        }
+        
+        // Create or update conversation
+        const { data: existingConv } = await supabase
+          .from("messenger_conversations")
+          .select("id")
+          .eq("page_id", page.id)
+          .eq("psid", psid)
+          .single();
+        
+        let conversationId: string;
+        
+        if (existingConv) {
+          conversationId = existingConv.id;
+        } else {
+          const { data: newConv } = await supabase
+            .from("messenger_conversations")
+            .insert({
+              organization_id: orgId,
+              page_id: page.id,
+              psid: psid,
+              customer_name: profileData.name || `${profileData.first_name || ""} ${profileData.last_name || ""}`.trim(),
+              customer_first_name: profileData.first_name,
+              customer_last_name: profileData.last_name,
+              profile_pic: profileData.profile_pic,
+              is_active: true,
+              last_message_at: conv.updated_time,
+            })
+            .select()
+            .single();
+          
+          if (!newConv) continue;
+          conversationId = newConv.id;
+          totalConversations++;
+        }
+        
+        // Step 2: Get messages for this conversation
+        let messagesUrl = `${GRAPH_API}/${conv.id}/messages?fields=id,message,from,to,created_time,attachments,sticker&access_token=${accessToken}&limit=100`;
+        
+        while (messagesUrl) {
+          const msgResponse = await fetch(messagesUrl);
+          const msgData = await msgResponse.json();
+          
+          if (msgData.error) {
+            console.error("Error fetching messages:", msgData.error);
+            break;
+          }
+          
+          for (const msg of msgData.data || []) {
+            // Check if message already exists
+            const { data: existingMsg } = await supabase
+              .from("messenger_messages")
+              .select("id")
+              .eq("message_id", msg.id)
+              .single();
+            
+            if (existingMsg) continue; // Skip if already synced
+            
+            // Determine direction
+            const isFromPage = msg.from?.id === page.page_id;
+            const direction = isFromPage ? "outbound" : "inbound";
+            
+            // Determine message type
+            let messageType = "text";
+            let mediaUrl = null;
+            
+            if (msg.sticker) {
+              messageType = "sticker";
+              mediaUrl = msg.sticker;
+            } else if (msg.attachments?.data?.[0]) {
+              const attachment = msg.attachments.data[0];
+              messageType = attachment.mime_type?.startsWith("image") ? "image" :
+                           attachment.mime_type?.startsWith("video") ? "video" :
+                           attachment.mime_type?.startsWith("audio") ? "audio" : "file";
+              mediaUrl = attachment.file_url || attachment.image_data?.url;
+            }
+            
+            // Insert message
+            await supabase
+              .from("messenger_messages")
+              .insert({
+                organization_id: orgId,
+                conversation_id: conversationId,
+                message_id: msg.id,
+                direction: direction,
+                message_type: messageType,
+                content: msg.message || "",
+                media_url: mediaUrl,
+                timestamp: msg.created_time,
+                is_read: true, // Historical messages are read
+                is_delivered: true,
+              });
+            
+            totalMessages++;
+          }
+          
+          // Next page of messages
+          messagesUrl = msgData.paging?.next || null;
+        }
+        
+        // Update conversation with last message
+        const { data: lastMessage } = await supabase
+          .from("messenger_messages")
+          .select("content, timestamp")
+          .eq("conversation_id", conversationId)
+          .order("timestamp", { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (lastMessage) {
+          await supabase
+            .from("messenger_conversations")
+            .update({
+              last_message: lastMessage.content,
+              last_message_at: lastMessage.timestamp,
+            })
+            .eq("id", conversationId);
+        }
+      }
+      
+      // Next page of conversations
+      conversationsUrl = convData.paging?.next || null;
+    }
+    
+    res.json({
+      success: true,
+      message: `تم مزامنة ${totalConversations} محادثة و ${totalMessages} رسالة بنجاح`,
+      conversations_synced: totalConversations,
+      messages_synced: totalMessages,
+    });
+  } catch (error: any) {
+    console.error("Error syncing historical messages:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Quick sync - just get recent conversations (last 7 days)
+router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => {
+  try {
+    const orgId = req.headers["x-organization-id"] as string;
+    const { pageId } = req.params;
+    
+    const { data: page } = await supabase
+      .from("messenger_pages")
+      .select("*")
+      .eq("id", pageId)
+      .eq("organization_id", orgId)
+      .single();
+    
+    if (!page) {
+      return res.status(404).json({ error: "الصفحة غير موجودة" });
+    }
+    
+    const accessToken = page.access_token;
+    const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60);
+    
+    // Get recent conversations
+    const convResponse = await fetch(
+      `${GRAPH_API}/${page.page_id}/conversations?fields=id,participants,updated_time,messages.limit(50){id,message,from,to,created_time}&access_token=${accessToken}&limit=50`
+    );
+    const convData = await convResponse.json();
+    
+    if (convData.error) {
+      return res.status(400).json({ error: convData.error.message });
+    }
+    
+    let synced = 0;
+    
+    for (const conv of convData.data || []) {
+      const participant = conv.participants?.data?.find((p: any) => p.id !== page.page_id);
+      if (!participant) continue;
+      
+      const psid = participant.id;
+      
+      // Upsert conversation
+      const { data: conversation } = await supabase
+        .from("messenger_conversations")
+        .upsert({
+          organization_id: orgId,
+          page_id: page.id,
+          psid: psid,
+          customer_name: participant.name || "Unknown",
+          is_active: true,
+          last_message_at: conv.updated_time,
+        }, { onConflict: 'page_id,psid' })
+        .select()
+        .single();
+      
+      if (!conversation) continue;
+      
+      // Insert messages
+      for (const msg of conv.messages?.data || []) {
+        const isFromPage = msg.from?.id === page.page_id;
+        
+        await supabase
+          .from("messenger_messages")
+          .upsert({
+            organization_id: orgId,
+            conversation_id: conversation.id,
+            message_id: msg.id,
+            direction: isFromPage ? "outbound" : "inbound",
+            message_type: "text",
+            content: msg.message || "",
+            timestamp: msg.created_time,
+            is_read: true,
+            is_delivered: true,
+          }, { onConflict: 'message_id' })
+          .select();
+        
+        synced++;
+      }
+      
+      // Update last message
+      if (conv.messages?.data?.[0]) {
+        await supabase
+          .from("messenger_conversations")
+          .update({
+            last_message: conv.messages.data[0].message,
+            last_message_at: conv.messages.data[0].created_time,
+          })
+          .eq("id", conversation.id);
+      }
+    }
+    
+    res.json({
+      success: true,
+      message: `تم مزامنة ${synced} رسالة من آخر 7 أيام`,
+      messages_synced: synced,
+    });
+  } catch (error: any) {
+    console.error("Error in quick sync:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

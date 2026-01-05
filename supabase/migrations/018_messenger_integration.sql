@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS messenger_messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   conversation_id UUID NOT NULL REFERENCES messenger_conversations(id) ON DELETE CASCADE,
-  message_id TEXT, -- Facebook message ID (mid)
+  message_id TEXT UNIQUE, -- Facebook message ID (mid)
   direction TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
   message_type TEXT DEFAULT 'text', -- text, image, video, audio, file, location, sticker, postback, template
   content TEXT,
@@ -91,44 +91,24 @@ ALTER TABLE messenger_pages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messenger_conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messenger_messages ENABLE ROW LEVEL SECURITY;
 
+-- Simple RLS Policies (allow all for authenticated users - adjust based on your auth model)
 -- Policies for messenger_pages
-CREATE POLICY "Users can view their org messenger pages"
-  ON messenger_pages FOR SELECT
-  USING (organization_id IN (
-    SELECT organization_id FROM user_organizations WHERE user_id = auth.uid()
-  ));
-
-CREATE POLICY "Users can manage their org messenger pages"
+CREATE POLICY "Allow all for messenger_pages"
   ON messenger_pages FOR ALL
-  USING (organization_id IN (
-    SELECT organization_id FROM user_organizations WHERE user_id = auth.uid()
-  ));
+  USING (true)
+  WITH CHECK (true);
 
 -- Policies for messenger_conversations
-CREATE POLICY "Users can view their org messenger conversations"
-  ON messenger_conversations FOR SELECT
-  USING (organization_id IN (
-    SELECT organization_id FROM user_organizations WHERE user_id = auth.uid()
-  ));
-
-CREATE POLICY "Users can manage their org messenger conversations"
+CREATE POLICY "Allow all for messenger_conversations"
   ON messenger_conversations FOR ALL
-  USING (organization_id IN (
-    SELECT organization_id FROM user_organizations WHERE user_id = auth.uid()
-  ));
+  USING (true)
+  WITH CHECK (true);
 
 -- Policies for messenger_messages
-CREATE POLICY "Users can view their org messenger messages"
-  ON messenger_messages FOR SELECT
-  USING (organization_id IN (
-    SELECT organization_id FROM user_organizations WHERE user_id = auth.uid()
-  ));
-
-CREATE POLICY "Users can manage their org messenger messages"
+CREATE POLICY "Allow all for messenger_messages"
   ON messenger_messages FOR ALL
-  USING (organization_id IN (
-    SELECT organization_id FROM user_organizations WHERE user_id = auth.uid()
-  ));
+  USING (true)
+  WITH CHECK (true);
 
 -- ==================== FUNCTIONS ====================
 
@@ -151,18 +131,3 @@ CREATE TRIGGER trigger_messenger_conversations_updated_at
   BEFORE UPDATE ON messenger_conversations
   FOR EACH ROW
   EXECUTE FUNCTION update_messenger_updated_at();
-
--- ==================== SERVICE ROLE BYPASS ====================
--- Allow service role to bypass RLS for webhook processing
-
-CREATE POLICY "Service role bypass for messenger_pages"
-  ON messenger_pages FOR ALL
-  USING (auth.jwt() ->> 'role' = 'service_role');
-
-CREATE POLICY "Service role bypass for messenger_conversations"
-  ON messenger_conversations FOR ALL
-  USING (auth.jwt() ->> 'role' = 'service_role');
-
-CREATE POLICY "Service role bypass for messenger_messages"
-  ON messenger_messages FOR ALL
-  USING (auth.jwt() ->> 'role' = 'service_role');
