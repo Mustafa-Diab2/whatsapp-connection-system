@@ -977,20 +977,19 @@ router.post("/pages/:pageId/sync", async (req: Request, res: Response) => {
     const orgId = getOrgId(req);
     const { pageId } = req.params;
     
-    // Get page from database - try by Facebook page_id first, then by UUID
+    console.log(`[Messenger Sync] Starting sync for pageId: ${pageId}, orgId: ${orgId}`);
+    
+    // Get page from database - try by Facebook page_id first
     let page: any = null;
     
-    // First try by Facebook page_id (without org filter if orgId is invalid)
-    const pageQuery = supabase
+    // First try by Facebook page_id
+    const { data: pageByFbId, error: fbError } = await supabase
       .from("messenger_pages")
       .select("*")
-      .eq("page_id", pageId);
+      .eq("page_id", pageId)
+      .maybeSingle();
     
-    if (orgId) {
-      pageQuery.eq("organization_id", orgId);
-    }
-    
-    const { data: pageByFbId } = await pageQuery.single();
+    console.log(`[Messenger Sync] Query by page_id result:`, pageByFbId ? 'found' : 'not found', fbError?.message || '');
     
     if (pageByFbId) {
       page = pageByFbId;
@@ -1001,11 +1000,12 @@ router.post("/pages/:pageId/sync", async (req: Request, res: Response) => {
         .select("*")
         .eq("id", pageId)
         .eq("organization_id", orgId)
-        .single();
+        .maybeSingle();
       page = pageByUuid;
     }
     
     if (!page) {
+      console.log(`[Messenger Sync] Page not found for pageId: ${pageId}`);
       return res.status(404).json({ error: "الصفحة غير موجودة" });
     }
     
@@ -1186,20 +1186,19 @@ router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => 
     const orgId = getOrgId(req);
     const { pageId } = req.params;
     
-    // Get page from database - try by Facebook page_id first, then by UUID
+    console.log(`[Messenger Quick-Sync] Starting for pageId: ${pageId}, orgId: ${orgId}`);
+    
+    // Get page from database - try by Facebook page_id first
     let page: any = null;
     
-    // First try by Facebook page_id (without org filter if orgId is invalid)
-    const pageQuery = supabase
+    // First try by Facebook page_id
+    const { data: pageByFbId, error: fbError } = await supabase
       .from("messenger_pages")
       .select("*")
-      .eq("page_id", pageId);
+      .eq("page_id", pageId)
+      .maybeSingle();
     
-    if (orgId) {
-      pageQuery.eq("organization_id", orgId);
-    }
-    
-    const { data: pageByFbId } = await pageQuery.single();
+    console.log(`[Messenger Quick-Sync] Query result:`, pageByFbId ? 'found' : 'not found', fbError?.message || '');
     
     if (pageByFbId) {
       page = pageByFbId;
@@ -1209,11 +1208,12 @@ router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => 
         .select("*")
         .eq("id", pageId)
         .eq("organization_id", orgId)
-        .single();
+        .maybeSingle();
       page = pageByUuid;
     }
     
     if (!page) {
+      console.log(`[Messenger Quick-Sync] Page not found for pageId: ${pageId}`);
       return res.status(404).json({ error: "الصفحة غير موجودة" });
     }
     
