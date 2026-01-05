@@ -463,15 +463,28 @@ router.get("/conversations", async (req: Request, res: Response) => {
     
     const { data, error, count } = await supabase
       .from("messenger_conversations")
-      .select("*, messenger_pages(page_name, page_picture)", { count: "exact" })
+      .select("*", { count: "exact" })
       .eq("organization_id", orgId)
       .order("last_message_at", { ascending: false, nullsFirst: false })
       .range(offset, offset + limit - 1);
     
     if (error) throw error;
     
+    // Transform data to match frontend expectations
+    const conversations = (data || []).map((c: any) => ({
+      id: c.id,
+      page_id: c.page_id,
+      participant_id: c.psid,
+      participant_name: c.customer_name || c.customer_first_name || "Unknown",
+      participant_profile_pic: c.profile_pic,
+      last_message: c.last_message,
+      last_message_time: c.last_message_at,
+      unread_count: c.unread_count || 0,
+      platform: "messenger" as const,
+    }));
+    
     res.json({ 
-      conversations: data || [],
+      data: conversations,
       total: count || 0,
     });
   } catch (error: any) {
@@ -511,7 +524,18 @@ router.get("/conversations/:conversationId/messages", async (req: Request, res: 
       .update({ unread_count: 0 })
       .eq("id", conversationId);
     
-    res.json({ data: (data || []).reverse() });
+    // Transform to match frontend expectations
+    const messages = (data || []).reverse().map((m: any) => ({
+      id: m.id,
+      sender_id: m.sender_id,
+      message_text: m.content,
+      message_type: m.message_type,
+      is_from_page: m.direction === "outbound",
+      created_at: m.timestamp,
+      attachments: m.metadata?.attachments || [],
+    }));
+    
+    res.json({ data: messages });
   } catch (error: any) {
     console.error("Error fetching messages:", error);
     res.status(500).json({ error: error.message });
@@ -934,15 +958,31 @@ router.post("/pages/:pageId/sync", async (req: Request, res: Response) => {
     const orgId = req.headers["x-organization-id"] as string;
     const { pageId } = req.params;
     
-    // Get page from database
-    const { data: page, error: pageError } = await supabase
+    // Get page from database - try by Facebook page_id first, then by UUID
+    let page: any = null;
+    
+    // First try by Facebook page_id
+    const { data: pageByFbId } = await supabase
       .from("messenger_pages")
       .select("*")
-      .eq("id", pageId)
+      .eq("page_id", pageId)
       .eq("organization_id", orgId)
       .single();
     
-    if (pageError || !page) {
+    if (pageByFbId) {
+      page = pageByFbId;
+    } else {
+      // Try by UUID
+      const { data: pageByUuid } = await supabase
+        .from("messenger_pages")
+        .select("*")
+        .eq("id", pageId)
+        .eq("organization_id", orgId)
+        .single();
+      page = pageByUuid;
+    }
+    
+    if (!page) {
       return res.status(404).json({ error: "الصفحة غير موجودة" });
     }
     
@@ -1123,12 +1163,27 @@ router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => 
     const orgId = req.headers["x-organization-id"] as string;
     const { pageId } = req.params;
     
-    const { data: page } = await supabase
+    // Get page from database - try by Facebook page_id first, then by UUID
+    let page: any = null;
+    
+    const { data: pageByFbId } = await supabase
       .from("messenger_pages")
       .select("*")
-      .eq("id", pageId)
+      .eq("page_id", pageId)
       .eq("organization_id", orgId)
       .single();
+    
+    if (pageByFbId) {
+      page = pageByFbId;
+    } else {
+      const { data: pageByUuid } = await supabase
+        .from("messenger_pages")
+        .select("*")
+        .eq("id", pageId)
+        .eq("organization_id", orgId)
+        .single();
+      page = pageByUuid;
+    }
     
     if (!page) {
       return res.status(404).json({ error: "الصفحة غير موجودة" });
