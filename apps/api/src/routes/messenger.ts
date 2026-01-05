@@ -974,24 +974,28 @@ router.get("/analytics", async (req: Request, res: Response) => {
 // Sync all historical conversations and messages from Facebook
 router.post("/pages/:pageId/sync", async (req: Request, res: Response) => {
   try {
-    const orgId = req.headers["x-organization-id"] as string;
+    const orgId = getOrgId(req);
     const { pageId } = req.params;
     
     // Get page from database - try by Facebook page_id first, then by UUID
     let page: any = null;
     
-    // First try by Facebook page_id
-    const { data: pageByFbId } = await supabase
+    // First try by Facebook page_id (without org filter if orgId is invalid)
+    const pageQuery = supabase
       .from("messenger_pages")
       .select("*")
-      .eq("page_id", pageId)
-      .eq("organization_id", orgId)
-      .single();
+      .eq("page_id", pageId);
+    
+    if (orgId) {
+      pageQuery.eq("organization_id", orgId);
+    }
+    
+    const { data: pageByFbId } = await pageQuery.single();
     
     if (pageByFbId) {
       page = pageByFbId;
-    } else {
-      // Try by UUID
+    } else if (orgId) {
+      // Try by UUID only if we have valid orgId
       const { data: pageByUuid } = await supabase
         .from("messenger_pages")
         .select("*")
@@ -1179,22 +1183,27 @@ router.post("/pages/:pageId/sync", async (req: Request, res: Response) => {
 // Quick sync - just get recent conversations (last 7 days)
 router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => {
   try {
-    const orgId = req.headers["x-organization-id"] as string;
+    const orgId = getOrgId(req);
     const { pageId } = req.params;
     
     // Get page from database - try by Facebook page_id first, then by UUID
     let page: any = null;
     
-    const { data: pageByFbId } = await supabase
+    // First try by Facebook page_id (without org filter if orgId is invalid)
+    const pageQuery = supabase
       .from("messenger_pages")
       .select("*")
-      .eq("page_id", pageId)
-      .eq("organization_id", orgId)
-      .single();
+      .eq("page_id", pageId);
+    
+    if (orgId) {
+      pageQuery.eq("organization_id", orgId);
+    }
+    
+    const { data: pageByFbId } = await pageQuery.single();
     
     if (pageByFbId) {
       page = pageByFbId;
-    } else {
+    } else if (orgId) {
       const { data: pageByUuid } = await supabase
         .from("messenger_pages")
         .select("*")
