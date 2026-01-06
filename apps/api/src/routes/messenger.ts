@@ -979,33 +979,35 @@ router.post("/pages/:pageId/sync", async (req: Request, res: Response) => {
     
     console.log(`[Messenger Sync] Starting sync for pageId: ${pageId}, orgId: ${orgId}`);
     
-    // Get page from database - try by Facebook page_id first
+    // Get page from database - try messenger_pages first, then facebook_pages
     let page: any = null;
     
-    // First try by Facebook page_id
-    const { data: pageByFbId, error: fbError } = await supabase
+    // First try messenger_pages by Facebook page_id
+    const { data: messengerPage } = await supabase
       .from("messenger_pages")
       .select("*")
       .eq("page_id", pageId)
       .maybeSingle();
     
-    console.log(`[Messenger Sync] Query by page_id result:`, pageByFbId ? 'found' : 'not found', fbError?.message || '');
-    
-    if (pageByFbId) {
-      page = pageByFbId;
-    } else if (orgId) {
-      // Try by UUID only if we have valid orgId
-      const { data: pageByUuid } = await supabase
-        .from("messenger_pages")
+    if (messengerPage) {
+      page = messengerPage;
+      console.log(`[Messenger Sync] Found in messenger_pages`);
+    } else {
+      // Try facebook_pages table
+      const { data: facebookPage } = await supabase
+        .from("facebook_pages")
         .select("*")
-        .eq("id", pageId)
-        .eq("organization_id", orgId)
+        .eq("page_id", pageId)
         .maybeSingle();
-      page = pageByUuid;
+      
+      if (facebookPage) {
+        page = facebookPage;
+        console.log(`[Messenger Sync] Found in facebook_pages`);
+      }
     }
     
     if (!page) {
-      console.log(`[Messenger Sync] Page not found for pageId: ${pageId}`);
+      console.log(`[Messenger Sync] Page not found in any table for pageId: ${pageId}`);
       return res.status(404).json({ error: "الصفحة غير موجودة" });
     }
     
@@ -1188,32 +1190,35 @@ router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => 
     
     console.log(`[Messenger Quick-Sync] Starting for pageId: ${pageId}, orgId: ${orgId}`);
     
-    // Get page from database - try by Facebook page_id first
+    // Get page from database - try messenger_pages first, then facebook_pages
     let page: any = null;
     
-    // First try by Facebook page_id
-    const { data: pageByFbId, error: fbError } = await supabase
+    // First try messenger_pages
+    const { data: messengerPage } = await supabase
       .from("messenger_pages")
       .select("*")
       .eq("page_id", pageId)
       .maybeSingle();
     
-    console.log(`[Messenger Quick-Sync] Query result:`, pageByFbId ? 'found' : 'not found', fbError?.message || '');
-    
-    if (pageByFbId) {
-      page = pageByFbId;
-    } else if (orgId) {
-      const { data: pageByUuid } = await supabase
-        .from("messenger_pages")
+    if (messengerPage) {
+      page = messengerPage;
+      console.log(`[Messenger Quick-Sync] Found in messenger_pages`);
+    } else {
+      // Try facebook_pages table
+      const { data: facebookPage } = await supabase
+        .from("facebook_pages")
         .select("*")
-        .eq("id", pageId)
-        .eq("organization_id", orgId)
+        .eq("page_id", pageId)
         .maybeSingle();
-      page = pageByUuid;
+      
+      if (facebookPage) {
+        page = facebookPage;
+        console.log(`[Messenger Quick-Sync] Found in facebook_pages`);
+      }
     }
     
     if (!page) {
-      console.log(`[Messenger Quick-Sync] Page not found for pageId: ${pageId}`);
+      console.log(`[Messenger Quick-Sync] Page not found in any table for pageId: ${pageId}`);
       return res.status(404).json({ error: "الصفحة غير موجودة" });
     }
     
