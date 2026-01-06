@@ -1011,7 +1011,12 @@ router.post("/pages/:pageId/sync", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "الصفحة غير موجودة" });
     }
     
-    const accessToken = page.access_token;
+    // Get access token (different field names in different tables)
+    const accessToken = page.access_token || page.access_token_encrypted;
+    if (!accessToken) {
+      return res.status(400).json({ error: "Access Token غير موجود للصفحة" });
+    }
+    
     let totalConversations = 0;
     let totalMessages = 0;
     
@@ -1222,7 +1227,12 @@ router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => 
       return res.status(404).json({ error: "الصفحة غير موجودة" });
     }
     
-    const accessToken = page.access_token;
+    // Get access token (different field names in different tables)
+    const accessToken = page.access_token || page.access_token_encrypted;
+    if (!accessToken) {
+      return res.status(400).json({ error: "Access Token غير موجود للصفحة" });
+    }
+    
     const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60);
     
     // Get recent conversations
