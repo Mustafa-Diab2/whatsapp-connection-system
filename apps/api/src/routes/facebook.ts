@@ -1051,6 +1051,7 @@ async function processMessagingEvent(
         .insert({
           organization_id: orgId,
           name: newCustomerName,
+          phone: `messenger_${senderId}`, // Use PSID as placeholder phone
           facebook_psid: senderId,
           channel: "facebook",
           status: "pending",
