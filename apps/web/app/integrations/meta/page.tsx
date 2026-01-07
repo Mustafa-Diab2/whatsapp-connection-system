@@ -269,8 +269,12 @@ export default function MetaIntegrationPage() {
     setSendingMessage(true);
     try {
       await axios.post(
-        `${API_URL}/api/messenger/conversations/${selectedConversation.id}/send`,
-        { message: newMessage.trim() },
+        `${API_URL}/api/messenger/send`,
+        { 
+          conversation_id: selectedConversation.id,
+          message_type: "text",
+          content: newMessage.trim()
+        },
         { headers: getAuthHeaders() }
       );
       setNewMessage("");
