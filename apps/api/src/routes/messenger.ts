@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { supabase } from "../lib/supabase";
 import crypto from "crypto";
-import { decryptToken } from "../services/FacebookManager";
+import { decryptToken, verifyWebhookSignature } from "../services/FacebookManager";
 import { io } from "../server";
 
 const router = Router();
@@ -157,33 +157,15 @@ router.get("/webhook", (req: Request, res: Response) => {
   }
 });
 
-// Verify request signature
-function verifyRequestSignature(req: Request): boolean {
-  const signature = req.headers["x-hub-signature-256"] as string;
-  
-  if (!signature) return true; // Skip if no signature (dev mode)
-  
-  const appSecret = process.env.FB_APP_SECRET;
-  if (!appSecret) return true; // Skip if no secret configured
-  
-  const elements = signature.split("=");
-  const signatureHash = elements[1];
-  const expectedHash = crypto
-    .createHmac("sha256", appSecret)
-    .update(JSON.stringify(req.body))
-    .digest("hex");
-  
-  return signatureHash === expectedHash;
-}
-
 // Webhook handler (POST) - Receive Messenger messages
 router.post("/webhook", async (req: Request, res: Response) => {
   try {
     const body = req.body;
     
     // Verify signature
-    if (!verifyRequestSignature(req)) {
-      console.warn("Invalid signature");
+    const signature = req.headers["x-hub-signature-256"] as string;
+    if (signature && !verifyWebhookSignature(JSON.stringify(req.body), signature)) {
+      console.warn("[Facebook Webhook] Invalid signature");
       return res.sendStatus(403);
     }
     
