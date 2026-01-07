@@ -980,10 +980,10 @@ async function processMessagingEvent(
     
     console.log(`[Facebook Webhook] Message from ${senderId} to page ${pageId}`);
     
-    // Find the organization for this page
+    // Find the organization and page UUID for this page
     const { data: page } = await supabase
       .from("facebook_pages")
-      .select("organization_id, page_name")
+      .select("id, organization_id, page_name")
       .eq("page_id", pageId)
       .eq("is_active", true)
       .single();
@@ -994,6 +994,7 @@ async function processMessagingEvent(
     }
     
     const orgId = page.organization_id;
+    const pageUuid = page.id; // This is the UUID we need
     
     // Extract attribution data from referral
     let attributionData: any = null;
@@ -1026,7 +1027,7 @@ async function processMessagingEvent(
     let { data: conversation } = await supabase
       .from("messenger_conversations")
       .select("*")
-      .eq("page_id", pageId)
+      .eq("page_id", pageUuid)
       .eq("psid", senderId)
       .single();
     
@@ -1036,7 +1037,7 @@ async function processMessagingEvent(
         .from("messenger_conversations")
         .insert({
           organization_id: orgId,
-          page_id: pageId,
+          page_id: pageUuid,
           psid: senderId,
           customer_name: `Messenger User ${senderId.slice(-4)}`,
           is_active: true,
