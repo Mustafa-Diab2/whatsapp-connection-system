@@ -562,17 +562,57 @@ export default function ChatPage() {
     setLoadingChats(limit > 0); // Only show loader for initial batch
     setErrorMsg(null);
     try {
-      // API endpoints now use token for auth/orgId
-      const res = await fetch(`${apiBase}/whatsapp/chats?limit=${limit}`, {
-        headers: getAuthHeaders()
+      // Fetch both WhatsApp and Messenger conversations in parallel
+      const [whatsappRes, messengerRes] = await Promise.allSettled([
+        fetch(`${apiBase}/whatsapp/chats?limit=${limit}`, {
+          headers: getAuthHeaders()
+        }),
+        fetch(`${apiBase}/api/messenger/conversations`, {
+          headers: getAuthHeaders()
+        })
+      ]);
+
+      let allChats: ChatItem[] = [];
+
+      // Process WhatsApp chats
+      if (whatsappRes.status === "fulfilled" && whatsappRes.value.ok) {
+        const data = await whatsappRes.value.json();
+        const waChats = (data.chats || []).map((chat: any) => ({
+          ...chat,
+          channel: "whatsapp"
+        }));
+        allChats = [...allChats, ...waChats];
+      }
+
+      // Process Messenger conversations
+      if (messengerRes.status === "fulfilled" && messengerRes.value.ok) {
+        const data = await messengerRes.value.json();
+        const messengerChats = (data.data || []).map((conv: any) => ({
+          id: conv.id, // Use conversation ID for fetching messages
+          name: conv.participant_name || "مستخدم Messenger",
+          isGroup: false,
+          unreadCount: conv.unread_count || 0,
+          channel: "messenger",
+          customer_id: conv.customer_id,
+          profile_pic: conv.participant_profile_pic,
+          last_message_time: conv.last_message_time,
+          participant_id: conv.participant_id // Store PSID for reference
+        }));
+        allChats = [...allChats, ...messengerChats];
+      }
+
+      // Sort by last message time (most recent first)
+      allChats.sort((a: any, b: any) => {
+        const timeA = a.last_message_time || a.timestamp || 0;
+        const timeB = b.last_message_time || b.timestamp || 0;
+        return new Date(timeB).getTime() - new Date(timeA).getTime();
       });
-      if (!res.ok) throw new Error("تعذر جلب المحادثات");
-      const data = await res.json();
-      setChats(data.chats || []);
+
+      setChats(allChats);
 
       // Auto-select first chat only once
-      if (data.chats?.length && !autoSelectedRef.current && !selectedChat) {
-        setSelectedChat(data.chats[0].id);
+      if (allChats.length && !autoSelectedRef.current && !selectedChat) {
+        setSelectedChat(allChats[0].id);
         autoSelectedRef.current = true;
       }
     } catch (err: any) {
@@ -613,7 +653,12 @@ export default function ChatPage() {
 
   const fetchMessages = useCallback(
     async (chatId: string, limit = 50) => {
-      if (clientId === "default" || status !== "ready") return;
+      // Determine if this is a Messenger chat first
+      const currentChat = chats.find(c => c.id === chatId);
+      const isMessenger = (currentChat as any)?.channel === "messenger";
+
+      // Only check WhatsApp status for WhatsApp chats
+      if (!isMessenger && (clientId === "default" || status !== "ready")) return;
 
       // Store the chatId we're fetching for - to handle race conditions
       const fetchingForChat = chatId;
@@ -621,7 +666,15 @@ export default function ChatPage() {
       setLoadingMessages(true);
       setErrorMsg(null);
       try {
-        const res = await fetch(`${apiBase}/whatsapp/messages/${chatId}?limit=${limit}`, {
+        let endpoint;
+        if (isMessenger) {
+          // For Messenger, chatId is the conversation ID
+          endpoint = `${apiBase}/api/messenger/conversations/${chatId}/messages`;
+        } else {
+          endpoint = `${apiBase}/whatsapp/messages/${chatId}?limit=${limit}`;
+        }
+
+        const res = await fetch(endpoint, {
           headers: getAuthHeaders()
         });
 
@@ -636,7 +689,24 @@ export default function ChatPage() {
           throw new Error(data.message || "تعذر جلب الرسائل");
         }
         const data = await res.json();
-        setMessages(data.messages || []);
+        
+        // Normalize Messenger messages to match WhatsApp format
+        if (isMessenger && data.data) {
+          const normalizedMessages = data.data.map((msg: any) => ({
+            id: msg.id || msg.message_id,
+            body: msg.message_text || msg.message || "",
+            fromMe: msg.is_from_page || false,
+            timestamp: new Date(msg.created_at).getTime() / 1000,
+            type: "chat",
+            from: msg.is_from_page ? "page" : msg.sender_id,
+            to: msg.is_from_page ? msg.sender_id : "page",
+            hasMedia: msg.attachments && msg.attachments.length > 0,
+            is_internal: false
+          }));
+          setMessages(normalizedMessages);
+        } else {
+          setMessages(data.messages || []);
+        }
       } catch (err: any) {
         // Only show error if still on the same chat
         if (selectedChatRef.current === fetchingForChat) {
@@ -649,7 +719,7 @@ export default function ChatPage() {
         }
       }
     },
-    [clientId, status]
+    [clientId, status, chats]
   );
 
   const loadMore = useCallback(() => {

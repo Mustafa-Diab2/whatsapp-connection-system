@@ -26,7 +26,7 @@ CREATE INDEX IF NOT EXISTS idx_messenger_pages_page_id ON messenger_pages(page_i
 CREATE TABLE IF NOT EXISTS messenger_conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  page_id UUID NOT NULL REFERENCES messenger_pages(id) ON DELETE CASCADE,
+  page_id UUID NOT NULL REFERENCES facebook_pages(id) ON DELETE CASCADE,
   psid TEXT NOT NULL, -- Page-Scoped User ID
   customer_name TEXT,
   customer_first_name TEXT,

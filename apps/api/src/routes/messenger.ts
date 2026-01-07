@@ -8,9 +8,9 @@ const router = Router();
 // Facebook/Messenger Graph API Base URL
 const GRAPH_API = "https://graph.facebook.com/v21.0";
 
-// Helper to get and validate organization ID
+// Helper to get and validate organization ID from authenticated user
 const getOrgId = (req: Request): string | null => {
-  const orgId = req.headers["x-organization-id"] as string;
+  const orgId = (req as any).user?.organizationId;
   // Validate UUID format
   if (orgId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orgId)) {
     return orgId;
@@ -47,7 +47,7 @@ router.get("/pages", async (req: Request, res: Response) => {
 // Connect Facebook Page for Messenger
 router.post("/connect", async (req: Request, res: Response) => {
   try {
-    const orgId = req.headers["x-organization-id"] as string;
+    const orgId = getOrgId(req);
     const { access_token, page_id } = req.body;
     
     // Step 1: Get Page details and long-lived Page Access Token
@@ -119,7 +119,7 @@ router.post("/connect", async (req: Request, res: Response) => {
 // Disconnect Messenger page
 router.delete("/pages/:id", async (req: Request, res: Response) => {
   try {
-    const orgId = req.headers["x-organization-id"] as string;
+    const orgId = getOrgId(req);
     const { id } = req.params;
     
     const { error } = await supabase
@@ -516,7 +516,7 @@ router.get("/conversations", async (req: Request, res: Response) => {
 // Get messages for a conversation
 router.get("/conversations/:conversationId/messages", async (req: Request, res: Response) => {
   try {
-    const orgId = req.headers["x-organization-id"] as string;
+    const orgId = getOrgId(req);
     const { conversationId } = req.params;
     const limit = parseInt(req.query.limit as string) || 50;
     
@@ -565,7 +565,7 @@ router.get("/conversations/:conversationId/messages", async (req: Request, res: 
 // Send message from conversation (simplified endpoint)
 router.post("/conversations/:conversationId/send", async (req: Request, res: Response) => {
   try {
-    const orgId = req.headers["x-organization-id"] as string;
+    const orgId = getOrgId(req);
     const { conversationId } = req.params;
     const { message } = req.body;
     
@@ -647,7 +647,7 @@ router.post("/conversations/:conversationId/send", async (req: Request, res: Res
 // Send message endpoint
 router.post("/send", async (req: Request, res: Response) => {
   try {
-    const orgId = req.headers["x-organization-id"] as string;
+    const orgId = getOrgId(req);
     const { 
       conversation_id, 
       recipient_psid,
@@ -800,7 +800,7 @@ router.post("/send", async (req: Request, res: Response) => {
 // Set Get Started button
 router.post("/profile/get-started", async (req: Request, res: Response) => {
   try {
-    const orgId = req.headers["x-organization-id"] as string;
+    const orgId = getOrgId(req);
     const { page_id, payload } = req.body;
     
     const { data: page } = await supabase
@@ -839,7 +839,7 @@ router.post("/profile/get-started", async (req: Request, res: Response) => {
 // Set Persistent Menu
 router.post("/profile/menu", async (req: Request, res: Response) => {
   try {
-    const orgId = req.headers["x-organization-id"] as string;
+    const orgId = getOrgId(req);
     const { page_id, menu_items } = req.body;
     
     const { data: page } = await supabase
@@ -882,7 +882,7 @@ router.post("/profile/menu", async (req: Request, res: Response) => {
 // Set Greeting Text
 router.post("/profile/greeting", async (req: Request, res: Response) => {
   try {
-    const orgId = req.headers["x-organization-id"] as string;
+    const orgId = getOrgId(req);
     const { page_id, greeting_text } = req.body;
     
     const { data: page } = await supabase
@@ -926,7 +926,7 @@ router.post("/profile/greeting", async (req: Request, res: Response) => {
 // Get Messenger analytics
 router.get("/analytics", async (req: Request, res: Response) => {
   try {
-    const orgId = req.headers["x-organization-id"] as string;
+    const orgId = getOrgId(req);
     const { start_date, end_date } = req.query;
     
     const startDate = start_date || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();

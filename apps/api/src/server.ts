@@ -416,8 +416,8 @@ app.use("/api/reports", reportsRoutes);
 // Instagram DM Routes
 app.use("/api/instagram", instagramRoutes);
 
-// Messenger Routes
-app.use("/api/messenger", messengerRoutes);
+// Messenger Routes (with authentication)
+app.use("/api/messenger", verifyToken, messengerRoutes);
 
 // Helper to extract orgId
 const getOrgId = (req: Request): string => {
