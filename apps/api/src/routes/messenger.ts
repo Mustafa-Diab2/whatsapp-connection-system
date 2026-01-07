@@ -1312,7 +1312,7 @@ router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => 
       console.log(`[Messenger Quick-Sync] Conv ${conversationsProcessed}: PSID=${psid}, Messages=${messagesCount}`);
       
       // Upsert conversation
-      const { data: conversation } = await supabase
+      const { data: conversation, error: convError } = await supabase
         .from("messenger_conversations")
         .upsert({
           organization_id: orgId,
@@ -1325,13 +1325,23 @@ router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => 
         .select()
         .single();
       
-      if (!conversation) continue;
+      if (convError) {
+        console.error(`[Messenger Quick-Sync] Error upserting conversation:`, convError);
+        continue;
+      }
+      
+      if (!conversation) {
+        console.error(`[Messenger Quick-Sync] No conversation returned after upsert`);
+        continue;
+      }
+      
+      console.log(`[Messenger Quick-Sync] Conv ${conversationsProcessed}: Saved, ID=${conversation.id}`);
       
       // Insert messages
       for (const msg of conv.messages?.data || []) {
         const isFromPage = msg.from?.id === page.page_id;
         
-        await supabase
+        const { error: msgError } = await supabase
           .from("messenger_messages")
           .upsert({
             organization_id: orgId,
@@ -1346,7 +1356,11 @@ router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => 
           }, { onConflict: 'message_id' })
           .select();
         
-        synced++;
+        if (msgError) {
+          console.error(`[Messenger Quick-Sync] Error saving message ${msg.id}:`, msgError);
+        } else {
+          synced++;
+        }
       }
       
       // Update last message
