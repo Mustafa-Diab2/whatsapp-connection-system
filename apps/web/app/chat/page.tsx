@@ -765,19 +765,39 @@ export default function ChatPage() {
   }, [selectedChat, status, fetchMessages, chats]);
 
   const handleSend = useCallback(async () => {
-    if (!selectedChat || !messageInput.trim() || clientId === "default") return;
+    if (!selectedChat || !messageInput.trim()) return;
+    
+    // Determine if this is a Messenger chat
+    const currentChat = chats.find(c => c.id === selectedChat);
+    const isMessenger = (currentChat as any)?.channel === "messenger";
+    
+    // For WhatsApp, we need clientId
+    if (!isMessenger && clientId === "default") return;
+    
     setSending(true);
     setErrorMsg(null);
     try {
-      const endpoint = noteMode ? "/api/chat/internal-note" : "/whatsapp/send";
-      const payload = noteMode
-        ? { chatId: selectedChat, body: messageInput.trim() }
-        : {
+      let endpoint, payload;
+      
+      if (noteMode) {
+        endpoint = "/api/chat/internal-note";
+        payload = { chatId: selectedChat, body: messageInput.trim() };
+      } else if (isMessenger) {
+        endpoint = "/api/messenger/send";
+        payload = {
+          conversation_id: selectedChat,
+          message_type: "text",
+          content: messageInput.trim()
+        };
+      } else {
+        endpoint = "/whatsapp/send";
+        payload = {
           clientId,
           chatId: selectedChat,
           message: messageInput.trim(),
           quotedMessageId: replyingTo?.id
         };
+      }
 
       const res = await fetch(`${apiBase}${endpoint}`, {
         method: "POST",
@@ -796,7 +816,7 @@ export default function ChatPage() {
     } finally {
       setSending(false);
     }
-  }, [selectedChat, messageInput, clientId, replyingTo, noteMode]);
+  }, [selectedChat, messageInput, clientId, replyingTo, noteMode, chats]);
 
   const startRecording = async () => {
     try {
