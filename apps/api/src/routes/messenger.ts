@@ -1279,12 +1279,17 @@ router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => 
     const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60);
     
     // Get recent conversations
+    console.log(`[Messenger Quick-Sync] Fetching conversations from Facebook API...`);
     const convResponse = await fetch(
       `${GRAPH_API}/${page.page_id}/conversations?fields=id,participants,updated_time,messages.limit(50){id,message,from,to,created_time}&access_token=${accessToken}&limit=50`
     );
     const convData = await convResponse.json();
     
+    console.log(`[Messenger Quick-Sync] API Response status: ${convResponse.status}`);
+    console.log(`[Messenger Quick-Sync] Conversations count: ${convData.data?.length || 0}`);
+    
     if (convData.error) {
+      console.error(`[Messenger Quick-Sync] Facebook API Error:`, convData.error);
       return res.status(400).json({ error: convData.error.message });
     }
     
@@ -1346,13 +1351,15 @@ router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => 
       }
     }
     
+    console.log(`[Messenger Quick-Sync] Sync completed. Total messages: ${synced}`);
+    
     res.json({
       success: true,
       message: `تم مزامنة ${synced} رسالة من آخر 7 أيام`,
       messages_synced: synced,
     });
   } catch (error: any) {
-    console.error("Error in quick sync:", error);
+    console.error("[Messenger Quick-Sync] Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
