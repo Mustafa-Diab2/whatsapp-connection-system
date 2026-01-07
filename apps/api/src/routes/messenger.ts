@@ -162,17 +162,18 @@ router.post("/webhook", async (req: Request, res: Response) => {
   try {
     const body = req.body;
     
-    // Verify signature (skip if APP_SECRET not configured for development)
+    // Verify signature only if FACEBOOK_APP_SECRET is configured
     const signature = req.headers["x-hub-signature-256"] as string;
     const appSecret = process.env.FACEBOOK_APP_SECRET;
     
-    if (appSecret && signature) {
-      // Only verify if both secret and signature exist
-      if (!verifyWebhookSignature(JSON.stringify(req.body), signature)) {
+    if (appSecret) {
+      // Verify signature only when secret is available
+      if (signature && !verifyWebhookSignature(JSON.stringify(req.body), signature)) {
         console.warn("[Facebook Webhook] Invalid signature");
         return res.sendStatus(403);
       }
-    } else if (!appSecret) {
+    } else {
+      // Skip verification if no secret configured (development mode)
       console.warn("[Facebook Webhook] Signature verification skipped - FACEBOOK_APP_SECRET not configured");
     }
     
