@@ -332,7 +332,7 @@ async function handleIncomingMessage(page: any, event: any) {
       .eq("id", conversation.id);
     
     // Emit Socket.io event for real-time updates
-    io.to(`org:${page.organization_id}`).emit("messenger:message", {
+    io.to(page.organization_id).emit("messenger:message", {
       conversation_id: conversation.id,
       message: {
         id: message.mid,

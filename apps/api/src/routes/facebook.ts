@@ -1104,7 +1104,7 @@ async function processMessagingEvent(
     
     // Emit socket event to frontend
     if (io) {
-      io.to(`org:${orgId}`).emit("messenger:message", {
+      io.to(orgId).emit("messenger:message", {
         organizationId: orgId,
         conversation_id: conversationId,
         message: {
@@ -1126,7 +1126,7 @@ async function processMessagingEvent(
         },
       });
       
-      console.log(`[Facebook Webhook] Emitted messenger:message to org ${orgId}`);
+      console.log(`[Facebook Webhook] Emitted messenger:message to room ${orgId}`);
     }
     
     // Mark webhook as processed
