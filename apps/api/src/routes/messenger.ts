@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { supabase } from "../lib/supabase";
 import crypto from "crypto";
+import { decryptToken } from "../services/FacebookManager";
 
 const router = Router();
 
@@ -1012,8 +1013,18 @@ router.post("/pages/:pageId/sync", async (req: Request, res: Response) => {
     }
     
     // Get access token (different field names in different tables)
-    const accessToken = page.access_token || page.access_token_encrypted;
-    if (!accessToken) {
+    // If from facebook_pages, token is encrypted and needs decryption
+    let accessToken: string;
+    if (page.access_token) {
+      accessToken = page.access_token;
+    } else if (page.access_token_encrypted) {
+      try {
+        accessToken = decryptToken(page.access_token_encrypted);
+      } catch (err) {
+        console.error("[Messenger Sync] Failed to decrypt token:", err);
+        return res.status(400).json({ error: "فشل في فك تشفير Access Token" });
+      }
+    } else {
       return res.status(400).json({ error: "Access Token غير موجود للصفحة" });
     }
     
@@ -1228,8 +1239,18 @@ router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => 
     }
     
     // Get access token (different field names in different tables)
-    const accessToken = page.access_token || page.access_token_encrypted;
-    if (!accessToken) {
+    // If from facebook_pages, token is encrypted and needs decryption
+    let accessToken: string;
+    if (page.access_token) {
+      accessToken = page.access_token;
+    } else if (page.access_token_encrypted) {
+      try {
+        accessToken = decryptToken(page.access_token_encrypted);
+      } catch (err) {
+        console.error("[Messenger Quick-Sync] Failed to decrypt token:", err);
+        return res.status(400).json({ error: "فشل في فك تشفير Access Token" });
+      }
+    } else {
       return res.status(400).json({ error: "Access Token غير موجود للصفحة" });
     }
     
