@@ -763,7 +763,7 @@ router.post("/send", async (req: Request, res: Response) => {
     
     // Send via Graph API
     // Decrypt the access token first
-    const decryptedToken = decryptToken(page.access_token);
+    const decryptedToken = decryptToken(page.access_token_encrypted);
     if (!decryptedToken) {
       console.error("Failed to decrypt page access token");
       return res.status(500).json({ error: "فشل في فك تشفير الـ token" });
