@@ -1012,20 +1012,28 @@ router.post("/pages/:pageId/sync", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "الصفحة غير موجودة" });
     }
     
+    // Debug: log page data to see what fields are available
+    console.log(`[Messenger Sync] Page data keys:`, Object.keys(page));
+    console.log(`[Messenger Sync] Has access_token:`, !!page.access_token);
+    console.log(`[Messenger Sync] Has access_token_encrypted:`, !!page.access_token_encrypted);
+    
     // Get access token (different field names in different tables)
     // If from facebook_pages, token is encrypted and needs decryption
     let accessToken: string;
-    if (page.access_token) {
+    if (page.access_token && typeof page.access_token === 'string' && page.access_token.length > 0) {
       accessToken = page.access_token;
-    } else if (page.access_token_encrypted) {
+      console.log(`[Messenger Sync] Using access_token (plain)`);
+    } else if (page.access_token_encrypted && typeof page.access_token_encrypted === 'string' && page.access_token_encrypted.length > 0) {
       try {
         accessToken = decryptToken(page.access_token_encrypted);
+        console.log(`[Messenger Sync] Successfully decrypted token`);
       } catch (err) {
         console.error("[Messenger Sync] Failed to decrypt token:", err);
         return res.status(400).json({ error: "فشل في فك تشفير Access Token" });
       }
     } else {
-      return res.status(400).json({ error: "Access Token غير موجود للصفحة" });
+      console.error(`[Messenger Sync] No valid token found. access_token=${page.access_token}, access_token_encrypted=${page.access_token_encrypted}`);
+      return res.status(400).json({ error: "Access Token غير موجود للصفحة - يرجى إعادة ربط الصفحة من تبويب الصفحات" });
     }
     
     let totalConversations = 0;
@@ -1238,20 +1246,28 @@ router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => 
       return res.status(404).json({ error: "الصفحة غير موجودة" });
     }
     
+    // Debug: log page data to see what fields are available
+    console.log(`[Messenger Quick-Sync] Page data keys:`, Object.keys(page));
+    console.log(`[Messenger Quick-Sync] Has access_token:`, !!page.access_token);
+    console.log(`[Messenger Quick-Sync] Has access_token_encrypted:`, !!page.access_token_encrypted);
+    
     // Get access token (different field names in different tables)
     // If from facebook_pages, token is encrypted and needs decryption
     let accessToken: string;
-    if (page.access_token) {
+    if (page.access_token && typeof page.access_token === 'string' && page.access_token.length > 0) {
       accessToken = page.access_token;
-    } else if (page.access_token_encrypted) {
+      console.log(`[Messenger Quick-Sync] Using access_token (plain)`);
+    } else if (page.access_token_encrypted && typeof page.access_token_encrypted === 'string' && page.access_token_encrypted.length > 0) {
       try {
         accessToken = decryptToken(page.access_token_encrypted);
+        console.log(`[Messenger Quick-Sync] Successfully decrypted token`);
       } catch (err) {
         console.error("[Messenger Quick-Sync] Failed to decrypt token:", err);
         return res.status(400).json({ error: "فشل في فك تشفير Access Token" });
       }
     } else {
-      return res.status(400).json({ error: "Access Token غير موجود للصفحة" });
+      console.error(`[Messenger Quick-Sync] No valid token found. access_token=${page.access_token}, access_token_encrypted=${page.access_token_encrypted}`);
+      return res.status(400).json({ error: "Access Token غير موجود للصفحة - يرجى إعادة ربط الصفحة من تبويب الصفحات" });
     }
     
     const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60);
