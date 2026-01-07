@@ -660,18 +660,31 @@ router.post("/send", async (req: Request, res: Response) => {
     } = req.body;
     
     // Get conversation and page
-    const { data: conversation } = await supabase
+    const { data: conversation, error: convError } = await supabase
       .from("messenger_conversations")
-      .select("*, messenger_pages(*)")
+      .select("*")
       .eq("id", conversation_id)
       .eq("organization_id", orgId)
       .single();
     
-    if (!conversation || !conversation.messenger_pages) {
+    if (convError || !conversation) {
+      console.error("Conversation lookup error:", convError);
       return res.status(400).json({ error: "المحادثة غير موجودة" });
     }
     
-    const page = conversation.messenger_pages;
+    // Get the Facebook page for this conversation
+    const { data: page, error: pageError } = await supabase
+      .from("facebook_pages")
+      .select("*")
+      .eq("id", conversation.page_id)
+      .eq("organization_id", orgId)
+      .single();
+    
+    if (pageError || !page) {
+      console.error("Page lookup error:", pageError);
+      return res.status(400).json({ error: "الصفحة غير موجودة" });
+    }
+    
     const psid = recipient_psid || conversation.psid;
     
     // Build message payload
@@ -749,8 +762,15 @@ router.post("/send", async (req: Request, res: Response) => {
     }
     
     // Send via Graph API
+    // Decrypt the access token first
+    const decryptedToken = decryptToken(page.access_token);
+    if (!decryptedToken) {
+      console.error("Failed to decrypt page access token");
+      return res.status(500).json({ error: "فشل في فك تشفير الـ token" });
+    }
+    
     const result = await sendMessage(
-      { access_token: page.access_token },
+      { access_token: decryptedToken },
       psid,
       messagePayload
     );
