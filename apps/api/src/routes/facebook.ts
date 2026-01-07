@@ -1022,70 +1022,35 @@ async function processMessagingEvent(
       }
     }
     
-    // Get or create customer by Facebook PSID
-    let customerId: string;
-    let customerName: string;
-    const { data: existingCustomer } = await supabase
-      .from("customers")
-      .select("id, name")
-      .eq("organization_id", orgId)
-      .eq("facebook_psid", senderId)
+    // Get or create messenger conversation
+    let { data: conversation } = await supabase
+      .from("messenger_conversations")
+      .select("*")
+      .eq("page_id", pageId)
+      .eq("psid", senderId)
       .single();
     
-    if (existingCustomer) {
-      customerId = existingCustomer.id;
-      customerName = existingCustomer.name;
-      // Update last contact
-      await supabase
-        .from("customers")
-        .update({
-          last_contact_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existingCustomer.id);
-    } else {
-      // Create new customer with attribution
-      const newCustomerName = `Facebook User ${senderId.slice(-4)}`;
-      const { data: newCustomer, error: customerError } = await supabase
-        .from("customers")
+    if (!conversation) {
+      // Create new messenger conversation
+      const { data: newConv, error: convError } = await supabase
+        .from("messenger_conversations")
         .insert({
           organization_id: orgId,
-          name: newCustomerName,
-          phone: `messenger_${senderId}`, // Use PSID as placeholder phone
-          facebook_psid: senderId,
-          channel: "facebook",
-          status: "pending",
-          source_type: attributionData?.source_type || "facebook",
-          source_campaign_id: attributionData?.source_campaign_id,
-          source_campaign_name: attributionData?.source_campaign_name,
-          source_ad_id: attributionData?.source_ad_id,
-          ctwa_clid: attributionData?.ctwa_clid,
-          first_touch_at: new Date().toISOString(),
-          attribution_data: attributionData || {},
+          page_id: pageId,
+          psid: senderId,
+          customer_name: `Messenger User ${senderId.slice(-4)}`,
+          is_active: true,
+          last_message_at: new Date().toISOString(),
         })
-        .select("id")
+        .select("*")
         .single();
       
-      if (customerError || !newCustomer) {
-        console.error("[Facebook Webhook] Error creating customer:", customerError);
+      if (convError || !newConv) {
+        console.error("[Facebook Webhook] Error creating messenger conversation:", convError);
         return;
       }
-      customerId = newCustomer.id;
-      customerName = newCustomerName;
-    }
-    
-    // Get or create messenger conversation
-    const { data: existingConv } = await supabase
-      .from("messenger_conversations")
-      .select("id")
-      .eq("organization_id", orgId)
-      .eq("customer_id", customerId)
-      .eq("page_id", pageId)
-      .single();
-    
-    let conversationId: string;
-    if (existingConv) {
-      conversationId = existingConv.id;
+      conversation = newConv;
+    } else {
       // Update last message timestamp
       await supabase
         .from("messenger_conversations")
@@ -1093,28 +1058,10 @@ async function processMessagingEvent(
           last_message_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq("id", conversationId);
-    } else {
-      // Create new messenger conversation
-      const { data: newConv, error: convError } = await supabase
-        .from("messenger_conversations")
-        .insert({
-          organization_id: orgId,
-          customer_id: customerId,
-          page_id: pageId,
-          participant_id: senderId,
-          status: "open",
-          last_message_at: new Date().toISOString(),
-        })
-        .select("id")
-        .single();
-      
-      if (convError || !newConv) {
-        console.error("[Facebook Webhook] Error creating messenger conversation:", convError);
-        return;
-      }
-      conversationId = newConv.id;
+        .eq("id", conversation.id);
     }
+    
+    const conversationId = conversation.id;
     
     // Extract message content
     const messageBody = message.text || "";
@@ -1137,13 +1084,14 @@ async function processMessagingEvent(
         organization_id: orgId,
         conversation_id: conversationId,
         message_id: messageId,
-        sender_id: senderId,
-        text: messageBody,
-        is_from_customer: true,
-        attachments: attachmentData,
-        created_at: new Date(timestamp).toISOString(),
+        direction: "inbound",
+        message_type: hasAttachments ? message.attachments[0].type : "text",
+        content: messageBody,
+        media_url: hasAttachments ? message.attachments[0].payload?.url : null,
+        metadata: hasAttachments ? { attachments: attachmentData } : {},
+        timestamp: new Date(timestamp).toISOString(),
       })
-      .select("id, text, created_at, attachments")
+      .select("*")
       .single();
     
     if (msgError) {
@@ -1157,31 +1105,27 @@ async function processMessagingEvent(
     if (io) {
       const messageData = {
         id: savedMessage.id,
-        message_id: messageId,
-        text: savedMessage.text,
-        sender_id: senderId,
-        is_from_customer: true,
-        created_at: savedMessage.created_at,
-        attachments: savedMessage.attachments,
-        customer: {
-          id: customerId,
-          name: customerName,
-          phone: `messenger_${senderId}`,
-        },
         conversation_id: conversationId,
+        message_id: messageId,
+        content: savedMessage.content,
+        direction: "inbound",
+        message_type: savedMessage.message_type,
+        media_url: savedMessage.media_url,
+        timestamp: savedMessage.timestamp,
+        conversation: {
+          id: conversation.id,
+          psid: conversation.psid,
+          customer_name: conversation.customer_name,
+          profile_pic: conversation.profile_pic,
+        },
       };
       
       io.to(`org:${orgId}`).emit("messenger:message", {
         organizationId: orgId,
         message: messageData,
-        conversation: {
-          id: conversationId,
-          customer_id: customerId,
-          channel: "facebook",
-        },
       });
       
-      console.log(`[Facebook Webhook] Emitted fb:message to org ${orgId}`);
+      console.log(`[Facebook Webhook] Emitted messenger:message to org ${orgId}`);
     }
     
     // Mark webhook as processed
