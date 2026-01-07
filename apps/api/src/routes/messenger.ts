@@ -1251,6 +1251,12 @@ router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => 
     console.log(`[Messenger Quick-Sync] Has access_token:`, !!page.access_token);
     console.log(`[Messenger Quick-Sync] Has access_token_encrypted:`, !!page.access_token_encrypted);
     
+    // Debug: log first 50 chars of encrypted token to see format
+    if (page.access_token_encrypted) {
+      console.log(`[Messenger Quick-Sync] Token format preview: ${page.access_token_encrypted.substring(0, 80)}...`);
+      console.log(`[Messenger Quick-Sync] Token contains ':' count: ${(page.access_token_encrypted.match(/:/g) || []).length}`);
+    }
+    
     // Get access token (different field names in different tables)
     // If from facebook_pages, token is encrypted and needs decryption
     let accessToken: string;
@@ -1263,7 +1269,7 @@ router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => 
         console.log(`[Messenger Quick-Sync] Successfully decrypted token`);
       } catch (err) {
         console.error("[Messenger Quick-Sync] Failed to decrypt token:", err);
-        return res.status(400).json({ error: "فشل في فك تشفير Access Token" });
+        return res.status(400).json({ error: "فشل في فك تشفير Access Token - يرجى إعادة ربط الصفحة من تبويب الصفحات" });
       }
     } else {
       console.error(`[Messenger Quick-Sync] No valid token found. access_token=${page.access_token}, access_token_encrypted=${page.access_token_encrypted}`);

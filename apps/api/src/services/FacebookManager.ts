@@ -118,7 +118,25 @@ export function encryptToken(token: string): string {
 
 export function decryptToken(encryptedData: string): string {
   try {
-    const [ivHex, authTagHex, encrypted] = encryptedData.split(":");
+    // Validate input
+    if (!encryptedData || typeof encryptedData !== 'string') {
+      throw new Error(`Invalid encrypted data: received ${typeof encryptedData}`);
+    }
+    
+    // Check format (should be iv:authTag:encrypted)
+    const parts = encryptedData.split(":");
+    if (parts.length !== 3) {
+      console.error(`[decryptToken] Invalid format. Expected 3 parts (iv:authTag:encrypted), got ${parts.length}. Value starts with: ${encryptedData.substring(0, 50)}...`);
+      throw new Error(`Invalid token format: expected 3 parts, got ${parts.length}`);
+    }
+    
+    const [ivHex, authTagHex, encrypted] = parts;
+    
+    // Validate each part
+    if (!ivHex || !authTagHex || !encrypted) {
+      console.error(`[decryptToken] Missing parts. iv: ${!!ivHex}, authTag: ${!!authTagHex}, encrypted: ${!!encrypted}`);
+      throw new Error("Invalid token format: missing parts");
+    }
     
     const iv = Buffer.from(ivHex, "hex");
     const authTag = Buffer.from(authTagHex, "hex");
