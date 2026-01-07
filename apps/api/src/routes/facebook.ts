@@ -1074,13 +1074,13 @@ async function processMessagingEvent(
       customerName = newCustomerName;
     }
     
-    // Get or create conversation
+    // Get or create messenger conversation
     const { data: existingConv } = await supabase
-      .from("conversations")
+      .from("messenger_conversations")
       .select("id")
       .eq("organization_id", orgId)
       .eq("customer_id", customerId)
-      .eq("channel", "facebook")
+      .eq("page_id", pageId)
       .single();
     
     let conversationId: string;
@@ -1088,31 +1088,29 @@ async function processMessagingEvent(
       conversationId = existingConv.id;
       // Update last message timestamp
       await supabase
-        .from("conversations")
+        .from("messenger_conversations")
         .update({
           last_message_at: new Date().toISOString(),
-          last_customer_message_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
         .eq("id", conversationId);
     } else {
-      // Create new conversation
+      // Create new messenger conversation
       const { data: newConv, error: convError } = await supabase
-        .from("conversations")
+        .from("messenger_conversations")
         .insert({
           organization_id: orgId,
           customer_id: customerId,
-          channel: "facebook",
-          facebook_conversation_id: `${pageId}_${senderId}`,
+          page_id: pageId,
+          participant_id: senderId,
           status: "open",
           last_message_at: new Date().toISOString(),
-          last_customer_message_at: new Date().toISOString(),
         })
         .select("id")
         .single();
       
       if (convError || !newConv) {
-        console.error("[Facebook Webhook] Error creating conversation:", convError);
+        console.error("[Facebook Webhook] Error creating messenger conversation:", convError);
         return;
       }
       conversationId = newConv.id;
@@ -1132,54 +1130,49 @@ async function processMessagingEvent(
       }));
     }
     
-    // Save message to database
+    // Save message to messenger_messages
     const { data: savedMessage, error: msgError } = await supabase
-      .from("messages")
+      .from("messenger_messages")
       .insert({
         organization_id: orgId,
-        customer_id: customerId,
         conversation_id: conversationId,
-        fb_message_id: messageId,
-        body: hasAttachments && !messageBody 
-          ? `[${message.attachments[0].type}]` 
-          : messageBody,
+        message_id: messageId,
+        sender_id: senderId,
+        text: messageBody,
         is_from_customer: true,
-        channel: "facebook",
-        media_type: hasAttachments ? message.attachments[0].type : null,
-        media_url: hasAttachments ? message.attachments[0].payload?.url : null,
-        timestamp: new Date(timestamp).toISOString(),
+        attachments: attachmentData,
+        created_at: new Date(timestamp).toISOString(),
       })
-      .select("id, body, timestamp, media_type, media_url")
+      .select("id, text, created_at, attachments")
       .single();
     
     if (msgError) {
-      console.error("[Facebook Webhook] Error saving message:", msgError);
+      console.error("[Facebook Webhook] Error saving messenger message:", msgError);
       return;
     }
     
-    console.log(`[Facebook Webhook] Saved message ${messageId} for customer ${customerId}`);
+    console.log(`[Facebook Webhook] Saved message ${messageId} for conversation ${conversationId}`);
     
     // Emit socket event to frontend
     if (io) {
       const messageData = {
         id: savedMessage.id,
-        fb_message_id: messageId,
-        body: savedMessage.body,
+        message_id: messageId,
+        text: savedMessage.text,
+        sender_id: senderId,
         is_from_customer: true,
-        timestamp: savedMessage.timestamp,
-        channel: "facebook",
-        media_type: savedMessage.media_type,
-        media_url: savedMessage.media_url,
+        created_at: savedMessage.created_at,
+        attachments: savedMessage.attachments,
         customer: {
           id: customerId,
           name: customerName,
-          facebook_psid: senderId,
+          phone: `messenger_${senderId}`,
         },
         conversation_id: conversationId,
       };
       
-      io.to(orgId).emit("fb:message", {
-        clientId: orgId,
+      io.to(`org:${orgId}`).emit("messenger:message", {
+        organizationId: orgId,
         message: messageData,
         conversation: {
           id: conversationId,
