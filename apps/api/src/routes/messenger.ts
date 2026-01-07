@@ -1294,12 +1294,22 @@ router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => 
     }
     
     let synced = 0;
+    let conversationsProcessed = 0;
+    let conversationsSkipped = 0;
     
     for (const conv of convData.data || []) {
+      conversationsProcessed++;
+      
       const participant = conv.participants?.data?.find((p: any) => p.id !== page.page_id);
-      if (!participant) continue;
+      if (!participant) {
+        console.log(`[Messenger Quick-Sync] Conv ${conversationsProcessed}: No participant found`);
+        conversationsSkipped++;
+        continue;
+      }
       
       const psid = participant.id;
+      const messagesCount = conv.messages?.data?.length || 0;
+      console.log(`[Messenger Quick-Sync] Conv ${conversationsProcessed}: PSID=${psid}, Messages=${messagesCount}`);
       
       // Upsert conversation
       const { data: conversation } = await supabase
@@ -1351,12 +1361,16 @@ router.post("/pages/:pageId/quick-sync", async (req: Request, res: Response) => 
       }
     }
     
-    console.log(`[Messenger Quick-Sync] Sync completed. Total messages: ${synced}`);
+    console.log(`[Messenger Quick-Sync] Summary:`);
+    console.log(`  - Conversations processed: ${conversationsProcessed}`);
+    console.log(`  - Conversations skipped: ${conversationsSkipped}`);
+    console.log(`  - Total messages synced: ${synced}`);
     
     res.json({
       success: true,
-      message: `تم مزامنة ${synced} رسالة من آخر 7 أيام`,
+      message: `تم مزامنة ${synced} رسالة من ${conversationsProcessed} محادثة`,
       messages_synced: synced,
+      conversations_processed: conversationsProcessed,
     });
   } catch (error: any) {
     console.error("[Messenger Quick-Sync] Error:", error);
