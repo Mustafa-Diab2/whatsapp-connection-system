@@ -326,6 +326,60 @@ export default function ChatPage() {
       ));
     };
 
+    const handleMessengerMessage = (data: any) => {
+      console.log("Messenger message received:", data);
+      const { conversation_id, message, conversation } = data;
+      const currentChat = selectedChatRef.current;
+      
+      // Check if message belongs to currently viewed chat
+      if (currentChat === conversation_id) {
+        setMessages((prev) => {
+          // Avoid duplicates
+          if (prev.some((m) => m.id === message.id)) return prev;
+          return [...prev, {
+            id: message.id,
+            body: message.content || "",
+            fromMe: message.fromMe || false,
+            timestamp: new Date(message.timestamp).getTime() / 1000,
+            type: "chat",
+            hasMedia: !!message.media_url,
+          }];
+        });
+      }
+      
+      // Update chat list with new message
+      setChats(prev => {
+        const existingChat = prev.find(c => c.id === conversation_id);
+        if (existingChat) {
+          return prev.map(c => {
+            if (c.id === conversation_id) {
+              return { 
+                ...c, 
+                unreadCount: conversation.unread_count || c.unreadCount + 1,
+                last_message_time: message.timestamp
+              };
+            }
+            return c;
+          }).sort((a: any, b: any) => {
+            const timeA = a.last_message_time || 0;
+            const timeB = b.last_message_time || 0;
+            return new Date(timeB).getTime() - new Date(timeA).getTime();
+          });
+        } else {
+          // Add new conversation to list
+          return [{
+            id: conversation_id,
+            name: conversation.participant_name || "مستخدم Messenger",
+            isGroup: false,
+            unreadCount: conversation.unread_count || 1,
+            channel: "messenger",
+            profile_pic: conversation.participant_profile_pic,
+            last_message_time: message.timestamp
+          } as any, ...prev];
+        }
+      });
+    };
+
     const handleFacebookMessage = (data: any) => {
       console.log("Facebook message received:", data);
       if (data.message) {
@@ -397,6 +451,7 @@ export default function ChatPage() {
     socket.on("wa:message_ack", handleMessageAck);
     socket.on("wa:reaction", handleReaction);
     socket.on("fb:message", handleFacebookMessage);
+    socket.on("messenger:message", handleMessengerMessage);
 
     // Cleanup: Remove ALL listeners before disconnecting
     return () => {
@@ -408,6 +463,7 @@ export default function ChatPage() {
       socket.off("wa:message_ack", handleMessageAck);
       socket.off("wa:reaction", handleReaction);
       socket.off("fb:message", handleFacebookMessage);
+      socket.off("messenger:message", handleMessengerMessage);
       socket.disconnect();
       socketRef.current = null;
     };

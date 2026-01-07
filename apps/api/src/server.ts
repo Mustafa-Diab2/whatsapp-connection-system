@@ -264,7 +264,7 @@ ensureSchema();
 // -------------------------------------------
 
 // Socket.io with proper CORS
-const io = new Server(httpServer, {
+export const io = new Server(httpServer, {
   cors: {
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);

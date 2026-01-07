@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { supabase } from "../lib/supabase";
 import crypto from "crypto";
 import { decryptToken } from "../services/FacebookManager";
+import { io } from "../server";
 
 const router = Router();
 
@@ -339,6 +340,26 @@ async function handleIncomingMessage(page: any, event: any) {
         unread_count: (conversation.unread_count || 0) + 1,
       })
       .eq("id", conversation.id);
+    
+    // Emit Socket.io event for real-time updates
+    io.to(`org:${page.organization_id}`).emit("messenger:message", {
+      conversation_id: conversation.id,
+      message: {
+        id: message.mid,
+        content: content,
+        message_type: messageType,
+        media_url: mediaUrl,
+        fromMe: false,
+        timestamp: new Date(timestamp).toISOString(),
+      },
+      conversation: {
+        id: conversation.id,
+        participant_id: senderPsid,
+        participant_name: conversation.customer_name,
+        last_message: content || `[${messageType}]`,
+        unread_count: (conversation.unread_count || 0) + 1,
+      }
+    });
     
     // TODO: Trigger chatbot or auto-reply if configured
     // await triggerMessengerBot(page, conversation, message);
