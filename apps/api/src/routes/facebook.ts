@@ -1104,26 +1104,26 @@ async function processMessagingEvent(
     
     // Emit socket event to frontend
     if (io) {
-      const messageData = {
-        id: savedMessage.id,
+      io.to(`org:${orgId}`).emit("messenger:message", {
+        organizationId: orgId,
         conversation_id: conversationId,
-        message_id: messageId,
-        content: savedMessage.content,
-        direction: "inbound",
-        message_type: savedMessage.message_type,
-        media_url: savedMessage.media_url,
-        timestamp: savedMessage.timestamp,
+        message: {
+          id: savedMessage.id,
+          message_id: messageId,
+          content: savedMessage.content,
+          fromMe: false,
+          direction: "inbound",
+          message_type: savedMessage.message_type,
+          media_url: savedMessage.media_url,
+          timestamp: savedMessage.timestamp,
+        },
         conversation: {
           id: conversation.id,
           psid: conversation.psid,
-          customer_name: conversation.customer_name,
-          profile_pic: conversation.profile_pic,
+          participant_name: conversation.customer_name,
+          participant_profile_pic: conversation.profile_pic,
+          unread_count: 1,
         },
-      };
-      
-      io.to(`org:${orgId}`).emit("messenger:message", {
-        organizationId: orgId,
-        message: messageData,
       });
       
       console.log(`[Facebook Webhook] Emitted messenger:message to org ${orgId}`);
