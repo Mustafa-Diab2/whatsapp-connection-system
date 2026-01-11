@@ -9,6 +9,7 @@ type MenuItem = {
   labelAr: string;
   href: string;
   icon?: string;
+  superOnly?: boolean;
 };
 
 const menuItems: MenuItem[] = [
@@ -30,6 +31,7 @@ const menuItems: MenuItem[] = [
   { label: "AI Agent", labelAr: "الذكاء الاصطناعي", href: "/ai", icon: "🧠" },
   { label: "Configuration", labelAr: "الإعدادات", href: "/settings", icon: "⚙️" },
   { label: "My Profile", labelAr: "ملفي الشخصي", href: "/profile", icon: "👤" },
+  { label: "Super Admin", labelAr: "إدارة النظام العليا", href: "/super-admin", icon: "👑", superOnly: true },
 ];
 
 type SidebarProps = {
@@ -53,17 +55,22 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
   }, []);
 
   const filteredMenuItems = menuItems.filter(item => {
-    // If no user yet, or admin, show everything
-    if (!user || user.role === 'admin') return true;
+    // Super Admin check
+    if ((item as any).superOnly) {
+      return user?.role === 'super_admin';
+    }
 
-    // If user has specific allowed_pages, check if this item's href is included
+    // Admin has access to all within their org
+    if (user?.role === 'admin') return true;
+
+    // If no user yet, show common pages
+    if (!user) return true;
+
+    // Check specific allowed_pages for members/supervisors
     if (user.allowed_pages && user.allowed_pages.length > 0) {
       return user.allowed_pages.includes(item.href);
     }
 
-    // Default for non-admin without specific pages: show everything or filter by role?
-    // Let's stick to the user's request: "حدد أي الصفحات التي تظهر"
-    // So if he didn't specify, maybe show all (default behavior)
     return true;
   });
 

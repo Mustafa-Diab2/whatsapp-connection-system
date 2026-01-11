@@ -129,6 +129,14 @@ router.post("/login", validate(loginSchema), async (req: Request, res: Response)
         // Remove password from response
         const { password: _, ...userWithoutPassword } = user;
 
+        // Check organization status (if not super_admin)
+        if (user.role !== 'super_admin' && user.organization_id) {
+            const { data: org } = await supabase.from('organizations').select('status').eq('id', user.organization_id).single();
+            if (org?.status === 'suspended') {
+                return res.status(403).json({ error: "هذا الحساب موقوف حالياً، يرجى التواصل مع الدعم" });
+            }
+        }
+
         setAuthCookie(res, token);
 
         db.logAudit(user.organization_id, user.id, "login_success", { email }, req.ip);
@@ -248,6 +256,134 @@ router.put("/change-password", verifyToken, async (req: Request, res: Response) 
         res.status(500).json({ error: error.message || "حدث خطأ" });
     }
 });
+
+// ==========================================
+// SUPER ADMIN ROUTES
+// ==========================================
+
+const verifySuperAdmin = async (req: Request, res: Response, next: Function) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "غير مصرح" });
+
+    const { data: userData } = await supabase.from('users').select('role').eq('id', user.userId).single();
+    if (userData?.role !== 'super_admin') {
+        return res.status(403).json({ error: "غير مصرح - يتطلب صلاحية سوبر أدمن" });
+    }
+    next();
+};
+
+// 1. Get all organizations (Super Admin only)
+router.get("/super/organizations", verifyToken, verifySuperAdmin, async (req: Request, res: Response) => {
+    try {
+        const { data: orgs, error } = await supabase
+            .from("organizations")
+            .select(`
+                *,
+                admin:users(id, email, name, role)
+            `)
+            .order("created_at", { ascending: false });
+
+        if (error) throw error;
+
+        // Count members for each org
+        const orgsWithCounts = await Promise.all(orgs.map(async (org) => {
+            const { count } = await supabase
+                .from('users')
+                .select('*', { count: 'exact', head: true })
+                .eq('organization_id', org.id);
+
+            // Re-fetch allowed_pages from settings or user? 
+            // In the user request, allowed_pages was on user. 
+            // Mostafa wants to define it for "the email" (the admin account).
+            const mainAdmin = org.admin?.find((u: any) => u.role === 'admin');
+
+            return { ...org, memberCount: count, mainAdmin };
+        }));
+
+        res.json({ organizations: orgsWithCounts });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 2. Create Organization and Admin (Super Admin only)
+router.post("/super/organizations", verifyToken, verifySuperAdmin, async (req: Request, res: Response) => {
+    try {
+        const { name, adminEmail, adminPassword, adminName, member_limit, status } = req.body;
+
+        // 1. Create Org
+        const { data: org, error: orgError } = await supabase
+            .from("organizations")
+            .insert({ name, member_limit: member_limit || 10, status: status || 'active' })
+            .select()
+            .single();
+
+        if (orgError) throw orgError;
+
+        // 2. Create Admin
+        const hashedPassword = await bcrypt.hash(adminPassword, 12);
+        const { data: user, error: userError } = await supabase
+            .from("users")
+            .insert({
+                email: adminEmail,
+                password: hashedPassword,
+                name: adminName,
+                organization_id: org.id,
+                role: 'admin'
+            })
+            .select("id, email, name, role")
+            .single();
+
+        if (userError) throw userError;
+
+        res.status(201).json({ message: "تم إنشاء المنظمة والأدمن بنجاح", org, user });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 3. Update Organization (Status, Limit)
+router.put("/super/organizations/:orgId", verifyToken, verifySuperAdmin, async (req: Request, res: Response) => {
+    try {
+        const { orgId } = req.params;
+        const { name, status, member_limit } = req.body;
+
+        const { data: org, error } = await supabase
+            .from("organizations")
+            .update({ name, status, member_limit, updated_at: new Date().toISOString() })
+            .eq("id", orgId)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        res.json({ message: "تم تحديث المنظمة بنجاح", org });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 4. Update Admin User (allowed_pages)
+router.put("/super/users/:userId", verifyToken, verifySuperAdmin, async (req: Request, res: Response) => {
+    try {
+        const { userId } = req.params;
+        const { name, role, allowed_pages } = req.body;
+
+        const { data: user, error } = await supabase
+            .from("users")
+            .update({ name, role, allowed_pages, updated_at: new Date().toISOString() })
+            .eq("id", userId)
+            .select("id, email, name, role, allowed_pages")
+            .single();
+
+        if (error) throw error;
+
+        res.json({ message: "تم تحديث المستخدم بنجاح", user });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Add Team Member
 router.post("/team/invite", verifyToken, async (req: Request, res: Response) => {
     try {
@@ -259,9 +395,19 @@ router.post("/team/invite", verifyToken, async (req: Request, res: Response) => 
             return res.status(400).json({ error: "البريد الإلكتروني وكلمة المرور مطلوبان" });
         }
 
-        // Check requester role (optional, for now allow all valid users to invite)
-        // const { data: requester } = await supabase.from('users').select('role').eq('id', requesterId).single();
-        // if (requester?.role !== 'admin') return res.status(403).json({ error: "غير مصرح" });
+        // Check requester role and member limit
+        const { data: requester } = await supabase.from('users').select('role, organization_id').eq('id', requesterId).single();
+        if (requester?.role !== 'admin' && requester?.role !== 'super_admin') {
+            return res.status(403).json({ error: "غير مصرح - فقط الأدمن يمكنه إضافة أعضاء" });
+        }
+
+        // Check member limit for this organization
+        const { data: org } = await supabase.from('organizations').select('member_limit').eq('id', requesterOrgId).single();
+        const { count } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('organization_id', requesterOrgId);
+
+        if (org && count !== null && count >= org.member_limit) {
+            return res.status(400).json({ error: `لقد وصلت للحد الأقصى للأعضاء (${org.member_limit})` });
+        }
 
         // Check if user exists
         const { data: existingUser } = await supabase
