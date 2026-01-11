@@ -190,12 +190,22 @@ export default function ChatPage() {
   const audioChunksRef = useRef<Blob[]>([]);
   const [replyingTo, setReplyingTo] = useState<MessageItem | null>(null);
   const [noteMode, setNoteMode] = useState(false);
+  const [isPageVisible, setIsPageVisible] = useState(true);
   const currentChatObj = useMemo(() => chats.find(c => c.id === selectedChat), [chats, selectedChat]);
 
   // Keep ref in sync with state for socket callback
   useEffect(() => {
     selectedChatRef.current = selectedChat;
   }, [selectedChat]);
+
+  // Track page visibility
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsPageVisible(!document.hidden);
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -330,7 +340,7 @@ export default function ChatPage() {
       console.log("Messenger message received:", data);
       const { conversation_id, message, conversation } = data;
       const currentChat = selectedChatRef.current;
-      
+
       // Check if message belongs to currently viewed chat
       if (currentChat === conversation_id) {
         setMessages((prev) => {
@@ -346,15 +356,15 @@ export default function ChatPage() {
           }];
         });
       }
-      
+
       // Update chat list with new message
       setChats(prev => {
         const existingChat = prev.find(c => c.id === conversation_id);
         if (existingChat) {
           return prev.map(c => {
             if (c.id === conversation_id) {
-              return { 
-                ...c, 
+              return {
+                ...c,
                 unreadCount: conversation.unread_count || c.unreadCount + 1,
                 last_message_time: message.timestamp
               };
@@ -385,13 +395,13 @@ export default function ChatPage() {
       if (data.message) {
         const msg = data.message;
         const currentChat = selectedChatRef.current;
-        
+
         // Check if message belongs to currently viewed chat (by conversation_id or customer_id)
         const belongsToChat = currentChat && (
           msg.conversation_id === currentChat ||
           (msg.customer && msg.customer.id === currentChat)
         );
-        
+
         if (belongsToChat) {
           setMessages((prev) => {
             // Avoid duplicates
@@ -407,7 +417,7 @@ export default function ChatPage() {
             }];
           });
         }
-        
+
         // Update chat list with new message
         setChats(prev => {
           const existingChat = prev.find(c => c.id === msg.conversation_id || c.customer_id === msg.customer?.id);
@@ -681,7 +691,7 @@ export default function ChatPage() {
 
   const filteredChats = useMemo(() => {
     let filtered = chats;
-    
+
     // Filter by channel
     if (channelFilter !== "all") {
       filtered = filtered.filter(c => {
@@ -689,7 +699,7 @@ export default function ChatPage() {
         return chatChannel === channelFilter;
       });
     }
-    
+
     // Filter by search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -699,7 +709,7 @@ export default function ChatPage() {
         ((c as any).phone && (c as any).phone.includes(q))
       );
     }
-    
+
     return filtered;
   }, [chats, searchQuery, channelFilter]);
 
@@ -745,7 +755,7 @@ export default function ChatPage() {
           throw new Error(data.message || "تعذر جلب الرسائل");
         }
         const data = await res.json();
-        
+
         // Normalize Messenger messages to match WhatsApp format
         if (isMessenger && data.data) {
           const normalizedMessages = data.data.map((msg: any) => ({
@@ -803,9 +813,19 @@ export default function ChatPage() {
 
       void fetchStories();
 
-      return () => clearTimeout(timer);
+      // Auto-refresh chats every 5 seconds (only when page is visible)
+      const refreshChatsInterval = setInterval(() => {
+        if (isPageVisible) {
+          void fetchChats(0);
+        }
+      }, 5000);
+
+      return () => {
+        clearTimeout(timer);
+        clearInterval(refreshChatsInterval);
+      };
     }
-  }, [status, fetchChats, fetchStories, fetchMe]);
+  }, [status, fetchChats, fetchStories, fetchMe, isPageVisible]);
 
   useEffect(() => {
     if (selectedChat && status === "ready") {
@@ -817,24 +837,33 @@ export default function ChatPage() {
       } else {
         setSelectedCustomer(null);
       }
+
+      // Auto-refresh messages every 3 seconds for the selected chat (only when page is visible)
+      const refreshMessagesInterval = setInterval(() => {
+        if (isPageVisible) {
+          void fetchMessages(selectedChat);
+        }
+      }, 3000);
+
+      return () => clearInterval(refreshMessagesInterval);
     }
-  }, [selectedChat, status, fetchMessages, chats]);
+  }, [selectedChat, status, fetchMessages, chats, isPageVisible]);
 
   const handleSend = useCallback(async () => {
     if (!selectedChat || !messageInput.trim()) return;
-    
+
     // Determine if this is a Messenger chat
     const currentChat = chats.find(c => c.id === selectedChat);
     const isMessenger = (currentChat as any)?.channel === "messenger";
-    
+
     // For WhatsApp, we need clientId
     if (!isMessenger && clientId === "default") return;
-    
+
     setSending(true);
     setErrorMsg(null);
     try {
       let endpoint, payload;
-      
+
       if (noteMode) {
         endpoint = "/api/chat/internal-note";
         payload = { chatId: selectedChat, body: messageInput.trim() };
@@ -1156,8 +1185,16 @@ export default function ChatPage() {
                 </>
               )}
             </div>
-            <div className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${statusColors[status]} transition-all duration-500 shadow-sm border border-white/50`}>
-              {statusLabels[status]}
+            <div className="flex items-center gap-2">
+              <div className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${statusColors[status]} transition-all duration-500 shadow-sm border border-white/50 flex items-center gap-2`}>
+                {statusLabels[status]}
+                {status === "ready" && isPageVisible && (
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1232,31 +1269,28 @@ export default function ChatPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => setChannelFilter("all")}
-                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${
-                  channelFilter === "all"
-                    ? "bg-slate-800 text-white shadow-md"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${channelFilter === "all"
+                  ? "bg-slate-800 text-white shadow-md"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
               >
                 الكل
               </button>
               <button
                 onClick={() => setChannelFilter("whatsapp")}
-                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  channelFilter === "whatsapp"
-                    ? "bg-green-600 text-white shadow-md"
-                    : "bg-green-50 text-green-700 hover:bg-green-100"
-                }`}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${channelFilter === "whatsapp"
+                  ? "bg-green-600 text-white shadow-md"
+                  : "bg-green-50 text-green-700 hover:bg-green-100"
+                  }`}
               >
                 <span>💬</span> واتساب
               </button>
               <button
                 onClick={() => setChannelFilter("facebook")}
-                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  channelFilter === "facebook"
-                    ? "bg-blue-600 text-white shadow-md"
-                    : "bg-blue-50 text-blue-700 hover:bg-blue-100"
-                }`}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${channelFilter === "facebook"
+                  ? "bg-blue-600 text-white shadow-md"
+                  : "bg-blue-50 text-blue-700 hover:bg-blue-100"
+                  }`}
               >
                 <span>💬</span> ماسنجر
               </button>
@@ -1304,9 +1338,8 @@ export default function ChatPage() {
                           {initials}
                         </div>
                         {/* Channel indicator */}
-                        <div className={`absolute -bottom-1 -right-1 h-5 w-5 rounded-full flex items-center justify-center text-[10px] ring-2 ring-white ${
-                          chatChannel === "facebook" ? "bg-blue-500" : "bg-green-500"
-                        }`}>
+                        <div className={`absolute -bottom-1 -right-1 h-5 w-5 rounded-full flex items-center justify-center text-[10px] ring-2 ring-white ${chatChannel === "facebook" ? "bg-blue-500" : "bg-green-500"
+                          }`}>
                           {chatChannel === "facebook" ? "f" : "W"}
                         </div>
                       </div>
