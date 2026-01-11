@@ -76,8 +76,8 @@ const generalLimiter = rateLimit({
 // Stricter rate limit for auth endpoints
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // Only 20 login attempts per 15 min
-  message: { error: "محاولات دخول كثيرة، انتظر 15 دقيقة" },
+  max: 200, // Increased to 200 to allow super-admin operations without 429
+  message: { error: "طلبات كثيرة جداً، حاول لاحقاً" },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -1623,7 +1623,7 @@ app.use((req, res) => {
 httpServer.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
   console.log("Ready for connections!");
-  
+
   // Start Facebook Token Refresh Service
   if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
     TokenRefreshService.start();

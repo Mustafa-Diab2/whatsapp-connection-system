@@ -55,19 +55,16 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
   }, []);
 
   const filteredMenuItems = menuItems.filter(item => {
-    // Super Admin check
-    if ((item as any).superOnly) {
-      return user?.role === 'super_admin';
+    // Super Admin: Only sees Super Admin UI and Profile
+    if (user?.role === 'super_admin') {
+      return (item as any).superOnly || item.href === '/profile';
     }
 
-    // Admin has access to all within their org
+    // Organizations Admin: Sees everything within their org
     if (user?.role === 'admin') return true;
 
-    // If no user yet, show common pages
-    if (!user) return true;
-
-    // Check specific allowed_pages for members/supervisors
-    if (user.allowed_pages && user.allowed_pages.length > 0) {
+    // Normal Members: filtered by allowed_pages
+    if (user?.allowed_pages && user.allowed_pages.length > 0) {
       return user.allowed_pages.includes(item.href);
     }
 

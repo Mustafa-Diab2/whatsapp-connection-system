@@ -99,18 +99,6 @@ export default function SuperAdminPage() {
                 body: JSON.stringify(newOrg)
             });
             if (res.ok) {
-                const data = await res.json();
-                // After creating org and user, update user allowed_pages if any
-                if (newOrg.allowed_pages.length > 0 && data.user) {
-                    await fetch(`${apiBase}/api/auth/super/users/${data.user.id}`, {
-                        method: "PUT",
-                        headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${token}`
-                        },
-                        body: JSON.stringify({ allowed_pages: newOrg.allowed_pages })
-                    });
-                }
                 setMsg({ type: "success", text: "تم إنشاء الحساب والصلاحيات بنجاح" });
                 setShowCreateModal(false);
                 fetchOrgs();
@@ -129,7 +117,7 @@ export default function SuperAdminPage() {
             const token = localStorage.getItem("token");
 
             // 1. Update Org (Status, Limit)
-            await fetch(`${apiBase}/api/auth/super/organizations/${selectedOrg.id}`, {
+            const orgRes = await fetch(`${apiBase}/api/auth/super/organizations/${selectedOrg.id}`, {
                 method: "PUT",
                 headers: {
                     "Content-Type": "application/json",
@@ -142,9 +130,11 @@ export default function SuperAdminPage() {
                 })
             });
 
+            if (!orgRes.ok) throw new Error("فشل تحديث بيانات المنظمة");
+
             // 2. Update Admin (Allowed Pages)
             if (selectedOrg.mainAdmin) {
-                await fetch(`${apiBase}/api/auth/super/users/${selectedOrg.mainAdmin.id}`, {
+                const userRes = await fetch(`${apiBase}/api/auth/super/users/${selectedOrg.mainAdmin.id}`, {
                     method: "PUT",
                     headers: {
                         "Content-Type": "application/json",
@@ -154,13 +144,14 @@ export default function SuperAdminPage() {
                         allowed_pages: editForm.allowed_pages
                     })
                 });
+                if (!userRes.ok) throw new Error("فشل تحديث صلاحيات الأدمن");
             }
 
             setMsg({ type: "success", text: "تم التحديث بنجاح" });
             setShowEditModal(false);
             fetchOrgs();
-        } catch (err) {
-            setMsg({ type: "error", text: "حدث خطأ أثناء التحديث" });
+        } catch (err: any) {
+            setMsg({ type: "error", text: err.message || "حدث خطأ أثناء التحديث" });
         }
     };
 

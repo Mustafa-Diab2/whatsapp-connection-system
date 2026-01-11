@@ -309,7 +309,7 @@ router.get("/super/organizations", verifyToken, verifySuperAdmin, async (req: Re
 // 2. Create Organization and Admin (Super Admin only)
 router.post("/super/organizations", verifyToken, verifySuperAdmin, async (req: Request, res: Response) => {
     try {
-        const { name, adminEmail, adminPassword, adminName, member_limit, status } = req.body;
+        const { name, adminEmail, adminPassword, adminName, member_limit, status, allowed_pages } = req.body;
 
         // 1. Create Org
         const { data: org, error: orgError } = await supabase
@@ -329,9 +329,10 @@ router.post("/super/organizations", verifyToken, verifySuperAdmin, async (req: R
                 password: hashedPassword,
                 name: adminName,
                 organization_id: org.id,
-                role: 'admin'
+                role: 'admin',
+                allowed_pages: allowed_pages || null
             })
-            .select("id, email, name, role")
+            .select("id, email, name, role, allowed_pages")
             .single();
 
         if (userError) throw userError;
