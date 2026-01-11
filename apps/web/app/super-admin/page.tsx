@@ -52,7 +52,8 @@ export default function SuperAdminPage() {
         adminEmail: "",
         adminPassword: "",
         adminName: "",
-        member_limit: 10
+        member_limit: 10,
+        allowed_pages: [] as string[]
     });
     const [editForm, setEditForm] = useState({
         name: "",
@@ -98,7 +99,19 @@ export default function SuperAdminPage() {
                 body: JSON.stringify(newOrg)
             });
             if (res.ok) {
-                setMsg({ type: "success", text: "تم إنشاء الحساب بنجاح" });
+                const data = await res.json();
+                // After creating org and user, update user allowed_pages if any
+                if (newOrg.allowed_pages.length > 0 && data.user) {
+                    await fetch(`${apiBase}/api/auth/super/users/${data.user.id}`, {
+                        method: "PUT",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ allowed_pages: newOrg.allowed_pages })
+                    });
+                }
+                setMsg({ type: "success", text: "تم إنشاء الحساب والصلاحيات بنجاح" });
                 setShowCreateModal(false);
                 fetchOrgs();
             } else {
@@ -296,6 +309,28 @@ export default function SuperAdminPage() {
                                     value={newOrg.adminPassword}
                                     onChange={e => setNewOrg({ ...newOrg, adminPassword: e.target.value })}
                                 />
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-black text-slate-400 uppercase tracking-widest block mb-2">الصلاحيات المسموح بها لهذا الأدمن</label>
+                                <div className="grid grid-cols-2 gap-2 p-3 bg-slate-50 rounded-2xl border border-slate-100 max-h-40 overflow-y-auto">
+                                    {AVAILABLE_PAGES.map(page => (
+                                        <label key={page.id} className="flex items-center gap-2 p-1 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                className="w-3 h-3 rounded text-brand-blue"
+                                                checked={newOrg.allowed_pages.includes(page.href)}
+                                                onChange={e => {
+                                                    const updated = e.target.checked
+                                                        ? [...newOrg.allowed_pages, page.href]
+                                                        : newOrg.allowed_pages.filter(p => p !== page.href);
+                                                    setNewOrg({ ...newOrg, allowed_pages: updated });
+                                                }}
+                                            />
+                                            <span className="text-[10px] font-bold text-slate-600">{page.labelAr}</span>
+                                        </label>
+                                    ))}
+                                </div>
                             </div>
 
                             <div className="flex gap-4 pt-4">
