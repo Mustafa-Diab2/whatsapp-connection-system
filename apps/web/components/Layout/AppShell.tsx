@@ -44,6 +44,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                         localStorage.removeItem("token");
                         localStorage.removeItem("user");
                         router.push("/login");
+                    } else if (apiRes.ok) {
+                        const data = await apiRes.json();
+                        if (data.user) {
+                            localStorage.setItem("user", JSON.stringify(data.user));
+                        }
                     }
                 } catch (e) {
                     console.error("Auth check failed", e);

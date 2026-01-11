@@ -11,7 +11,29 @@ type TeamMember = {
     role: string;
     created_at: string;
     avatar?: string;
+    allowed_pages?: string[] | null;
 };
+
+const AVAILABLE_PAGES = [
+    { id: "dashboard", label: "Dashboard", labelAr: "لوحة التحكم", href: "/dashboard" },
+    { id: "whatsapp-connect", label: "WhatsApp Connection", labelAr: "اتصال الواتساب", href: "/whatsapp-connect" },
+    { id: "chat", label: "Chat", labelAr: "المحادثات", href: "/chat" },
+    { id: "meta", label: "Meta Platform", labelAr: "منصة Meta", href: "/integrations/meta" },
+    { id: "crm", label: "Mini CRM", labelAr: "إدارة العملاء", href: "/crm" },
+    { id: "contacts", label: "Contacts", labelAr: "جهة اتصال", href: "/contacts" },
+    { id: "documents", label: "Knowledge Base", labelAr: "قاعدة المعرفة", href: "/documents" },
+    { id: "campaigns", label: "Campaigns", labelAr: "الحملات", href: "/campaigns" },
+    { id: "inventory", label: "Inventory", labelAr: "المخزون", href: "/inventory" },
+    { id: "purchases", label: "Purchases", labelAr: "المشتريات والموردين", href: "/purchases" },
+    { id: "orders", label: "Sales & Orders", labelAr: "المبيعات والطلبيات", href: "/orders" },
+    { id: "invoices", label: "Invoices", labelAr: "الفواتير والحسابات", href: "/invoices" },
+    { id: "loyalty", label: "Loyalty", labelAr: "نقاط الولاء", href: "/loyalty" },
+    { id: "tasks", label: "Tasks", labelAr: "المهام والمتابعات", href: "/tasks" },
+    { id: "reports", label: "Reports", labelAr: "التقارير والمالية", href: "/reports" },
+    { id: "ai", label: "AI Agent", labelAr: "الذكاء الاصطناعي", href: "/ai" },
+    { id: "settings", label: "Configuration", labelAr: "الإعدادات", href: "/settings" },
+    { id: "profile", label: "My Profile", labelAr: "ملفي الشخصي", href: "/profile" },
+];
 
 export default function SettingsPage() {
     const [settings, setSettings] = useState({
@@ -34,7 +56,8 @@ export default function SettingsPage() {
         email: "",
         password: "",
         name: "",
-        role: "member"
+        role: "member",
+        allowed_pages: [] as string[]
     });
     const [addingMember, setAddingMember] = useState(false);
     const [teamMsg, setTeamMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -142,7 +165,7 @@ export default function SettingsPage() {
 
             if (res.ok) {
                 setTeamMsg({ type: "success", text: "تم إضافة العضو بنجاح!" });
-                setNewMember({ email: "", password: "", name: "", role: "member" });
+                setNewMember({ email: "", password: "", name: "", role: "member", allowed_pages: [] });
                 fetchTeamMembers(); // Refresh list
             } else {
                 setTeamMsg({ type: "error", text: data.error || "فشل إضافة العضو" });
@@ -156,7 +179,7 @@ export default function SettingsPage() {
 
     // Edit member state
     const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
-    const [editForm, setEditForm] = useState({ name: "", role: "" });
+    const [editForm, setEditForm] = useState({ name: "", role: "", allowed_pages: [] as string[] });
 
     // Delete team member
     const handleDeleteMember = async (memberId: string, memberName: string) => {
@@ -216,7 +239,11 @@ export default function SettingsPage() {
     // Open edit modal
     const openEditModal = (member: TeamMember) => {
         setEditingMember(member);
-        setEditForm({ name: member.name || "", role: member.role });
+        setEditForm({
+            name: member.name || "",
+            role: member.role,
+            allowed_pages: member.allowed_pages || []
+        });
     };
 
     useEffect(() => {
@@ -387,14 +414,14 @@ export default function SettingsPage() {
                 </h2>
 
                 <div className="space-y-3">
-                    <a 
-                        href="/integrations/facebook" 
+                    <a
+                        href="/integrations/facebook"
                         className="flex items-center justify-between p-4 bg-white rounded-lg border border-slate-200 hover:border-blue-300 hover:shadow-md transition-all group"
                     >
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
                                 <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                                 </svg>
                             </div>
                             <div>
@@ -466,6 +493,28 @@ export default function SettingsPage() {
                                 <option value="moderator">مودريتور (رد على الرسائل)</option>
                                 <option value="member">عضو عادي</option>
                             </select>
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="block text-sm font-medium text-slate-600">الصفحات المسموح بها (اختياري - افتراضياً كل الصفحات)</label>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-white p-4 rounded-xl border border-slate-200">
+                            {AVAILABLE_PAGES.map(page => (
+                                <label key={page.id} className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-1 rounded transition-colors text-sm">
+                                    <input
+                                        type="checkbox"
+                                        className="rounded border-slate-300 text-brand-blue focus:ring-brand-blue"
+                                        checked={newMember.allowed_pages.includes(page.href)}
+                                        onChange={(e) => {
+                                            const updated = e.target.checked
+                                                ? [...newMember.allowed_pages, page.href]
+                                                : newMember.allowed_pages.filter(p => p !== page.href);
+                                            setNewMember({ ...newMember, allowed_pages: updated });
+                                        }}
+                                    />
+                                    <span className="text-slate-700">{page.labelAr}</span>
+                                </label>
+                            ))}
                         </div>
                     </div>
 
@@ -628,6 +677,29 @@ export default function SettingsPage() {
                                     <option value="moderator">💬 مودريتور (رد على الرسائل)</option>
                                     <option value="member">👤 عضو عادي</option>
                                 </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-600 mb-2">الصفحات المسموح بها</label>
+                                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-3 border border-slate-200 rounded-xl bg-slate-50">
+                                    {AVAILABLE_PAGES.map(page => (
+                                        <label key={page.id} className="flex items-center gap-2 cursor-pointer hover:bg-white p-1 rounded transition-colors text-xs">
+                                            <input
+                                                type="checkbox"
+                                                className="rounded border-slate-300 text-brand-blue focus:ring-brand-blue"
+                                                checked={editForm.allowed_pages.includes(page.href)}
+                                                onChange={(e) => {
+                                                    const updated = e.target.checked
+                                                        ? [...editForm.allowed_pages, page.href]
+                                                        : editForm.allowed_pages.filter(p => p !== page.href);
+                                                    setEditForm({ ...editForm, allowed_pages: updated });
+                                                }}
+                                            />
+                                            <span className="text-slate-700">{page.labelAr}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                                <p className="text-[10px] text-slate-400 mt-1">إذا تم إلغاء تحديد الكل، سيتم تطبيق الصلاحيات الافتراضية للدور.</p>
                             </div>
                         </div>
 

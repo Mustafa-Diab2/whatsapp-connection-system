@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 type MenuItem = {
   label: string;
@@ -38,6 +39,33 @@ type SidebarProps = {
 
 const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
   const pathname = usePathname();
+  const [user, setUser] = useState<{ role: string; allowed_pages?: string[] | null } | null>(null);
+
+  useEffect(() => {
+    const userData = localStorage.getItem("user");
+    if (userData) {
+      try {
+        setUser(JSON.parse(userData));
+      } catch (e) {
+        console.error("Failed to parse user data", e);
+      }
+    }
+  }, []);
+
+  const filteredMenuItems = menuItems.filter(item => {
+    // If no user yet, or admin, show everything
+    if (!user || user.role === 'admin') return true;
+
+    // If user has specific allowed_pages, check if this item's href is included
+    if (user.allowed_pages && user.allowed_pages.length > 0) {
+      return user.allowed_pages.includes(item.href);
+    }
+
+    // Default for non-admin without specific pages: show everything or filter by role?
+    // Let's stick to the user's request: "حدد أي الصفحات التي تظهر"
+    // So if he didn't specify, maybe show all (default behavior)
+    return true;
+  });
 
   return (
     <>
@@ -67,7 +95,7 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
           <div className="flex-1 overflow-y-auto px-4 py-8 custom-scrollbar">
             <p className="px-4 mb-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Main Menu</p>
             <nav className="space-y-1.5">
-              {menuItems.map((item) => {
+              {filteredMenuItems.map((item) => {
                 const isActive = pathname === item.href ||
                   (item.href !== "#" && pathname?.startsWith(item.href));
 

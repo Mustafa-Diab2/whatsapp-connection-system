@@ -173,7 +173,7 @@ router.get("/profile", verifyToken, async (req: Request, res: Response) => {
 
         const { data: user, error } = await supabase
             .from("users")
-            .select("id, email, name, phone, avatar, created_at")
+            .select("id, email, name, phone, avatar, role, allowed_pages, created_at")
             .eq("id", userId)
             .single();
 
@@ -253,7 +253,7 @@ router.post("/team/invite", verifyToken, async (req: Request, res: Response) => 
     try {
         const requesterId = (req as any).user.userId;
         const requesterOrgId = (req as any).user.organizationId;
-        const { email, password, name, role } = req.body;
+        const { email, password, name, role, allowed_pages } = req.body;
 
         if (!email || !password) {
             return res.status(400).json({ error: "البريد الإلكتروني وكلمة المرور مطلوبان" });
@@ -285,9 +285,10 @@ router.post("/team/invite", verifyToken, async (req: Request, res: Response) => 
                 password: hashedPassword,
                 name: name || email.split("@")[0],
                 organization_id: requesterOrgId,
-                role: role || 'member'
+                role: role || 'member',
+                allowed_pages: allowed_pages || null
             })
-            .select("id, email, name, role, created_at")
+            .select("id, email, name, role, allowed_pages, created_at")
             .single();
 
         if (error) throw error;
@@ -309,7 +310,7 @@ router.get("/team", verifyToken, async (req: Request, res: Response) => {
 
         const { data: members, error } = await supabase
             .from("users")
-            .select("id, name, email, role, created_at, avatar")
+            .select("id, name, email, role, allowed_pages, created_at, avatar")
             .eq("organization_id", orgId)
             .order("created_at", { ascending: false });
 
@@ -328,7 +329,7 @@ router.put("/team/:memberId", verifyToken, async (req: Request, res: Response) =
         const requesterId = (req as any).user.userId;
         const orgId = (req as any).user.organizationId;
         const { memberId } = req.params;
-        const { name, role } = req.body;
+        const { name, role, allowed_pages } = req.body;
 
         // Check if requester is admin
         const { data: requester } = await supabase
@@ -359,10 +360,11 @@ router.put("/team/:memberId", verifyToken, async (req: Request, res: Response) =
             .update({
                 name,
                 role,
+                allowed_pages,
                 updated_at: new Date().toISOString()
             })
             .eq("id", memberId)
-            .select("id, name, email, role, created_at")
+            .select("id, name, email, role, allowed_pages, created_at")
             .single();
 
         if (error) throw error;
