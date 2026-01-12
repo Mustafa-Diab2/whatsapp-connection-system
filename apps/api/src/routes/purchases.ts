@@ -52,15 +52,24 @@ router.get("/vendors", verifyToken, async (req: Request, res: Response) => {
 router.post("/vendors", verifyToken, validate(vendorSchema), async (req: Request, res: Response) => {
     try {
         const orgId = getOrgId(req);
+        console.log(`[Vendors] Creating vendor for org: ${orgId}`);
+        console.log(`[Vendors] Body:`, req.body);
+
         const { data, error } = await supabase
             .from("vendors")
             .insert({ ...req.body, organization_id: orgId })
             .select()
             .single();
-        if (error) throw error;
+
+        if (error) {
+            console.error(`[Vendors] Supabase Error:`, error);
+            throw error;
+        }
+
         res.status(201).json({ vendor: data });
     } catch (err: any) {
-        res.status(500).json({ error: err.message });
+        console.error(`[Vendors] Final Error:`, err);
+        res.status(500).json({ error: err.message, details: err });
     }
 });
 
