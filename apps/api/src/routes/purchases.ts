@@ -52,24 +52,32 @@ router.get("/vendors", verifyToken, async (req: Request, res: Response) => {
 router.post("/vendors", verifyToken, validate(vendorSchema), async (req: Request, res: Response) => {
     try {
         const orgId = getOrgId(req);
-        console.log(`[Vendors] Creating vendor for org: ${orgId}`);
-        console.log(`[Vendors] Body:`, req.body);
+        const { name, contact_name, email, phone, address } = req.body;
+
+        console.log(`[Vendors] Attempting to create vendor: ${name} for org: ${orgId}`);
 
         const { data, error } = await supabase
             .from("vendors")
-            .insert({ ...req.body, organization_id: orgId })
+            .insert({
+                name,
+                contact_name,
+                email,
+                phone,
+                address,
+                organization_id: orgId
+            })
             .select()
             .single();
 
         if (error) {
-            console.error(`[Vendors] Supabase Error:`, error);
-            throw error;
+            console.error(`[Vendors] Supabase Insertion Error:`, error);
+            return res.status(400).json({ error: error.message, details: error });
         }
 
         res.status(201).json({ vendor: data });
     } catch (err: any) {
-        console.error(`[Vendors] Final Error:`, err);
-        res.status(500).json({ error: err.message, details: err });
+        console.error(`[Vendors] Unexpected Route Error:`, err);
+        res.status(500).json({ error: err.message });
     }
 });
 
