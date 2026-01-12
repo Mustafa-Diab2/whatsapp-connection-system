@@ -7,12 +7,14 @@ import { validate } from "../middleware/validate";
 const router = Router();
 
 const taskSchema = z.object({
-    customer_id: z.string().uuid().optional(),
-    title: z.string().min(1, "العنوان مطلوب"),
-    description: z.string().optional(),
-    due_date: z.string().optional(),
-    priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
-    status: z.enum(["todo", "in_progress", "completed", "cancelled"]).default("todo"),
+    body: z.object({
+        customer_id: z.string().optional().nullable().transform(val => val === "" ? null : val),
+        title: z.string().min(1, "العنوان مطلوب"),
+        description: z.string().optional(),
+        due_date: z.string().optional(),
+        priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
+        status: z.enum(["todo", "in_progress", "completed", "cancelled"]).default("todo"),
+    })
 });
 
 const getOrgId = (req: Request): string => (req as any).user?.organizationId;

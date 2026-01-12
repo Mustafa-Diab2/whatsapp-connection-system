@@ -8,9 +8,11 @@ import WhatsAppManager from "../wa/WhatsAppManager";
 const router = Router();
 
 const invoiceSchema = z.object({
-    order_id: z.string().uuid(),
-    due_date: z.string().optional(),
-    notes: z.string().optional(),
+    body: z.object({
+        order_id: z.string().min(1, "رقم الطلب مطلوب"),
+        due_date: z.string().optional(),
+        notes: z.string().optional(),
+    })
 });
 
 const getOrgId = (req: Request): string => (req as any).user?.organizationId;

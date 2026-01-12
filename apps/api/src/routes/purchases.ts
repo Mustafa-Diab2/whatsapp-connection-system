@@ -7,23 +7,28 @@ import { validate } from "../middleware/validate";
 const router = Router();
 
 const vendorSchema = z.object({
-    name: z.string().min(1, "اسم المورد مطلوب"),
-    contact_name: z.string().optional(),
-    email: z.string().email().optional().or(z.literal("")),
-    phone: z.string().optional(),
-    address: z.string().optional(),
-    tax_id: z.string().optional(),
+    body: z.object({
+        name: z.string().min(1, "اسم المورد مطلوب"),
+        contact_name: z.string().optional(),
+        email: z.string().optional().or(z.literal("")),
+        phone: z.string().optional(),
+        address: z.string().optional(),
+        tax_id: z.string().optional(),
+    })
 });
 
 const purchaseOrderSchema = z.object({
-    vendor_id: z.string().uuid(),
-    items: z.array(z.object({
-        product_id: z.string().uuid(),
-        quantity: z.number().positive(),
-        unit_cost: z.number().nonnegative(),
-    })).min(1),
-    status: z.enum(["draft", "ordered", "received", "cancelled"]).default("draft"),
-    notes: z.string().optional(),
+    body: z.object({
+        vendor_id: z.string().min(1, "المورد مطلوب"),
+        items: z.array(z.object({
+            product_id: z.string().min(1, "المنتج مطلوب"),
+            name: z.string().optional(), // Allow name if sent from frontend
+            quantity: z.number().positive("الكمية يجب أن تكون أكبر من 0"),
+            unit_cost: z.number().nonnegative("التكلفة لا يمكن أن تكون سالبة"),
+        })).min(1, "يجب إضافة منتج واحد على الأقل"),
+        status: z.enum(["draft", "ordered", "received", "cancelled"]).default("draft"),
+        notes: z.string().optional().or(z.literal("")),
+    })
 });
 
 const getOrgId = (req: Request): string => (req as any).user?.organizationId;
