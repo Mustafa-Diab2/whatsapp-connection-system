@@ -9,11 +9,11 @@ const router = Router();
 const vendorSchema = z.object({
     body: z.object({
         name: z.string().min(1, "اسم المورد مطلوب"),
-        contact_name: z.string().optional(),
+        contact_name: z.string().optional().or(z.literal("")),
         email: z.string().optional().or(z.literal("")),
-        phone: z.string().optional(),
-        address: z.string().optional(),
-        tax_id: z.string().optional(),
+        phone: z.string().optional().or(z.literal("")),
+        address: z.string().optional().or(z.literal("")),
+        tax_id: z.string().optional().or(z.literal("")),
     })
 });
 
@@ -22,7 +22,7 @@ const purchaseOrderSchema = z.object({
         vendor_id: z.string().min(1, "المورد مطلوب"),
         items: z.array(z.object({
             product_id: z.string().min(1, "المنتج مطلوب"),
-            name: z.string().optional(), // Allow name if sent from frontend
+            name: z.string().optional(),
             quantity: z.number().positive("الكمية يجب أن تكون أكبر من 0"),
             unit_cost: z.number().nonnegative("التكلفة لا يمكن أن تكون سالبة"),
         })).min(1, "يجب إضافة منتج واحد على الأقل"),

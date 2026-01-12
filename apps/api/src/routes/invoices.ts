@@ -55,6 +55,7 @@ router.post("/", verifyToken, validate(invoiceSchema), async (req: Request, res:
                 order_id: order.id,
                 customer_id: order.customer_id,
                 invoice_number: invoiceNumber,
+                subtotal: order.total_amount,
                 total_amount: order.total_amount,
                 status: order.payment_status === 'paid' ? 'paid' : 'sent',
                 due_date: due_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
