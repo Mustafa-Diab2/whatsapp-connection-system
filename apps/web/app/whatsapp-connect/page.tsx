@@ -121,19 +121,31 @@ export default function WhatsAppConnectPage() {
 
   // Continuous status polling until ready - ensures we detect the connected state
   useEffect(() => {
-    if (clientId === "default") return;
+    if (clientId === "default") {
+      console.log("[WhatsApp] Waiting for clientId...");
+      return;
+    }
+
+    console.log("[WhatsApp] 🚀 Starting status polling for clientId:", clientId);
 
     // Initial fetch
     void fetchStatus();
 
     // Poll every 3 seconds to detect status changes
     const statusPollingInterval = setInterval(async () => {
+      console.log("[WhatsApp] 🔄 Polling status...");
       try {
         const res = await fetch(`${apiBase}/whatsapp/status/${clientId}`, {
           headers: getAuthHeaders()
         });
+
+        if (!res.ok) {
+          console.error("[WhatsApp] ❌ Status API error:", res.status, res.statusText);
+          return;
+        }
+
         const data = await res.json();
-        console.log("[WhatsApp] Status poll:", data.status);
+        console.log("[WhatsApp] 📊 Status received:", data.status, "| hasQR:", !!data.qrDataUrl);
 
         setState((prev) => ({
           ...prev,
@@ -151,11 +163,12 @@ export default function WhatsAppConnectPage() {
           clearInterval(statusPollingInterval);
         }
       } catch (err) {
-        console.error("[WhatsApp] Status poll failed:", err);
+        console.error("[WhatsApp] ❌ Status poll failed:", err);
       }
     }, 3000);
 
     return () => {
+      console.log("[WhatsApp] 🛑 Cleanup: stopping polling");
       clearInterval(statusPollingInterval);
     };
   }, [fetchStatus, clientId]);
