@@ -346,28 +346,22 @@ export default class WhatsAppManager {
       console.log(`[${clientId}] Client ready`);
       this.setState(clientId, { status: "ready", qrDataUrl: undefined, lastError: undefined, attemptCount: 0 });
 
-      // Start Keep-Alive Protocol
-      if ((client as any).pupPage) {
-        try {
-          const page = (client as any).pupPage;
-          // Clear existing interval if any (stored in a way we can track, or just rely on client destroy clearing it)
-          // Ideally we track this interval, but for now we'll trust the process lifecycle or add it to a map
-
-          // Simple keep-alive evaluation
+      // Keep-Alive to prevent idle disconnection
+      try {
+        const page = (client as any).pupPage;
+        if (page) {
           setInterval(async () => {
             if (this.clients.get(clientId) === client) {
-              try {
-                await page.evaluate(() => 1);
-                // console.log(`[${clientId}] Keep-alive ping success`);
-              } catch (e) {
-                // console.warn(`[${clientId}] Keep-alive ping failed`, e);
-              }
+              try { await page.evaluate(() => 1); } catch (e) { }
             }
-          }, 300000); // Every 5 minutes
-        } catch (e) {
-          console.error(`[${clientId}] Failed to setup keep-alive`, e);
+          }, 60000); // Ping every minute
         }
-      }
+      } catch (e) { }
+
+      // SAFETY DELAY: Wait 5 seconds to let WhatsApp session stabilize
+      await new Promise(r => setTimeout(r, 5000));
+
+      if (this.clients.get(clientId) !== client) return; // Client was destroyed during wait
 
       // Auto-sync connected phone number to Organization Admin profile
       try {
@@ -822,78 +816,83 @@ export default class WhatsAppManager {
 
   private async doConnect(clientId: string): Promise<WaState> {
     this.locks.set(clientId, true);
-    console.log(`[${clientId}] Connecting...`);
-
-    const existingState = this.getState(clientId);
-    if (existingState.status === "ready") {
-      this.releaseLock(clientId);
-      return existingState;
-    }
-
-    let client = this.clients.get(clientId);
-
-    if (!client) {
-      console.log(`[${clientId}] Creating new WhatsApp client...`);
-
-      // FIX: Force ABSOLUTE path for sessions to prevent loss during restarts/working directory changes
-      const authPath = path.resolve(process.cwd(), ".wwebjs_auth");
-      console.log(`[${clientId}] LocalAuth path: ${authPath}`);
-
-      client = new Client({
-        authStrategy: new LocalAuth({
-          clientId,
-          dataPath: authPath
-        }),
-        puppeteer: {
-          headless: true, // Use true for production-like stability
-          args: [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-accelerated-2d-canvas",
-            "--no-first-run",
-            "--no-zygote",
-            "--disable-gpu",
-            "--disable-extensions",
-            "--disable-background-timer-throttling",
-            "--disable-backgrounding-occluded-windows",
-            "--disable-renderer-backgrounding",
-            "--disable-features=IsolateOrigins,site-per-process",
-            "--disable-web-security",
-            "--window-size=1280,720",
-          ],
-          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-          timeout: 120000, // Increase timeout to 2 minutes
-        },
-        webVersion: '2.3000.1019011108', // Force stable web version
-        webVersionCache: { type: 'none' }, // Prevent version mismatch logout
-        qrMaxRetries: 5,
-      });
-
-      this.attachClientEvents(clientId, client);
-      this.clients.set(clientId, client);
-    }
-
-    this.setState(clientId, {
-      status: "initializing",
-      lastError: undefined,
-      qrDataUrl: undefined,
-    });
-
     try {
-      await client.initialize();
-    } catch (err) {
-      console.error(`[${clientId}] Failed to initialize`, err);
+      console.log(`[${clientId}] doConnect start...`);
+
+      const existingState = this.getState(clientId);
+      if (existingState.status === "ready") {
+        return existingState;
+      }
+
+      let client = this.clients.get(clientId);
+
+      if (!client) {
+        console.log(`[${clientId}] Creating new WhatsApp client...`);
+
+        // FIX: Absolute path for Windows stability
+        const authPath = path.resolve(process.cwd(), ".wwebjs_auth");
+
+        client = new Client({
+          authStrategy: new LocalAuth({
+            clientId,
+            dataPath: authPath
+          }),
+          puppeteer: {
+            headless: true,
+            args: [
+              "--no-sandbox",
+              "--disable-setuid-sandbox",
+              "--disable-dev-shm-usage",
+              "--disable-accelerated-2d-canvas",
+              "--no-first-run",
+              "--no-zygote",
+              "--disable-gpu",
+              "--disable-extensions",
+              "--disable-background-timer-throttling",
+              "--disable-backgrounding-occluded-windows",
+              "--disable-renderer-backgrounding",
+              "--disable-features=IsolateOrigins,site-per-process",
+              "--disable-web-security",
+            ],
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+            timeout: 60000,
+          },
+          qrMaxRetries: 5,
+        });
+
+        this.attachClientEvents(clientId, client);
+        this.clients.set(clientId, client);
+      }
+
       this.setState(clientId, {
-        status: "error",
-        lastError: "فشل تهيئة العميل، حاول مجددًا",
+        status: "initializing",
+        lastError: undefined,
         qrDataUrl: undefined,
       });
-      await this.resetSession(clientId, { preserveAttempts: false });
-    }
 
-    this.releaseLock(clientId);
-    return this.getState(clientId);
+      try {
+        await client.initialize();
+      } catch (err) {
+        console.error(`[${clientId}] Failed to initialize`, err);
+        this.setState(clientId, {
+          status: "error",
+          lastError: "فشل تهيئة العميل، حاول مجددًا",
+          qrDataUrl: undefined,
+        });
+        await this.resetSession(clientId, { preserveAttempts: false });
+      }
+
+      return this.getState(clientId);
+    } catch (err) {
+      console.error(`[${clientId}] Error in doConnect`, err);
+      this.setState(clientId, {
+        status: "error",
+        lastError: "حدث خطأ غير متوقع أثناء الاتصال",
+      });
+      return this.getState(clientId);
+    } finally {
+      this.releaseLock(clientId);
+    }
   }
 
   getClient(clientId: string): Client | undefined {
