@@ -336,11 +336,24 @@ io.on("connection", (socket) => {
     socket.join(clientId);
 
     try {
-      // Create session if not exists (in-memory)
-      // manager.ensureReadyClient(clientId); --> No, don't auto connect, just get state
+      // Get current state and emit immediately (including QR if available)
       const state = manager.getState(clientId);
-      socket.emit("wa:state", state);
-      console.log(`[${clientId}] Socket subscribed by user ${(socket as any).user.email}`);
+      
+      // Emit full state including QR to ensure client has latest data
+      socket.emit("wa:state", {
+        clientId,
+        status: state.status,
+        qrDataUrl: state.qrDataUrl,
+        lastError: state.lastError,
+        updatedAt: state.updatedAt,
+      });
+      
+      // If there's an active QR, also emit it separately for redundancy
+      if (state.qrDataUrl && state.status === "waiting_qr") {
+        socket.emit("wa:qr", { clientId, qrDataUrl: state.qrDataUrl });
+      }
+      
+      console.log(`[${clientId}] Socket subscribed by user ${(socket as any).user.email}, state: ${state.status}, hasQR: ${!!state.qrDataUrl}`);
     } catch (e) {
       console.error(`Status check failed for ${clientId}`, e);
     }

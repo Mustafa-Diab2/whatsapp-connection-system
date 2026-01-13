@@ -55,6 +55,7 @@ export default class WhatsAppManager {
   private qrTimeouts = new Map<string, NodeJS.Timeout>();
   private connectInFlight = new Map<string, Promise<WaState>>();
   private botConfigs = new Map<string, BotConfig>();
+  private keepAliveIntervals = new Map<string, NodeJS.Timeout>(); // Track keep-alive intervals
   private readonly io: Server;
   private readonly qrTimeoutMs = 180_000; // 3 minutes for QR scan
   private isShuttingDown = false;
@@ -177,12 +178,19 @@ export default class WhatsAppManager {
       this.isShuttingDown = true;
       console.log(`\n[WhatsAppManager] Received ${signal}, shutting down gracefully...`);
 
-      // Clear all timers
+      // Clear all QR timers
       for (const [clientId, timer] of this.qrTimeouts) {
         clearTimeout(timer);
         console.log(`[${clientId}] Cleared QR timeout`);
       }
       this.qrTimeouts.clear();
+      
+      // Clear all keep-alive intervals
+      for (const [clientId, interval] of this.keepAliveIntervals) {
+        clearInterval(interval);
+        console.log(`[${clientId}] Cleared keep-alive interval`);
+      }
+      this.keepAliveIntervals.clear();
 
       // Destroy all clients
       const destroyPromises: Promise<void>[] = [];
@@ -330,6 +338,11 @@ export default class WhatsAppManager {
       console.log(`[${clientId}] QR received (length: ${qr.length})`);
       try {
         const qrDataUrl = await QRCode.toDataURL(qr);
+        
+        // Restart QR timeout since we got a new QR
+        this.clearQrTimeout(clientId);
+        this.startQrTimeout(clientId);
+        
         this.setState(clientId, { status: "waiting_qr", qrDataUrl, lastError: undefined });
         // Emit again explicitly to ensure delivery
         this.emitQr(clientId, qrDataUrl);
@@ -346,15 +359,44 @@ export default class WhatsAppManager {
       console.log(`[${clientId}] Client ready`);
       this.setState(clientId, { status: "ready", qrDataUrl: undefined, lastError: undefined, attemptCount: 0 });
 
+      // Clear any existing keep-alive interval for this client
+      const existingInterval = this.keepAliveIntervals.get(clientId);
+      if (existingInterval) {
+        clearInterval(existingInterval);
+        this.keepAliveIntervals.delete(clientId);
+        console.log(`[${clientId}] Cleared old keep-alive interval`);
+      }
+
       // Keep-Alive to prevent idle disconnection
       try {
         const page = (client as any).pupPage;
         if (page) {
-          setInterval(async () => {
-            if (this.clients.get(clientId) === client) {
-              try { await page.evaluate(() => 1); } catch (e) { }
+          const intervalId = setInterval(async () => {
+            // Check if this client is still the active one
+            if (this.clients.get(clientId) === client && !this.isShuttingDown) {
+              try { 
+                await page.evaluate(() => 1); 
+              } catch (e) { 
+                // Page closed, clear interval
+                console.warn(`[${clientId}] Keep-alive ping failed, clearing interval`);
+                const interval = this.keepAliveIntervals.get(clientId);
+                if (interval) {
+                  clearInterval(interval);
+                  this.keepAliveIntervals.delete(clientId);
+                }
+              }
+            } else {
+              // Client changed, clear this interval
+              const interval = this.keepAliveIntervals.get(clientId);
+              if (interval) {
+                clearInterval(interval);
+                this.keepAliveIntervals.delete(clientId);
+              }
             }
           }, 60000); // Ping every minute
+          
+          this.keepAliveIntervals.set(clientId, intervalId);
+          console.log(`[${clientId}] Keep-alive interval started`);
         }
       } catch (e) { }
 
@@ -411,6 +453,14 @@ export default class WhatsAppManager {
       // Clear the client from memory immediately
       this.clients.delete(clientId);
       this.clearQrTimeout(clientId);
+      
+      // Clear keep-alive interval
+      const keepAliveInterval = this.keepAliveIntervals.get(clientId);
+      if (keepAliveInterval) {
+        clearInterval(keepAliveInterval);
+        this.keepAliveIntervals.delete(clientId);
+        console.log(`[${clientId}] Keep-alive interval cleared on disconnect`);
+      }
 
       this.setState(clientId, {
         status: "disconnected",
@@ -713,26 +763,47 @@ export default class WhatsAppManager {
     const currentState = this.getState(clientId);
     if (!["initializing", "waiting_qr"].includes(currentState.status)) return;
 
-    console.warn(`[${clientId}] QR timeout reached, resetting session`);
     const attemptCount = currentState.attemptCount;
-    await this.resetSession(clientId, { preserveAttempts: true, silent: true });
-    this.setState(clientId, {
-      status: "idle",
-      qrDataUrl: undefined,
-      lastError: undefined,
-      attemptCount,
-    });
-
+    
     if (attemptCount < 3) {
-      console.log(`[${clientId}] Auto-retry (attempt ${attemptCount + 1}/3)`);
-      this.setState(clientId, { attemptCount: attemptCount + 1 });
-      void this.connect(clientId);
+      console.warn(`[${clientId}] QR timeout reached, requesting new QR (attempt ${attemptCount + 1}/3)`);
+      
+      // Instead of destroying the browser, just update state and let whatsapp-web.js generate new QR
+      // The whatsapp-web.js library automatically emits new QR codes when the old one expires
+      this.setState(clientId, { 
+        attemptCount: attemptCount + 1,
+        qrDataUrl: undefined, // Clear old QR to show loading state
+        lastError: `انتهت صلاحية QR، جاري إنشاء رمز جديد (محاولة ${attemptCount + 1}/3)...`
+      });
+      
+      // Restart QR timeout for the next QR
+      this.startQrTimeout(clientId);
+      
+      // If no new QR comes within 30 seconds, try soft reconnect
+      setTimeout(async () => {
+        const latestState = this.getState(clientId);
+        if (latestState.status === "waiting_qr" && !latestState.qrDataUrl) {
+          console.log(`[${clientId}] No new QR received, attempting soft reconnect...`);
+          const client = this.clients.get(clientId);
+          if (client) {
+            try {
+              // Try to get a new QR by resetting the WA state without destroying Puppeteer
+              await client.logout().catch(() => {}); // Soft logout to get new QR
+            } catch (e) {
+              console.error(`[${clientId}] Soft reconnect failed:`, e);
+            }
+          }
+        }
+      }, 30000);
     } else {
-      console.error(`[${clientId}] Max retry attempts reached (3/3)`);
+      console.error(`[${clientId}] Max retry attempts reached (3/3), full reset required`);
+      // Only do full reset after all attempts exhausted
+      await this.resetSession(clientId, { preserveAttempts: false, silent: false });
       this.setState(clientId, {
         status: "error",
-        lastError: "لم يتم توليد QR، اضغط Reset ثم حاول مرة أخرى",
+        lastError: "انتهت صلاحية QR بعد 3 محاولات، اضغط Reset ثم حاول مرة أخرى",
         qrDataUrl: undefined,
+        attemptCount: 0,
       });
     }
   }
@@ -743,6 +814,14 @@ export default class WhatsAppManager {
 
   async resetSession(clientId: string, options?: ResetOptions): Promise<WaState> {
     console.log(`[${clientId}] Resetting session...`);
+
+    // Clear keep-alive interval first
+    const keepAliveInterval = this.keepAliveIntervals.get(clientId);
+    if (keepAliveInterval) {
+      clearInterval(keepAliveInterval);
+      this.keepAliveIntervals.delete(clientId);
+      console.log(`[${clientId}] Keep-alive interval cleared on reset`);
+    }
 
     const existingClient = this.clients.get(clientId);
     if (existingClient) {
