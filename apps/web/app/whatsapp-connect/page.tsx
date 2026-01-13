@@ -183,72 +183,89 @@ export default function WhatsAppConnectPage() {
     };
   }, [clientId]);
 
-  // Continuous polling - keep polling until status is "ready" or "error" or "idle"
+  // Continuous polling - uses a ref to track polling state independently
+  const pollingRef = useRef<boolean>(false);
+  
   useEffect(() => {
-    // Poll when:
-    // 1. isPolling is true (user clicked connect)
-    // 2. OR status is initializing/waiting_qr (connection in progress)
-    const isConnecting = state.status === "waiting_qr" || state.status === "initializing";
-    const shouldPoll = isPolling || isConnecting;
+    if (clientId === "default") return;
     
-    if (!shouldPoll || clientId === "default") return;
-    if (state.status === "ready") {
-      console.log("[WhatsApp] Connected! Stopping polling.");
-      setIsPolling(false);
-      setLoading(false);
+    // Start polling when isPolling becomes true
+    if (!isPolling) {
+      pollingRef.current = false;
       return;
     }
+    
+    // Already polling
+    if (pollingRef.current) return;
+    pollingRef.current = true;
 
-    console.log("[WhatsApp] Polling active... status:", state.status, "hasQR:", !!state.qrDataUrl);
+    console.log("[WhatsApp] Starting continuous polling...");
 
     const pollStatus = async () => {
+      if (!pollingRef.current) return; // Stop if polling was disabled
+      
       try {
-        // Always fetch full status first
         const statusRes = await fetch(`${apiBase}/whatsapp/status/${clientId}`, {
           headers: getAuthHeaders()
         });
         const statusData = await statusRes.json();
-        console.log("[WhatsApp] Status poll result:", statusData.status, "hasQR:", !!statusData.qrDataUrl);
+        console.log("[WhatsApp] Poll:", statusData.status, "hasQR:", !!statusData.qrDataUrl);
         
         // Update state
         setState((prev) => ({ 
           ...prev, 
           status: statusData.status,
           lastError: statusData.lastError,
-          qrDataUrl: statusData.qrDataUrl ?? prev.qrDataUrl
+          qrDataUrl: statusData.qrDataUrl ?? (statusData.status === "waiting_qr" ? prev.qrDataUrl : undefined)
         }));
         
+        // Stop polling on terminal states
         if (statusData.status === "ready") {
           console.log("[WhatsApp] ✅ Connected successfully!");
+          pollingRef.current = false;
           setIsPolling(false);
           setLoading(false);
           return;
         }
         
-        // If waiting_qr but no QR in status, try QR endpoint
+        if (statusData.status === "error" || statusData.status === "disconnected") {
+          console.log("[WhatsApp] Connection failed:", statusData.status);
+          pollingRef.current = false;
+          setIsPolling(false);
+          setLoading(false);
+          return;
+        }
+        
+        // If waiting_qr but no QR, try QR endpoint
         if (statusData.status === "waiting_qr" && !statusData.qrDataUrl) {
-          const qrRes = await fetch(`${apiBase}/whatsapp/qr/${clientId}`, {
-            headers: getAuthHeaders()
-          });
-          const qrData = await qrRes.json();
-          
-          if (qrData?.qrDataUrl) {
-            console.log("[WhatsApp] QR received via polling");
-            setState((prev) => ({ ...prev, qrDataUrl: qrData.qrDataUrl }));
-            setLoading(false);
-          }
+          try {
+            const qrRes = await fetch(`${apiBase}/whatsapp/qr/${clientId}`, {
+              headers: getAuthHeaders()
+            });
+            const qrData = await qrRes.json();
+            if (qrData?.qrDataUrl) {
+              console.log("[WhatsApp] QR via polling");
+              setState((prev) => ({ ...prev, qrDataUrl: qrData.qrDataUrl }));
+              setLoading(false);
+            }
+          } catch (e) {}
         }
       } catch (e) {
         console.error("[WhatsApp] Poll failed:", e);
       }
     };
 
-    // Poll immediately and then every 2 seconds
+    // Poll immediately
     pollStatus();
-    const interval = setInterval(pollStatus, 2000);
+    
+    // Then poll every 1.5 seconds
+    const interval = setInterval(pollStatus, 1500);
 
-    return () => clearInterval(interval);
-  }, [state.status, clientId, isPolling]);
+    return () => {
+      clearInterval(interval);
+      pollingRef.current = false;
+    };
+  }, [clientId, isPolling]);
 
   const handleConnect = useCallback(async () => {
     if (state.status === "initializing" || state.status === "waiting_qr") return;
