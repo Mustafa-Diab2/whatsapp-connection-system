@@ -369,15 +369,35 @@ router.delete("/super/organizations/:orgId", verifyToken, verifySuperAdmin, asyn
     try {
         const { orgId } = req.params;
 
-        // 1. Delete users first if no cascade is set
-        const { error: usersError } = await supabase
-            .from("users")
-            .delete()
-            .eq("organization_id", orgId);
+        console.log(`[SuperAdmin] Hard deleting organization: ${orgId}`);
 
-        if (usersError) throw usersError;
+        // 1. Delete all related data manually to satisfy foreign key constraints
+        const tablesToDelete = [
+            'messages',
+            'campaign_logs',
+            'campaigns',
+            'quick_replies',
+            'deals',
+            'documents',
+            'contacts',
+            'customers',
+            'loyalty_transactions',
+            'users' // Users should be last before Org
+        ];
 
-        // 2. Delete the organization
+        for (const table of tablesToDelete) {
+            const { error: deleteError } = await supabase
+                .from(table)
+                .delete()
+                .eq("organization_id", orgId);
+
+            if (deleteError) {
+                console.warn(`[SuperAdmin] Clean-up warning in ${table}:`, deleteError.message);
+                // We continue to try others
+            }
+        }
+
+        // 2. Finally, delete the organization
         const { error: orgError } = await supabase
             .from("organizations")
             .delete()
@@ -385,8 +405,9 @@ router.delete("/super/organizations/:orgId", verifyToken, verifySuperAdmin, asyn
 
         if (orgError) throw orgError;
 
-        res.json({ message: "تم حذف المنظمة وجميع بياناتها بنجاح" });
+        res.json({ message: "تم حذف المنظمة وجميع بياناتها (العملاء، الرسائل، المستخدمين) بنجاح" });
     } catch (error: any) {
+        console.error(`[SuperAdmin] Failed to delete org ${orgId}:`, error);
         res.status(500).json({ error: error.message });
     }
 });
