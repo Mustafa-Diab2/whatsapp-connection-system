@@ -183,38 +183,34 @@ export default function WhatsAppConnectPage() {
     };
   }, [clientId]);
 
-  // Aggressive polling fallback - poll when isPolling is true OR when status is initializing/waiting_qr without QR
+  // Continuous polling - keep polling until status is "ready" or "error" or "idle"
   useEffect(() => {
-    const shouldPoll = isPolling || 
-      ((state.status === "waiting_qr" || state.status === "initializing") && !state.qrDataUrl);
+    // Poll when:
+    // 1. isPolling is true (user clicked connect)
+    // 2. OR status is initializing/waiting_qr (connection in progress)
+    const isConnecting = state.status === "waiting_qr" || state.status === "initializing";
+    const shouldPoll = isPolling || isConnecting;
     
     if (!shouldPoll || clientId === "default") return;
-    if (state.status === "ready") return; // Stop polling when connected
+    if (state.status === "ready") {
+      console.log("[WhatsApp] Connected! Stopping polling.");
+      setIsPolling(false);
+      setLoading(false);
+      return;
+    }
 
-    console.log("[WhatsApp] Starting QR polling...");
+    console.log("[WhatsApp] Polling active... status:", state.status, "hasQR:", !!state.qrDataUrl);
 
-    const pollQr = async () => {
+    const pollStatus = async () => {
       try {
-        // First try to get QR directly
-        const qrRes = await fetch(`${apiBase}/whatsapp/qr/${clientId}`, {
-          headers: getAuthHeaders()
-        });
-        const qrData = await qrRes.json();
-        
-        if (qrData?.qrDataUrl) {
-          console.log("[WhatsApp] QR received via polling");
-          setState((prev) => ({ ...prev, qrDataUrl: qrData.qrDataUrl, status: "waiting_qr" }));
-          setLoading(false);
-          return;
-        }
-        
-        // If no QR, fetch full status
+        // Always fetch full status first
         const statusRes = await fetch(`${apiBase}/whatsapp/status/${clientId}`, {
           headers: getAuthHeaders()
         });
         const statusData = await statusRes.json();
-        console.log("[WhatsApp] Status poll:", statusData.status);
+        console.log("[WhatsApp] Status poll result:", statusData.status, "hasQR:", !!statusData.qrDataUrl);
         
+        // Update state
         setState((prev) => ({ 
           ...prev, 
           status: statusData.status,
@@ -223,20 +219,36 @@ export default function WhatsAppConnectPage() {
         }));
         
         if (statusData.status === "ready") {
+          console.log("[WhatsApp] ✅ Connected successfully!");
           setIsPolling(false);
           setLoading(false);
+          return;
+        }
+        
+        // If waiting_qr but no QR in status, try QR endpoint
+        if (statusData.status === "waiting_qr" && !statusData.qrDataUrl) {
+          const qrRes = await fetch(`${apiBase}/whatsapp/qr/${clientId}`, {
+            headers: getAuthHeaders()
+          });
+          const qrData = await qrRes.json();
+          
+          if (qrData?.qrDataUrl) {
+            console.log("[WhatsApp] QR received via polling");
+            setState((prev) => ({ ...prev, qrDataUrl: qrData.qrDataUrl }));
+            setLoading(false);
+          }
         }
       } catch (e) {
         console.error("[WhatsApp] Poll failed:", e);
       }
     };
 
-    // Poll immediately and then every 1.5 seconds
-    pollQr();
-    const interval = setInterval(pollQr, 1500);
+    // Poll immediately and then every 2 seconds
+    pollStatus();
+    const interval = setInterval(pollStatus, 2000);
 
     return () => clearInterval(interval);
-  }, [state.status, state.qrDataUrl, clientId, isPolling]);
+  }, [state.status, clientId, isPolling]);
 
   const handleConnect = useCallback(async () => {
     if (state.status === "initializing" || state.status === "waiting_qr") return;
