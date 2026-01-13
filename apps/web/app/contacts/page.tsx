@@ -14,7 +14,7 @@ type Contact = {
     avatar: string;
 };
 
-const groups = ["الكل", "عملاء VIP", "عملاء جدد", "موردين", "فريق العمل"];
+const groups = ["الكل", "عملاء VIP", "عملاء جدد", "فريق العمل"];
 const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export default function ContactsPage() {

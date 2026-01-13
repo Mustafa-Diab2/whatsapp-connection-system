@@ -19,7 +19,6 @@ import productRoutes from "./routes/products";
 import orderRoutes from "./routes/orders";
 import taskRoutes from "./routes/tasks";
 import invoiceRoutes from "./routes/invoices";
-import purchaseRoutes from "./routes/purchases";
 import facebookRoutes, { createFacebookRoutes } from "./routes/facebook";
 import trackingRoutes, { handleTrackingRedirect } from "./routes/tracking";
 import paymentsRoutes from "./routes/payments";
@@ -378,7 +377,6 @@ app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/invoices", invoiceRoutes);
-app.use("/api/purchases", purchaseRoutes);
 
 // Facebook Integration Routes - Initialize with Socket.io
 const facebookRoutesWithIo = createFacebookRoutes(io);

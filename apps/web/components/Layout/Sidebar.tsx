@@ -22,7 +22,6 @@ const menuItems: MenuItem[] = [
   { label: "Knowledge Base", labelAr: "قاعدة المعرفة", href: "/documents", icon: "📚" },
   { label: "Campaigns", labelAr: "الحملات", href: "/campaigns", icon: "📢" },
   { label: "Inventory", labelAr: "المخزون", href: "/inventory", icon: "📦" },
-  { label: "Purchases", labelAr: "المشتريات والموردين", href: "/purchases", icon: "🚛" },
   { label: "Sales & Orders", labelAr: "المبيعات والطلبيات", href: "/orders", icon: "💰" },
   { label: "Invoices", labelAr: "الفواتير والحسابات", href: "/invoices", icon: "🧾" },
   { label: "Loyalty", labelAr: "نقاط الولاء", href: "/loyalty", icon: "🌟" },

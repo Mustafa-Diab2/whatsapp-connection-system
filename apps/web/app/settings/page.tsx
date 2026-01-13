@@ -24,7 +24,6 @@ const AVAILABLE_PAGES = [
     { id: "documents", label: "Knowledge Base", labelAr: "قاعدة المعرفة", href: "/documents" },
     { id: "campaigns", label: "Campaigns", labelAr: "الحملات", href: "/campaigns" },
     { id: "inventory", label: "Inventory", labelAr: "المخزون", href: "/inventory" },
-    { id: "purchases", label: "Purchases", labelAr: "المشتريات والموردين", href: "/purchases" },
     { id: "orders", label: "Sales & Orders", labelAr: "المبيعات والطلبيات", href: "/orders" },
     { id: "invoices", label: "Invoices", labelAr: "الفواتير والحسابات", href: "/invoices" },
     { id: "loyalty", label: "Loyalty", labelAr: "نقاط الولاء", href: "/loyalty" },

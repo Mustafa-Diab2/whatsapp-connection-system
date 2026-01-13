@@ -30,7 +30,6 @@ const AVAILABLE_PAGES = [
     { id: "documents", labelAr: "قاعدة المعرفة", href: "/documents" },
     { id: "campaigns", labelAr: "الحملات", href: "/campaigns" },
     { id: "inventory", labelAr: "المخزون", href: "/inventory" },
-    { id: "purchases", labelAr: "المشتريات والموردين", href: "/purchases" },
     { id: "orders", labelAr: "المبيعات والطلبيات", href: "/orders" },
     { id: "invoices", labelAr: "الفواتير والحسابات", href: "/invoices" },
     { id: "loyalty", labelAr: "نقاط الولاء", href: "/loyalty" },

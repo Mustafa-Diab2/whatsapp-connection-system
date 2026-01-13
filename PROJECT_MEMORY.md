@@ -8,7 +8,7 @@
 - ربط واتساب مع نظام إدارة علاقات العملاء
 - أتمتة الردود باستخدام الذكاء الاصطناعي (Google Gemini)
 - إدارة الحملات التسويقية والرسائل الجماعية
-- نظام ERP متكامل (منتجات، طلبات، فواتير، مشتريات)
+- نظام ERP متكامل (منتجات، طلبات، فواتير)
 - تكامل مع Facebook/Instagram للتواصل والإعلانات
 
 ---
@@ -153,8 +153,6 @@ disconnected → initializing → qr → ready/connected → disconnected
 | `orders` | الطلبات |
 | `order_items` | عناصر الطلبات |
 | `invoices` | الفواتير |
-| `vendors` | الموردين |
-| `purchase_orders` | أوامر الشراء |
 | `tasks` | المهام |
 
 #### التسويق
@@ -224,7 +222,6 @@ POST /contacts/sync  - مزامنة جهات الاتصال
 /api/products        - المنتجات
 /api/orders          - الطلبات
 /api/invoices        - الفواتير
-/api/purchases       - المشتريات
 /api/tasks           - المهام
 ```
 
@@ -264,7 +261,6 @@ POST /contacts/sync  - مزامنة جهات الاتصال
 | `/inventory` | المنتجات والمخزون |
 | `/orders` | الطلبات |
 | `/invoices` | الفواتير |
-| `/purchases` | المشتريات |
 
 ### إعدادات
 | المسار | الوصف |
