@@ -818,8 +818,14 @@ export default class WhatsAppManager {
     if (!client) {
       console.log(`[${clientId}] Creating new WhatsApp client...`);
 
+      // Ensure consistent data path for sessions
+      const authPath = path.join(process.cwd(), ".wwebjs_auth");
+
       client = new Client({
-        authStrategy: new LocalAuth({ clientId }),
+        authStrategy: new LocalAuth({
+          clientId,
+          dataPath: authPath
+        }),
         puppeteer: {
           headless: true,
           args: [
@@ -839,7 +845,7 @@ export default class WhatsAppManager {
             "--window-size=1920,1080",
           ],
           executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-          timeout: 60000, // 60 second timeout for browser launch
+          timeout: 60000,
         },
         qrMaxRetries: 5,
       });
