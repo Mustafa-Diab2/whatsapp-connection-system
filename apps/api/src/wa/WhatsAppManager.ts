@@ -835,8 +835,9 @@ export default class WhatsAppManager {
     if (!client) {
       console.log(`[${clientId}] Creating new WhatsApp client...`);
 
-      // Ensure consistent data path for sessions
-      const authPath = path.join(process.cwd(), ".wwebjs_auth");
+      // FIX: Force ABSOLUTE path for sessions to prevent loss during restarts/working directory changes
+      const authPath = path.resolve(process.cwd(), ".wwebjs_auth");
+      console.log(`[${clientId}] LocalAuth path: ${authPath}`);
 
       client = new Client({
         authStrategy: new LocalAuth({
@@ -844,7 +845,7 @@ export default class WhatsAppManager {
           dataPath: authPath
         }),
         puppeteer: {
-          headless: true,
+          headless: true, // Use true for production-like stability
           args: [
             "--no-sandbox",
             "--disable-setuid-sandbox",
@@ -859,11 +860,13 @@ export default class WhatsAppManager {
             "--disable-renderer-backgrounding",
             "--disable-features=IsolateOrigins,site-per-process",
             "--disable-web-security",
-            "--window-size=1920,1080",
+            "--window-size=1280,720",
           ],
           executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-          timeout: 60000,
+          timeout: 120000, // Increase timeout to 2 minutes
         },
+        webVersion: '2.3000.1019011108', // Force stable web version
+        webVersionCache: { type: 'none' }, // Prevent version mismatch logout
         qrMaxRetries: 5,
       });
 
