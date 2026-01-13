@@ -29,7 +29,7 @@ const API_ROUTES = [
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
   console.log('[SW] Installing service worker...');
-  
+
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -43,7 +43,7 @@ self.addEventListener('install', (event) => {
 // Activate event - clean old caches
 self.addEventListener('activate', (event) => {
   console.log('[SW] Activating service worker...');
-  
+
   event.waitUntil(
     caches.keys()
       .then((keys) => {
@@ -64,31 +64,31 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
-  
+
   // Skip non-GET requests
   if (request.method !== 'GET') return;
-  
+
   // Skip cross-origin requests
   if (url.origin !== location.origin) return;
-  
+
   // API requests - network first, cache fallback
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkFirstStrategy(request));
     return;
   }
-  
+
   // Static assets - cache first
   if (isStaticAsset(url.pathname)) {
     event.respondWith(cacheFirstStrategy(request));
     return;
   }
-  
+
   // Navigation requests - network first with offline fallback
   if (request.mode === 'navigate') {
     event.respondWith(navigationStrategy(request));
     return;
   }
-  
+
   // Default - stale while revalidate
   event.respondWith(staleWhileRevalidate(request));
 });
@@ -97,7 +97,7 @@ self.addEventListener('fetch', (event) => {
 async function cacheFirstStrategy(request) {
   const cached = await caches.match(request);
   if (cached) return cached;
-  
+
   try {
     const response = await fetch(request);
     if (response.ok) {
@@ -138,27 +138,31 @@ async function navigationStrategy(request) {
     console.log('[SW] Navigation failed, showing offline page');
     const cached = await caches.match(request);
     if (cached) return cached;
-    
+
     const offlinePage = await caches.match('/offline');
     if (offlinePage) return offlinePage;
-    
+
     return new Response('Offline', { status: 503 });
   }
 }
 
 async function staleWhileRevalidate(request) {
   const cached = await caches.match(request);
-  
+
   const networkFetch = fetch(request)
     .then((response) => {
+      // Clone the response BEFORE using it
+      const responseToCache = response.clone();
+
       if (response.ok) {
-        const cache = caches.open(DYNAMIC_CACHE);
-        cache.then((c) => c.put(request, response.clone()));
+        caches.open(DYNAMIC_CACHE).then((cache) => {
+          cache.put(request, responseToCache);
+        });
       }
       return response;
     })
     .catch(() => cached);
-  
+
   return cached || networkFetch;
 }
 
@@ -171,15 +175,15 @@ function isStaticAsset(pathname) {
 // Push notifications
 self.addEventListener('push', (event) => {
   console.log('[SW] Push received');
-  
+
   let data = { title: 'WhatsApp CRM', body: 'لديك إشعار جديد' };
-  
+
   try {
     data = event.data.json();
   } catch (e) {
     console.log('[SW] Push data is not JSON');
   }
-  
+
   const options = {
     body: data.body,
     icon: '/icons/icon-192x192.png',
@@ -199,7 +203,7 @@ self.addEventListener('push', (event) => {
     renotify: true,
     requireInteraction: data.requireInteraction || false,
   };
-  
+
   event.waitUntil(
     self.registration.showNotification(data.title, options)
   );
@@ -208,13 +212,13 @@ self.addEventListener('push', (event) => {
 // Notification click handler
 self.addEventListener('notificationclick', (event) => {
   console.log('[SW] Notification clicked');
-  
+
   event.notification.close();
-  
+
   if (event.action === 'dismiss') return;
-  
+
   const url = event.notification.data?.url || '/chat';
-  
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
@@ -235,11 +239,11 @@ self.addEventListener('notificationclick', (event) => {
 // Background sync for offline messages
 self.addEventListener('sync', (event) => {
   console.log('[SW] Sync event:', event.tag);
-  
+
   if (event.tag === 'send-messages') {
     event.waitUntil(sendPendingMessages());
   }
-  
+
   if (event.tag === 'sync-contacts') {
     event.waitUntil(syncContacts());
   }
@@ -259,7 +263,7 @@ async function syncContacts() {
 // Periodic background sync (if supported)
 self.addEventListener('periodicsync', (event) => {
   console.log('[SW] Periodic sync:', event.tag);
-  
+
   if (event.tag === 'check-messages') {
     event.waitUntil(checkNewMessages());
   }
@@ -283,12 +287,12 @@ async function handleShare(request) {
   const text = formData.get('text');
   const url = formData.get('url');
   const files = formData.getAll('media');
-  
+
   // Redirect to chat with shared content
   const shareUrl = new URL('/chat', self.location.origin);
   if (text) shareUrl.searchParams.set('text', text);
   if (url) shareUrl.searchParams.set('url', url);
-  
+
   return Response.redirect(shareUrl.toString(), 303);
 }
 

@@ -6,7 +6,7 @@
   "license": "MIT",
   "type": "commonjs",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev": "ts-node-dev --respawn --transpile-only --ignore-watch .wwebjs_auth --ignore-watch node_modules src/server.ts",
     "start": "node dist/server.js",
     "build": "tsc"
   },
