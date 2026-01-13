@@ -462,6 +462,24 @@ app.get("/whatsapp/status/:clientId", verifyToken, (req, res) => {
   res.json(state);
 });
 
+// QR Code endpoint (for polling fallback)
+app.get("/whatsapp/qr/:clientId", verifyToken, (req, res) => {
+  const clientId = req.params.clientId;
+
+  // Strict matching to prevent IDOR
+  const orgId = getOrgId(req);
+  if (clientId !== orgId) {
+    return res.status(403).json({ message: "Access denied: Organization mismatch" });
+  }
+
+  const state = manager.getState(clientId);
+  if (state.qrDataUrl) {
+    res.json({ qrDataUrl: state.qrDataUrl });
+  } else {
+    res.json({ qrDataUrl: null, status: state.status });
+  }
+});
+
 // Initialize
 app.post("/whatsapp/init/:clientId", verifyToken, async (req, res) => {
   const clientId = req.params.clientId || "default";

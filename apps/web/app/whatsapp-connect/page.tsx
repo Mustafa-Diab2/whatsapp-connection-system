@@ -100,27 +100,70 @@ export default function WhatsAppConnectPage() {
     if (clientId === "default") return; // Wait for real clientId
 
     const token = localStorage.getItem("token");
-    const s = io(apiBase, {
-      transports: ["websocket"],
-      auth: { token }
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || apiBase;
+
+    const s = io(socketUrl, {
+      transports: ["websocket", "polling"], // Add polling as fallback
+      auth: { token },
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
     });
+
     s.on("connect", () => {
+      console.log("[WhatsApp] Socket connected:", s.id);
       s.emit("wa:subscribe", { clientId });
     });
+
+    s.on("connect_error", (err) => {
+      console.error("[WhatsApp] Socket connection error:", err.message);
+    });
+
     s.on("wa:state", (payload: { status: Status; qrDataUrl?: string; lastError?: string }) => {
+      console.log("[WhatsApp] State update:", payload.status);
       setState((prev) => ({ ...prev, ...payload, qrDataUrl: payload.qrDataUrl ?? prev.qrDataUrl }));
       if (payload.status !== "waiting_qr") {
         setConnectDisabled(false);
         setLoading(false);
       }
     });
+
     s.on("wa:qr", (payload: { qrDataUrl: string }) => {
+      console.log("[WhatsApp] QR received via socket");
       setState((prev) => ({ ...prev, qrDataUrl: payload.qrDataUrl, status: "waiting_qr" }));
+      setLoading(false);
     });
+
     return () => {
       s.disconnect();
     };
   }, [clientId]);
+
+  // Fallback: Poll for QR if socket fails
+  useEffect(() => {
+    if (state.status !== "waiting_qr" && state.status !== "initializing") return;
+    if (state.qrDataUrl) return; // Already have QR
+
+    const pollQr = async () => {
+      try {
+        const res = await fetch(`${apiBase}/whatsapp/qr/${clientId}`, {
+          headers: getAuthHeaders()
+        });
+        const data = await res.json();
+        if (data?.qrDataUrl) {
+          console.log("[WhatsApp] QR received via polling");
+          setState((prev) => ({ ...prev, qrDataUrl: data.qrDataUrl, status: "waiting_qr" }));
+        }
+      } catch (e) {
+        console.error("[WhatsApp] QR poll failed:", e);
+      }
+    };
+
+    // Poll every 2 seconds if status is waiting but no QR
+    const interval = setInterval(pollQr, 2000);
+    pollQr(); // Immediate first poll
+
+    return () => clearInterval(interval);
+  }, [state.status, state.qrDataUrl, clientId]);
 
   const handleConnect = useCallback(async () => {
     if (state.status === "initializing" || state.status === "waiting_qr") return;
