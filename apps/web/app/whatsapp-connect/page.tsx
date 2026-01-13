@@ -56,18 +56,27 @@ export default function WhatsAppConnectPage() {
   // Get organizationId from user data on mount
   useEffect(() => {
     const userStr = localStorage.getItem("user");
+    // Also check the separate organizationId key (set by login)
+    const storedOrgId = localStorage.getItem("organizationId");
+
     if (userStr) {
       try {
         const user = JSON.parse(userStr);
         // API returns organization_id (snake_case)
-        const orgId = user.organization_id || user.organizationId;
+        const orgId = user.organization_id || user.organizationId || storedOrgId;
         if (orgId) {
           setClientId(orgId);
           console.log("[WhatsApp] Using organizationId:", orgId);
+        } else {
+          console.warn("[WhatsApp] ⚠️ No organizationId found in user data or localStorage!");
         }
       } catch (e) {
         console.error("Failed to parse user data", e);
       }
+    } else if (storedOrgId) {
+      // Fallback: use stored organizationId even without user data
+      setClientId(storedOrgId);
+      console.log("[WhatsApp] Using stored organizationId:", storedOrgId);
     }
   }, []);
 

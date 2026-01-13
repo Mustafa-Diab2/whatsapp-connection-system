@@ -217,17 +217,24 @@ export default function ChatPage() {
   // Load Organization ID
   useEffect(() => {
     const userStr = localStorage.getItem("user");
+    const storedOrgId = localStorage.getItem("organizationId");
+
     if (userStr) {
       try {
         const user = JSON.parse(userStr);
-        const orgId = user.organization_id || user.organizationId;
+        const orgId = user.organization_id || user.organizationId || storedOrgId;
         if (orgId) {
           setClientId(orgId);
           console.log("[Chat] Using Organization ID:", orgId);
+        } else {
+          console.warn("[Chat] ⚠️ No organizationId found!");
         }
       } catch (e) {
         console.error("Failed to parse user", e);
       }
+    } else if (storedOrgId) {
+      setClientId(storedOrgId);
+      console.log("[Chat] Using stored organizationId:", storedOrgId);
     }
   }, []);
 
