@@ -366,8 +366,8 @@ router.put("/super/organizations/:orgId", verifyToken, verifySuperAdmin, async (
 
 // 4. Delete Organization (Super Admin only)
 router.delete("/super/organizations/:orgId", verifyToken, verifySuperAdmin, async (req: Request, res: Response) => {
+    const { orgId } = req.params;
     try {
-        const { orgId } = req.params;
 
         console.log(`[SuperAdmin] Hard deleting organization: ${orgId}`);
 
