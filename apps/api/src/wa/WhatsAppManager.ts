@@ -184,7 +184,7 @@ export default class WhatsAppManager {
         console.log(`[${clientId}] Cleared QR timeout`);
       }
       this.qrTimeouts.clear();
-      
+
       // Clear all keep-alive intervals
       for (const [clientId, interval] of this.keepAliveIntervals) {
         clearInterval(interval);
@@ -338,11 +338,11 @@ export default class WhatsAppManager {
       console.log(`[${clientId}] QR received (length: ${qr.length})`);
       try {
         const qrDataUrl = await QRCode.toDataURL(qr);
-        
+
         // Restart QR timeout since we got a new QR
         this.clearQrTimeout(clientId);
         this.startQrTimeout(clientId);
-        
+
         this.setState(clientId, { status: "waiting_qr", qrDataUrl, lastError: undefined });
         // Emit again explicitly to ensure delivery
         this.emitQr(clientId, qrDataUrl);
@@ -374,9 +374,9 @@ export default class WhatsAppManager {
           const intervalId = setInterval(async () => {
             // Check if this client is still the active one
             if (this.clients.get(clientId) === client && !this.isShuttingDown) {
-              try { 
-                await page.evaluate(() => 1); 
-              } catch (e) { 
+              try {
+                await page.evaluate(() => 1);
+              } catch (e) {
                 // Page closed, clear interval
                 console.warn(`[${clientId}] Keep-alive ping failed, clearing interval`);
                 const interval = this.keepAliveIntervals.get(clientId);
@@ -394,7 +394,7 @@ export default class WhatsAppManager {
               }
             }
           }, 60000); // Ping every minute
-          
+
           this.keepAliveIntervals.set(clientId, intervalId);
           console.log(`[${clientId}] Keep-alive interval started`);
         }
@@ -453,7 +453,7 @@ export default class WhatsAppManager {
       // Clear the client from memory immediately
       this.clients.delete(clientId);
       this.clearQrTimeout(clientId);
-      
+
       // Clear keep-alive interval
       const keepAliveInterval = this.keepAliveIntervals.get(clientId);
       if (keepAliveInterval) {
@@ -484,9 +484,9 @@ export default class WhatsAppManager {
       // Auto-reconnect after 5 seconds ONLY if was previously connected (ready state)
       // Don't auto-reconnect if disconnected during QR scanning or initialization
       const currentState = this.getState(clientId);
-      const wasConnected = currentState.status === 'disconnected' && 
-                           !['waiting_qr', 'initializing', 'idle', 'error'].includes(currentState.status);
-      
+      const wasConnected = currentState.status === 'disconnected' &&
+        !['waiting_qr', 'initializing', 'idle', 'error'].includes(currentState.status);
+
       if (!this.isShuttingDown && reason !== 'NAVIGATION' && reason !== 'LOGOUT') {
         // Only auto-reconnect if the session was previously working (had been 'ready')
         const shouldAutoReconnect = !currentState.lastError?.includes('QR');
@@ -764,21 +764,21 @@ export default class WhatsAppManager {
     if (!["initializing", "waiting_qr"].includes(currentState.status)) return;
 
     const attemptCount = currentState.attemptCount;
-    
+
     if (attemptCount < 3) {
       console.warn(`[${clientId}] QR timeout reached, requesting new QR (attempt ${attemptCount + 1}/3)`);
-      
+
       // Instead of destroying the browser, just update state and let whatsapp-web.js generate new QR
       // The whatsapp-web.js library automatically emits new QR codes when the old one expires
-      this.setState(clientId, { 
+      this.setState(clientId, {
         attemptCount: attemptCount + 1,
         qrDataUrl: undefined, // Clear old QR to show loading state
         lastError: `انتهت صلاحية QR، جاري إنشاء رمز جديد (محاولة ${attemptCount + 1}/3)...`
       });
-      
+
       // Restart QR timeout for the next QR
       this.startQrTimeout(clientId);
-      
+
       // If no new QR comes within 30 seconds, try soft reconnect
       setTimeout(async () => {
         const latestState = this.getState(clientId);
@@ -788,7 +788,7 @@ export default class WhatsAppManager {
           if (client) {
             try {
               // Try to get a new QR by resetting the WA state without destroying Puppeteer
-              await client.logout().catch(() => {}); // Soft logout to get new QR
+              await client.logout().catch(() => { }); // Soft logout to get new QR
             } catch (e) {
               console.error(`[${clientId}] Soft reconnect failed:`, e);
             }
@@ -947,6 +947,7 @@ export default class WhatsAppManager {
               "--disable-renderer-backgrounding",
               "--disable-features=IsolateOrigins,site-per-process",
               "--disable-web-security",
+              "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             ],
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
             timeout: 60000,
