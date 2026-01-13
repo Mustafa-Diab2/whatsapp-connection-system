@@ -285,9 +285,15 @@ export default function ChatPage() {
     };
 
     const handleStateUpdate = (data: any) => {
-      console.log("State update:", data);
+      console.log("[Chat] 📡 Socket state update received:", data.status, "hasQR:", !!data.qrDataUrl);
       if (data.status) {
-        setStatus(data.status as Status);
+        const newStatus = data.status as Status;
+        setStatus(newStatus);
+
+        // Log when we receive ready status via socket
+        if (newStatus === "ready") {
+          console.log("[Chat] ✅ WhatsApp ready (via socket)");
+        }
       }
     };
 
@@ -596,20 +602,23 @@ export default function ChatPage() {
     fetchQuickReplies();
   }, [fetchQuickReplies]);
 
-  const fetchStatus = useCallback(async () => {
-    if (clientId === "default") return;
+  const fetchStatus = useCallback(async (): Promise<Status> => {
+    if (clientId === "default") return "idle";
     try {
       const res = await fetch(`${apiBase}/whatsapp/status/${clientId}`, {
         headers: getAuthHeaders()
       });
       const data = await res.json();
-      setStatus(data.status as Status);
+      const newStatus = data.status as Status;
+      setStatus(newStatus);
+      console.log("[Chat] Status fetched:", newStatus);
+      return newStatus;
     } catch (err) {
       console.error("Fetch status error", err);
       setStatus("error");
-      // setErrorMsg("تعذر جلب حالة الاتصال"); // Don't show error immediately on init
+      return "error";
     }
-  }, [clientId, initialChatEncoded]);
+  }, [clientId]);
 
   const fetchMe = useCallback(async () => {
     try {
@@ -794,9 +803,29 @@ export default function ChatPage() {
     }
   }, [selectedChat, messages.length, fetchMessages]);
 
+  // Continuous status polling until ready - ensures we catch the connected state
   useEffect(() => {
+    if (clientId === "default") return;
+
+    // Initial fetch
     void fetchStatus();
-  }, [fetchStatus]);
+
+    // Poll every 3 seconds until ready
+    const statusPollingInterval = setInterval(async () => {
+      const currentStatus = await fetchStatus();
+      console.log("[Chat] Status polling:", currentStatus);
+
+      // Stop polling once ready (data will refresh via other means)
+      if (currentStatus === "ready") {
+        console.log("[Chat] ✅ WhatsApp is ready, stopping status polling");
+        clearInterval(statusPollingInterval);
+      }
+    }, 3000);
+
+    return () => {
+      clearInterval(statusPollingInterval);
+    };
+  }, [fetchStatus, clientId]);
 
   useEffect(() => {
     if (status === "ready") {
