@@ -238,13 +238,16 @@ export default class WhatsAppManager {
   }
 
   private emitQr(clientId: string, qrDataUrl: string) {
+    console.log(`[${clientId}] Emitting QR to socket room (length: ${qrDataUrl.length})`);
     this.io.to(clientId).emit("wa:qr", { clientId, qrDataUrl });
   }
 
   private emitState(clientId: string, state: WaState) {
+    console.log(`[${clientId}] Emitting state: ${state.status}, hasQR: ${!!state.qrDataUrl}`);
     this.io.to(clientId).emit("wa:state", {
       clientId,
       status: state.status,
+      qrDataUrl: state.qrDataUrl, // ✅ Include QR in state emission!
       updatedAt: state.updatedAt,
       lastError: state.lastError,
     });
