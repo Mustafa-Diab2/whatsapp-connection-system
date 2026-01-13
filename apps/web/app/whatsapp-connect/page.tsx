@@ -46,6 +46,7 @@ export default function WhatsAppConnectPage() {
   const [connectDisabled, setConnectDisabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [clientId, setClientId] = useState<string>("default");
+  const [userClickedConnect, setUserClickedConnect] = useState(false); // Track if user initiated connection
 
   // Get organizationId from user data on mount
   useEffect(() => {
@@ -74,21 +75,20 @@ export default function WhatsAppConnectPage() {
         headers: getAuthHeaders()
       });
       const data = await res.json();
-      setState((prev) => ({ ...prev, ...data }));
-      if (data.status === "waiting_qr") {
-        const qrRes = await fetch(`${apiBase}/whatsapp/qr/${clientId}`, {
-          headers: getAuthHeaders()
-        });
-        const qr = await qrRes.json();
-        if (qr?.qrDataUrl) {
-          setState((prev) => ({ ...prev, qrDataUrl: qr.qrDataUrl }));
-        }
-      }
+      // Only update status, not QR (QR should only show after user clicks connect)
+      setState((prev) => ({ 
+        ...prev, 
+        status: data.status,
+        lastError: data.lastError,
+        updatedAt: data.updatedAt,
+        // Keep existing qrDataUrl only if user initiated connection
+        qrDataUrl: userClickedConnect ? (data.qrDataUrl ?? prev.qrDataUrl) : undefined
+      }));
     } catch (err) {
       console.error("Failed to fetch status", err);
       setState((prev) => ({ ...prev, status: "error", lastError: "تعذر جلب الحالة الحالية" }));
     }
-  }, [clientId]);
+  }, [clientId, userClickedConnect]);
 
   useEffect(() => {
     if (clientId !== "default") {
@@ -120,7 +120,17 @@ export default function WhatsAppConnectPage() {
 
     s.on("wa:state", (payload: { status: Status; qrDataUrl?: string; lastError?: string }) => {
       console.log("[WhatsApp] State update:", payload.status);
-      setState((prev) => ({ ...prev, ...payload, qrDataUrl: payload.qrDataUrl ?? prev.qrDataUrl }));
+      setState((prev) => {
+        // Get current userClickedConnect from closure
+        const shouldShowQr = document.body.dataset.userClickedConnect === 'true';
+        return { 
+          ...prev, 
+          status: payload.status,
+          lastError: payload.lastError,
+          // Only show QR if user initiated the connection
+          qrDataUrl: shouldShowQr ? (payload.qrDataUrl ?? prev.qrDataUrl) : prev.qrDataUrl
+        };
+      });
       if (payload.status !== "waiting_qr") {
         setConnectDisabled(false);
         setLoading(false);
@@ -129,7 +139,11 @@ export default function WhatsAppConnectPage() {
 
     s.on("wa:qr", (payload: { qrDataUrl: string }) => {
       console.log("[WhatsApp] QR received via socket");
-      setState((prev) => ({ ...prev, qrDataUrl: payload.qrDataUrl, status: "waiting_qr" }));
+      // Only show QR if user initiated the connection
+      const shouldShowQr = document.body.dataset.userClickedConnect === 'true';
+      if (shouldShowQr) {
+        setState((prev) => ({ ...prev, qrDataUrl: payload.qrDataUrl, status: "waiting_qr" }));
+      }
       setLoading(false);
     });
 
@@ -138,8 +152,10 @@ export default function WhatsAppConnectPage() {
     };
   }, [clientId]);
 
-  // Fallback: Poll for QR if socket fails
+  // Fallback: Poll for QR if socket fails (only when user initiated connection)
   useEffect(() => {
+    // Only poll if user clicked connect
+    if (!userClickedConnect) return;
     if (state.status !== "waiting_qr" && state.status !== "initializing") return;
     if (state.qrDataUrl) return; // Already have QR
 
@@ -163,12 +179,14 @@ export default function WhatsAppConnectPage() {
     pollQr(); // Immediate first poll
 
     return () => clearInterval(interval);
-  }, [state.status, state.qrDataUrl, clientId]);
+  }, [state.status, state.qrDataUrl, clientId, userClickedConnect]);
 
   const handleConnect = useCallback(async () => {
     if (state.status === "initializing" || state.status === "waiting_qr") return;
     setConnectDisabled(true);
     setLoading(true);
+    setUserClickedConnect(true); // Mark that user initiated connection
+    document.body.dataset.userClickedConnect = 'true'; // For socket handlers
     setTimeout(() => setConnectDisabled(false), 2000);
     try {
       await fetch(`${apiBase}/whatsapp/connect`, {
@@ -185,6 +203,8 @@ export default function WhatsAppConnectPage() {
 
   const handleReset = useCallback(async () => {
     setLoading(true);
+    setUserClickedConnect(false); // Reset user initiated flag
+    document.body.dataset.userClickedConnect = 'false'; // Reset for socket handlers
     try {
       const res = await fetch(`${apiBase}/whatsapp/reset`, {
         method: "POST",
@@ -192,7 +212,7 @@ export default function WhatsAppConnectPage() {
         body: JSON.stringify({ clientId }),
       });
       const data = await res.json();
-      if (data.state) setState(data.state);
+      if (data.state) setState({ ...data.state, qrDataUrl: undefined }); // Clear QR on reset
       setConnectDisabled(false);
     } catch (err) {
       console.error("Reset failed", err);
@@ -358,7 +378,7 @@ export default function WhatsAppConnectPage() {
                 <li>العميل: {clientId}</li>
                 <li>الوضع الحالي: {statusLabels[state.status]}</li>
                 <li>القفل: {state.status === "initializing" || state.status === "waiting_qr" ? "مفعل" : "غير مفعل"}</li>
-                <li>التنبيهات: سيتم إعادة المحاولة تلقائيًا إذا لم يصل QR خلال 20 ثانية.</li>
+                <li>التنبيهات: سيتم إعادة المحاولة تلقائيًا (3 محاولات) إذا لم يتم مسح QR خلال 3 دقائق.</li>
               </ul>
             </div>
           </div>

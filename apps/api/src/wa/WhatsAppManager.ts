@@ -56,7 +56,7 @@ export default class WhatsAppManager {
   private connectInFlight = new Map<string, Promise<WaState>>();
   private botConfigs = new Map<string, BotConfig>();
   private readonly io: Server;
-  private readonly qrTimeoutMs = 60_000;
+  private readonly qrTimeoutMs = 180_000; // 3 minutes for QR scan
   private isShuttingDown = false;
 
   // Contact caching: clientId -> Map<phone, contactInfo>
@@ -708,12 +708,12 @@ export default class WhatsAppManager {
       attemptCount,
     });
 
-    if (attemptCount < 1) {
-      console.log(`[${clientId}] Auto-retry (attempt ${attemptCount + 1})`);
+    if (attemptCount < 3) {
+      console.log(`[${clientId}] Auto-retry (attempt ${attemptCount + 1}/3)`);
       this.setState(clientId, { attemptCount: attemptCount + 1 });
       void this.connect(clientId);
     } else {
-      console.error(`[${clientId}] Max retry attempts reached`);
+      console.error(`[${clientId}] Max retry attempts reached (3/3)`);
       this.setState(clientId, {
         status: "error",
         lastError: "لم يتم توليد QR، اضغط Reset ثم حاول مرة أخرى",
