@@ -48,6 +48,10 @@ export default function WhatsAppConnectPage() {
   const [clientId, setClientId] = useState<string>("default");
   const [isPolling, setIsPolling] = useState(false); // Track if we should poll
   const socketRef = useRef<Socket | null>(null);
+  
+  // Polling refs - defined early so socket handlers can access them
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isPollingActiveRef = useRef<boolean>(false);
 
   // Get organizationId from user data on mount
   useEffect(() => {
@@ -144,13 +148,12 @@ export default function WhatsAppConnectPage() {
 
     s.on("disconnect", (reason) => {
       console.warn("[WhatsApp] Socket disconnected:", reason);
-      // Enable polling as fallback when socket disconnects
-      setIsPolling(true);
+      // Note: polling is started by handleConnect, not here
     });
 
     s.on("connect_error", (err) => {
       console.error("[WhatsApp] Socket connection error:", err.message);
-      setIsPolling(true);
+      // Note: polling is started by handleConnect, not here
     });
 
     s.on("wa:state", (payload: { status: Status; qrDataUrl?: string; lastError?: string }) => {
@@ -164,9 +167,12 @@ export default function WhatsAppConnectPage() {
       if (payload.status !== "waiting_qr" && payload.status !== "initializing") {
         setConnectDisabled(false);
         setLoading(false);
-        setIsPolling(false);
-      }
-      if (payload.status === "ready") {
+        // Stop polling using refs directly
+        isPollingActiveRef.current = false;
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
         setIsPolling(false);
       }
     });
@@ -183,26 +189,26 @@ export default function WhatsAppConnectPage() {
     };
   }, [clientId]);
 
-  // Continuous polling - uses a ref to track polling state independently
-  const pollingRef = useRef<boolean>(false);
-  
-  useEffect(() => {
-    if (clientId === "default") return;
-    
-    // Start polling when isPolling becomes true
-    if (!isPolling) {
-      pollingRef.current = false;
-      return;
+  // Continuous polling functions
+  const stopPolling = useCallback(() => {
+    console.log("[WhatsApp] Stopping polling");
+    isPollingActiveRef.current = false;
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
     }
+    setIsPolling(false);
+  }, []);
+
+  const startPolling = useCallback(() => {
+    if (clientId === "default" || isPollingActiveRef.current) return;
     
-    // Already polling
-    if (pollingRef.current) return;
-    pollingRef.current = true;
-
     console.log("[WhatsApp] Starting continuous polling...");
-
+    isPollingActiveRef.current = true;
+    setIsPolling(true);
+    
     const pollStatus = async () => {
-      if (!pollingRef.current) return; // Stop if polling was disabled
+      if (!isPollingActiveRef.current) return;
       
       try {
         const statusRes = await fetch(`${apiBase}/whatsapp/status/${clientId}`, {
@@ -211,33 +217,34 @@ export default function WhatsAppConnectPage() {
         const statusData = await statusRes.json();
         console.log("[WhatsApp] Poll:", statusData.status, "hasQR:", !!statusData.qrDataUrl);
         
-        // Update state
+        // Update state FIRST before any conditional logic
+        const newStatus = statusData.status as Status;
+        const newQr = statusData.qrDataUrl ?? (newStatus === "waiting_qr" ? undefined : undefined);
+        
         setState((prev) => ({ 
           ...prev, 
-          status: statusData.status,
+          status: newStatus,
           lastError: statusData.lastError,
-          qrDataUrl: statusData.qrDataUrl ?? (statusData.status === "waiting_qr" ? prev.qrDataUrl : undefined)
+          qrDataUrl: statusData.qrDataUrl ?? (newStatus === "waiting_qr" ? prev.qrDataUrl : undefined)
         }));
         
-        // Stop polling on terminal states
-        if (statusData.status === "ready") {
+        // Check terminal states AFTER state update
+        if (newStatus === "ready") {
           console.log("[WhatsApp] ✅ Connected successfully!");
-          pollingRef.current = false;
-          setIsPolling(false);
+          stopPolling();
           setLoading(false);
           return;
         }
         
-        if (statusData.status === "error" || statusData.status === "disconnected") {
-          console.log("[WhatsApp] Connection failed:", statusData.status);
-          pollingRef.current = false;
-          setIsPolling(false);
+        if (newStatus === "error" || newStatus === "disconnected") {
+          console.log("[WhatsApp] Connection ended:", newStatus);
+          stopPolling();
           setLoading(false);
           return;
         }
         
         // If waiting_qr but no QR, try QR endpoint
-        if (statusData.status === "waiting_qr" && !statusData.qrDataUrl) {
+        if (newStatus === "waiting_qr" && !statusData.qrDataUrl) {
           try {
             const qrRes = await fetch(`${apiBase}/whatsapp/qr/${clientId}`, {
               headers: getAuthHeaders()
@@ -259,20 +266,26 @@ export default function WhatsAppConnectPage() {
     pollStatus();
     
     // Then poll every 1.5 seconds
-    const interval = setInterval(pollStatus, 1500);
-
+    pollingIntervalRef.current = setInterval(pollStatus, 1500);
+  }, [clientId, stopPolling]);
+  
+  // Cleanup on unmount
+  useEffect(() => {
     return () => {
-      clearInterval(interval);
-      pollingRef.current = false;
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
     };
-  }, [clientId, isPolling]);
+  }, []);
 
   const handleConnect = useCallback(async () => {
     if (state.status === "initializing" || state.status === "waiting_qr") return;
     setConnectDisabled(true);
     setLoading(true);
-    setIsPolling(true); // Start polling immediately
     setState((prev) => ({ ...prev, status: "initializing", qrDataUrl: undefined }));
+    
+    // Start polling immediately - this will detect state changes
+    startPolling();
     
     setTimeout(() => setConnectDisabled(false), 2000);
     try {
@@ -292,9 +305,9 @@ export default function WhatsAppConnectPage() {
       console.error("Connect failed", err);
       setState((prev) => ({ ...prev, status: "error", lastError: "فشل طلب الاتصال، حاول مجددًا" }));
       setLoading(false);
-      setIsPolling(false);
+      stopPolling();
     }
-  }, [state.status, clientId]);
+  }, [state.status, clientId, startPolling, stopPolling]);
 
   const handleReset = useCallback(async () => {
     setLoading(true);
