@@ -776,24 +776,22 @@ export default class WhatsAppManager {
 
       client = new Client({
         authStrategy: new LocalAuth({ clientId }),
-        webVersion: '2.3000.1019011108', // Updated stable version
-        webVersionCache: {
-          type: 'none',
-        },
         puppeteer: {
           headless: true,
           args: [
             "--no-sandbox",
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
-            "--no-zygote",
-            "--disable-gpu",
-            "--disable-extensions",
-            "--disable-client-side-phishing-detection",
-            "--disable-setuid-sandbox",
             "--disable-accelerated-2d-canvas",
             "--no-first-run",
-            "--no-single-process", // Railway works better without single-process sometimes
+            "--no-zygote",
+            "--single-process", // Changed: Better for Windows/local
+            "--disable-gpu",
+            "--disable-extensions",
+            "--disable-background-timer-throttling",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-renderer-backgrounding",
+            "--disable-features=IsolateOrigins,site-per-process",
           ],
           executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         },
@@ -1224,7 +1222,7 @@ export default class WhatsAppManager {
 
   // Shared helper to resolve real phone and sync customer
   async getOrCreateAndSyncCustomer(
-    clientId: string, 
+    clientId: string,
     waChatId: string,
     messageReferral?: {
       source_type?: string;
