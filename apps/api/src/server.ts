@@ -511,8 +511,19 @@ app.post("/whatsapp/connect", verifyToken, async (req, res) => {
   console.log(`User connecting for Org: ${orgId}`);
 
   try {
-    await manager.connect(orgId);
-    res.json({ ok: true, message: "Connection started", clientId: orgId });
+    const state = await manager.connect(orgId);
+    // Return full state including QR if available
+    res.json({ 
+      ok: true, 
+      message: "Connection started", 
+      clientId: orgId,
+      state: {
+        status: state.status,
+        qrDataUrl: state.qrDataUrl,
+        lastError: state.lastError,
+        updatedAt: state.updatedAt
+      }
+    });
   } catch (err: any) {
     res.status(500).json({ ok: false, message: err?.message || "Failed to connect" });
   }
