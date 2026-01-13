@@ -364,7 +364,34 @@ router.put("/super/organizations/:orgId", verifyToken, verifySuperAdmin, async (
     }
 });
 
-// 4. Update Admin User (allowed_pages)
+// 4. Delete Organization (Super Admin only)
+router.delete("/super/organizations/:orgId", verifyToken, verifySuperAdmin, async (req: Request, res: Response) => {
+    try {
+        const { orgId } = req.params;
+
+        // 1. Delete users first if no cascade is set
+        const { error: usersError } = await supabase
+            .from("users")
+            .delete()
+            .eq("organization_id", orgId);
+
+        if (usersError) throw usersError;
+
+        // 2. Delete the organization
+        const { error: orgError } = await supabase
+            .from("organizations")
+            .delete()
+            .eq("id", orgId);
+
+        if (orgError) throw orgError;
+
+        res.json({ message: "تم حذف المنظمة وجميع بياناتها بنجاح" });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 5. Update Admin User (allowed_pages)
 router.put("/super/users/:userId", verifyToken, verifySuperAdmin, async (req: Request, res: Response) => {
     try {
         const { userId } = req.params;

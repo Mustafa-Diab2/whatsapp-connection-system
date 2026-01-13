@@ -154,6 +154,28 @@ export default function SuperAdminPage() {
         }
     };
 
+    const handleDeleteOrg = async (orgId: string) => {
+        if (!confirm("هل أنت متأكد من حذف هذه المنظمة؟ سيتم حذف جميع البيانات والرسائل والمستخدمين التابعين لها نهائياً!")) return;
+
+        try {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${apiBase}/api/auth/super/organizations/${orgId}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            if (res.ok) {
+                setMsg({ type: "success", text: "تم حذف المنظمة بنجاح" });
+                fetchOrgs();
+            } else {
+                const data = await res.json();
+                setMsg({ type: "error", text: data.error || "فشل الحذف" });
+            }
+        } catch (err) {
+            setMsg({ type: "error", text: "حدث خطأ أثناء الحذف" });
+        }
+    };
+
     const openEditModal = (org: Organization) => {
         setSelectedOrg(org);
         setEditForm({
@@ -232,12 +254,21 @@ export default function SuperAdminPage() {
                                 </div>
                             </div>
 
-                            <button
-                                onClick={() => openEditModal(org)}
-                                className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold text-sm hover:bg-slate-800 transition-colors"
-                            >
-                                تعديل الصلاحيات والحالة
-                            </button>
+                            <div className="flex gap-2 pt-2">
+                                <button
+                                    onClick={() => openEditModal(org)}
+                                    className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold text-sm hover:bg-slate-800 transition-colors"
+                                >
+                                    تعديل
+                                </button>
+                                <button
+                                    onClick={() => handleDeleteOrg(org.id)}
+                                    className="px-4 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors"
+                                    title="حذف المنظمة"
+                                >
+                                    🗑️
+                                </button>
+                            </div>
                         </div>
                     </div>
                 ))}
