@@ -346,6 +346,29 @@ export default class WhatsAppManager {
       console.log(`[${clientId}] Client ready`);
       this.setState(clientId, { status: "ready", qrDataUrl: undefined, lastError: undefined, attemptCount: 0 });
 
+      // Start Keep-Alive Protocol
+      if ((client as any).pupPage) {
+        try {
+          const page = (client as any).pupPage;
+          // Clear existing interval if any (stored in a way we can track, or just rely on client destroy clearing it)
+          // Ideally we track this interval, but for now we'll trust the process lifecycle or add it to a map
+
+          // Simple keep-alive evaluation
+          setInterval(async () => {
+            if (this.clients.get(clientId) === client) {
+              try {
+                await page.evaluate(() => 1);
+                // console.log(`[${clientId}] Keep-alive ping success`);
+              } catch (e) {
+                // console.warn(`[${clientId}] Keep-alive ping failed`, e);
+              }
+            }
+          }, 300000); // Every 5 minutes
+        } catch (e) {
+          console.error(`[${clientId}] Failed to setup keep-alive`, e);
+        }
+      }
+
       // Auto-sync connected phone number to Organization Admin profile
       try {
         const info = client.info;
@@ -388,13 +411,31 @@ export default class WhatsAppManager {
       console.log(`[${clientId}] Loading session: ${percent}% - ${message}`);
     });
 
-    client.on("disconnected", (reason: string) => {
+    client.on("disconnected", async (reason: string) => {
       console.warn(`[${clientId}] Disconnected: ${reason}`);
+
+      // Clear the client from memory
+      this.clients.delete(clientId);
+      this.clearQrTimeout(clientId);
+
       this.setState(clientId, {
         status: "disconnected",
         lastError: reason || "تم فصل الاتصال",
         qrDataUrl: undefined,
       });
+
+      // Auto-reconnect after 5 seconds if not shutting down
+      if (!this.isShuttingDown && reason !== "LOGOUT") {
+        console.log(`[${clientId}] Will attempt auto-reconnect in 5 seconds...`);
+        setTimeout(async () => {
+          try {
+            console.log(`[${clientId}] Auto-reconnecting...`);
+            await this.connect(clientId);
+          } catch (e) {
+            console.error(`[${clientId}] Auto-reconnect failed:`, e);
+          }
+        }, 5000);
+      }
     });
 
     // Handle incoming messages for webhook and real-time
@@ -788,16 +829,19 @@ export default class WhatsAppManager {
             "--disable-accelerated-2d-canvas",
             "--no-first-run",
             "--no-zygote",
-            "--single-process", // Changed: Better for Windows/local
             "--disable-gpu",
             "--disable-extensions",
             "--disable-background-timer-throttling",
             "--disable-backgrounding-occluded-windows",
             "--disable-renderer-backgrounding",
             "--disable-features=IsolateOrigins,site-per-process",
+            "--disable-web-security",
+            "--window-size=1920,1080",
           ],
           executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+          timeout: 60000, // 60 second timeout for browser launch
         },
+        qrMaxRetries: 5,
       });
 
       this.attachClientEvents(clientId, client);
