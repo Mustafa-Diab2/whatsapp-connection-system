@@ -151,17 +151,24 @@ async function staleWhileRevalidate(request) {
 
   const networkFetch = fetch(request)
     .then((response) => {
-      // Clone the response BEFORE using it
-      const responseToCache = response.clone();
-
-      if (response.ok) {
-        caches.open(DYNAMIC_CACHE).then((cache) => {
-          cache.put(request, responseToCache);
-        });
+      // Only clone if response body is not used and response is valid
+      if (response.ok && response.body && !response.bodyUsed) {
+        try {
+          const responseToCache = response.clone();
+          caches.open(DYNAMIC_CACHE).then((cache) => {
+            cache.put(request, responseToCache);
+          }).catch(() => {});
+        } catch (e) {
+          // Clone failed, skip caching
+          console.log('[SW] Clone failed, skipping cache');
+        }
       }
       return response;
     })
-    .catch(() => cached);
+    .catch((error) => {
+      console.log('[SW] Network fetch failed:', error);
+      return cached;
+    });
 
   return cached || networkFetch;
 }

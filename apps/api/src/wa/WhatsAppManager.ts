@@ -431,17 +431,32 @@ export default class WhatsAppManager {
         return; // Do NOT auto-reconnect
       }
 
-      // Auto-reconnect after 5 seconds if not shutting down
-      if (!this.isShuttingDown) {
-        console.log(`[${clientId}] Will attempt auto-reconnect in 5 seconds...`);
-        setTimeout(async () => {
-          try {
-            console.log(`[${clientId}] Auto-reconnecting...`);
-            await this.connect(clientId);
-          } catch (e) {
-            console.error(`[${clientId}] Auto-reconnect failed:`, e);
-          }
-        }, 5000);
+      // Auto-reconnect after 5 seconds ONLY if was previously connected (ready state)
+      // Don't auto-reconnect if disconnected during QR scanning or initialization
+      const currentState = this.getState(clientId);
+      const wasConnected = currentState.status === 'disconnected' && 
+                           !['waiting_qr', 'initializing', 'idle', 'error'].includes(currentState.status);
+      
+      if (!this.isShuttingDown && reason !== 'NAVIGATION' && reason !== 'LOGOUT') {
+        // Only auto-reconnect if the session was previously working (had been 'ready')
+        const shouldAutoReconnect = !currentState.lastError?.includes('QR');
+        if (shouldAutoReconnect) {
+          console.log(`[${clientId}] Will attempt auto-reconnect in 5 seconds...`);
+          setTimeout(async () => {
+            try {
+              // Double-check state hasn't changed
+              const latestState = this.getState(clientId);
+              if (latestState.status === 'disconnected' && !this.isShuttingDown) {
+                console.log(`[${clientId}] Auto-reconnecting...`);
+                await this.connect(clientId);
+              }
+            } catch (e) {
+              console.error(`[${clientId}] Auto-reconnect failed:`, e);
+            }
+          }, 5000);
+        } else {
+          console.log(`[${clientId}] Skipping auto-reconnect (was not in ready state)`);
+        }
       }
     });
 
