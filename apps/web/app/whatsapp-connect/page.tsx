@@ -183,10 +183,15 @@ export default function WhatsAppConnectPage() {
   }, [fetchStatus, clientId]);
 
   useEffect(() => {
-    if (clientId === "default") return; // Wait for real clientId
-
+    // We allow "default" here because the socket can help us recover the real clientId
+    // but we need the token and socketUrl to proceed
     const token = localStorage.getItem("token");
     const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || apiBase;
+
+    if (!token) {
+      console.warn("[WhatsApp] No token found, socket won't connect");
+      return;
+    }
 
     const s = io(socketUrl, {
       transports: ["websocket", "polling"],
@@ -205,26 +210,32 @@ export default function WhatsAppConnectPage() {
 
     s.on("disconnect", (reason) => {
       console.warn("[WhatsApp] Socket disconnected:", reason);
-      // Note: polling is started by handleConnect, not here
     });
 
     s.on("connect_error", (err) => {
       console.error("[WhatsApp] Socket connection error:", err.message);
-      // Note: polling is started by handleConnect, not here
     });
 
-    s.on("wa:state", (payload: { status: Status; qrDataUrl?: string; lastError?: string }) => {
-      console.log("[WhatsApp] State update via socket:", payload.status, "hasQR:", !!payload.qrDataUrl);
+    s.on("wa:state", (payload: { clientId?: string; status: Status; qrDataUrl?: string; lastError?: string }) => {
+      console.log("[WhatsApp] State update via socket:", payload.status, "clientId:", payload.clientId);
+
+      // RECOVERY: Update clientId if server sends the real one
+      if (payload.clientId && (clientId === "default" || !clientId)) {
+        console.log("[WhatsApp] 🎯 Recovered clientId from socket:", payload.clientId);
+        setClientId(payload.clientId);
+        localStorage.setItem("organizationId", payload.clientId);
+      }
+
       setState((prev) => ({
         ...prev,
         status: payload.status,
         lastError: payload.lastError,
         qrDataUrl: payload.qrDataUrl ?? (payload.status === "ready" || payload.status === "idle" ? undefined : prev.qrDataUrl)
       }));
+
       if (payload.status !== "waiting_qr" && payload.status !== "initializing") {
         setConnectDisabled(false);
         setLoading(false);
-        // Stop polling using refs directly
         isPollingActiveRef.current = false;
         if (pollingIntervalRef.current) {
           clearInterval(pollingIntervalRef.current);
@@ -234,8 +245,14 @@ export default function WhatsAppConnectPage() {
       }
     });
 
-    s.on("wa:qr", (payload: { qrDataUrl: string }) => {
+    s.on("wa:qr", (payload: { clientId?: string; qrDataUrl: string }) => {
       console.log("[WhatsApp] QR received via socket");
+
+      if (payload.clientId && (clientId === "default" || !clientId)) {
+        setClientId(payload.clientId);
+        localStorage.setItem("organizationId", payload.clientId);
+      }
+
       setState((prev) => ({ ...prev, qrDataUrl: payload.qrDataUrl, status: "waiting_qr" }));
       setLoading(false);
     });
@@ -244,7 +261,7 @@ export default function WhatsAppConnectPage() {
       s.disconnect();
       socketRef.current = null;
     };
-  }, [clientId]);
+  }, [clientId, apiBase]);
 
   // Continuous polling functions
   const stopPolling = useCallback(() => {
