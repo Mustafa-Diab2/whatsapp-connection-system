@@ -414,7 +414,7 @@ export default class WhatsAppManager {
     client.on("disconnected", async (reason: string) => {
       console.warn(`[${clientId}] Disconnected: ${reason}`);
 
-      // Clear the client from memory
+      // Clear the client from memory immediately
       this.clients.delete(clientId);
       this.clearQrTimeout(clientId);
 
@@ -424,8 +424,21 @@ export default class WhatsAppManager {
         qrDataUrl: undefined,
       });
 
+      // Special handling for LOGOUT: Nuke session data immediately
+      if (reason === "LOGOUT") {
+        console.log(`[${clientId}] Logout detected: performing hard reset to allow new login...`);
+        try {
+          // Add small delay to let file locks release
+          await new Promise(r => setTimeout(r, 1000));
+          await this.resetSession(clientId, { preserveAttempts: false, silent: false });
+        } catch (e) {
+          console.error(`[${clientId}] Failed to clear session after logout:`, e);
+        }
+        return; // Do NOT auto-reconnect
+      }
+
       // Auto-reconnect after 5 seconds if not shutting down
-      if (!this.isShuttingDown && reason !== "LOGOUT") {
+      if (!this.isShuttingDown) {
         console.log(`[${clientId}] Will attempt auto-reconnect in 5 seconds...`);
         setTimeout(async () => {
           try {
@@ -727,6 +740,8 @@ export default class WhatsAppManager {
       try {
         await existingClient.destroy();
         console.log(`[${clientId}] Client destroyed`);
+        // WINDOWS FIX: Wait for file locks to release
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       } catch (err) {
         console.error(`[${clientId}] Error destroying client`, err);
       }
@@ -739,10 +754,12 @@ export default class WhatsAppManager {
 
     const sessionPath = this.getSessionFolder(clientId);
     try {
-      await fs.remove(sessionPath);
-      console.log(`[${clientId}] Session folder removed at ${sessionPath}`);
+      if (fs.existsSync(sessionPath)) {
+        await fs.remove(sessionPath);
+        console.log(`[${clientId}] Session folder removed at ${sessionPath}`);
+      }
     } catch (err) {
-      console.warn(`[${clientId}] Failed to remove session folder`, err);
+      console.warn(`[${clientId}] Failed to remove session folder (might be locked):`, err);
     }
 
     const prevAttempts = this.getState(clientId).attemptCount;
