@@ -188,8 +188,8 @@ app.use(errorHandler);
 const initializeServices = async () => {
     try {
         console.log("[Services] Initializing Automation & Workflows...");
-        const automationEngine = AutomationEngine.getInstance();
-        const workflowEngine = WorkflowEngine.getInstance();
+        const automationEngine = AutomationEngine.getInstance(manager);
+        const workflowEngine = WorkflowEngine.getInstance(manager);
 
         await automationEngine.start();
         console.log("[Services] Background workers started successfully.");
