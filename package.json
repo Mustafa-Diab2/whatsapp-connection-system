@@ -15,6 +15,8 @@
     "dev:api": "npm --prefix apps/api run dev",
     "dev:web": "npm --prefix apps/web run dev",
     "build": "npm --prefix apps/web run build",
+    "build:api": "npm --prefix apps/api run build",
+    "start:api": "npm --prefix apps/api run start",
     "test": "npm --prefix apps/web run test"
   },
   "devDependencies": {
