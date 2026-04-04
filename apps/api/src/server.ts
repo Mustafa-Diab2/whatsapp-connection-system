@@ -51,32 +51,10 @@ const ALLOWED_ORIGINS = [
 ].filter(Boolean) as string[];
 
 const app = express();
-app.set('trust proxy', 1);
 
-// 🛡️ Security Headers
-app.use(helmet({ 
-  contentSecurityPolicy: false, 
-  crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
-
-// 🛡️ CORS - Resilient Implementation
+// 1. 🛡️ CORS - MUST BE FIRST
 const corsOptions: cors.CorsOptions = {
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    
-    const isAllowed = ALLOWED_ORIGINS.includes(origin) || 
-                      origin.endsWith('.vercel.app') || 
-                      origin.includes('localhost');
-                      
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      // Log blocked origin but allow in production for now to fix user issues
-      console.warn(`[CORS] Request from: ${origin}`);
-      callback(null, true); 
-    }
-  },
+  origin: true,
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   allowedHeaders: [
@@ -85,17 +63,27 @@ const corsOptions: cors.CorsOptions = {
     "X-Requested-With", 
     "x-organization-id", 
     "X-Organization-Id", 
-    "Cookie",
-    "Accept"
+    "Accept",
+    "Origin"
   ],
-  exposedHeaders: ["set-cookie"]
+  exposedHeaders: ["Set-Cookie"]
 };
 
 app.use(cors(corsOptions));
-app.use(generalLimiter);
+app.options('*', cors(corsOptions)); // Handle preflight for all routes
 
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+// 2. 🛡️ Security Headers - Configured for Cross-Origin
+app.set('trust proxy', 1);
+app.use(helmet({ 
+  contentSecurityPolicy: false, 
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginOpenerPolicy: { policy: "unsafe-none" }
+}));
+
+app.use(generalLimiter);
+app.use(express.json({ limit: "15mb" }));
+app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 app.use(cookieParser());
 app.disable('x-powered-by');
 

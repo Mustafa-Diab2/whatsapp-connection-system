@@ -6,14 +6,18 @@ export function middleware(request: NextRequest) {
     const path = request.nextUrl.pathname;
     const searchParams = request.nextUrl.searchParams.toString();
 
-    // 🕊️ Explicitly Public Files/Paths (Bypass Everything)
-    const publicFiles = ['/sw.js', '/manifest.json', '/favicon.ico', '/offline.html'];
-    const isPublicFile = publicFiles.includes(path) || 
+    // 🕊️ FOOLPROOF BYPASS - These must NEVER be restricted
+    const isPublicFile = path === '/sw.js' || 
+                         path === '/manifest.json' || 
+                         path === '/favicon.ico' || 
+                         path === '/offline.html' || 
                          path.startsWith('/icons/') || 
                          path.startsWith('/_next/') || 
                          path.startsWith('/api/');
 
-    if (isPublicFile) return NextResponse.next();
+    if (isPublicFile) {
+        return NextResponse.next();
+    }
 
     const isPublicPath = path === '/login' || path === '/register';
     const token = request.cookies.get('token')?.value;
