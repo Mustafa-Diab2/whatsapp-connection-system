@@ -2,19 +2,38 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import dotenv from "dotenv";
 dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+let supabaseInstance: SupabaseClient | null = null;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-    console.error('❌ CRITICAL ERROR: Supabase Credentials are MISSING!');
-    console.error('Ensure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set in your environment.');
-}
+export const getSupabase = (): SupabaseClient => {
+    if (supabaseInstance) return supabaseInstance;
 
-export const supabase: SupabaseClient = createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseServiceKey || 'placeholder', {
-    auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-    },
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+        console.error('❌ CRITICAL ERROR: Supabase Credentials are MISSING!');
+        console.error('Environment variables SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY are not defined.');
+        // We throw a more descriptive error here
+        throw new Error("Supabase initialization failed: Missing environment variables.");
+    }
+
+    supabaseInstance = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+        },
+    });
+
+    return supabaseInstance;
+};
+
+// Export a proxy or just use getSupabase() throughout the app.
+// For compatibility with existing code:
+export const supabase = new Proxy({} as SupabaseClient, {
+    get: (target, prop) => {
+        const instance = getSupabase();
+        return (instance as any)[prop];
+    }
 });
 
 // Database helper functions

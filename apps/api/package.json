@@ -7,7 +7,7 @@
   "type": "commonjs",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only --ignore-watch .wwebjs_auth --ignore-watch node_modules --ignore-watch .git --ignore-watch public src/server.ts",
-    "start": "node dist/server.js",
+    "start": "node -r dotenv/config dist/server.js",
     "build": "tsc"
   },
   "dependencies": {
