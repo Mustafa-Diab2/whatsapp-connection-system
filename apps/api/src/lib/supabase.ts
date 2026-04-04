@@ -26,17 +26,35 @@ export const getSupabase = (): SupabaseClient => {
     return supabaseInstance;
 };
 
-// Use a getter for the export to ensure it's evaluated late
-export const supabase = {
-    get auth() { return getSupabase().auth; },
-    get from() { return getSupabase().from; },
-    get rpc() { return getSupabase().rpc; },
-    get storage() { return getSupabase().storage; },
-    get functions() { return getSupabase().functions; },
-} as unknown as SupabaseClient;
+// Use a robust Proxy to ensure all calls are lazy AND bound correctly
+export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+    get: (target, prop) => {
+        const instance = getSupabase();
+        const value = (instance as any)[prop];
+        
+        // Critically important: bind functions to the instance
+        if (typeof value === 'function') {
+            return value.bind(instance);
+        }
+        
+        return value;
+    }
+});
 
 // Database helper functions
 export const db = {
+    // Auth helpers (returning the live supabase client)
+    get client() { return getSupabase(); },
+    
+    // Generic handlers that always get the fresh instance
+    async from(table: string) {
+        return getSupabase().from(table);
+    },
+    
+    async storage(id: string) {
+        return getSupabase().storage.from(id);
+    },
+
     // ========== CUSTOMERS ==========
     async getCustomers(organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
