@@ -46,6 +46,7 @@ const NODE_ENV = process.env.NODE_ENV || "development";
 const ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "http://localhost:3001",
+  "https://web-2pukamfz1-mustafadiab2942000-7606s-projects.vercel.app",
   process.env.FRONTEND_URL,
 ].filter(Boolean) as string[];
 
@@ -54,17 +55,29 @@ app.set('trust proxy', 1);
 
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 
-app.use(generalLimiter);
+// 🛡️ CORS - ALWAYS BEFORE RATE LIMITERS
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
-    const isAllowed = ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.vercel.app') || origin.includes('localhost');
-    callback(null, isAllowed);
+    // Be more permissive in production for Vercel preview links
+    const isAllowed = ALLOWED_ORIGINS.includes(origin) || 
+                      origin.endsWith('.vercel.app') || 
+                      origin.includes('localhost');
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.warn(`[CORS] Blocked Origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "x-organization-id", "X-Organization-Id"]
+  // Increased headers support
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "x-organization-id", "X-Organization-Id", "Cookie"]
 }));
+
+app.use(generalLimiter);
 
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: true, limit: "5mb" }));
