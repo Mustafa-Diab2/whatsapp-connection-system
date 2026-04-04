@@ -87,6 +87,10 @@ app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 app.use(cookieParser());
 app.disable('x-powered-by');
 
+// 🚑 Health Check - MUST be before any limiters or logic
+app.get('/health', (req, res) => res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() }));
+app.get('/', (req, res) => res.status(200).send('WhatsApp CRM API is running'));
+
 const httpServer = http.createServer(app);
 export const io = new Server(httpServer, {
   cors: {

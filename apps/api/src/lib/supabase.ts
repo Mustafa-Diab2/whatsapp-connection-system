@@ -7,14 +7,13 @@ let supabaseInstance: SupabaseClient | null = null;
 export const getSupabase = (): SupabaseClient => {
     if (supabaseInstance) return supabaseInstance;
 
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseServiceKey) {
-        console.error('❌ CRITICAL ERROR: Supabase Credentials are MISSING!');
-        console.error('Environment variables SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY are not defined.');
-        // We throw a more descriptive error here
-        throw new Error("Supabase initialization failed: Missing environment variables.");
+        console.warn('⚠️ WARNING: Supabase credentials missing. Database operations will fail.');
+        // Return a dummy client or throw on access
+        return createClient('https://placeholder.supabase.co', 'placeholder');
     }
 
     supabaseInstance = createClient(supabaseUrl, supabaseServiceKey, {
@@ -27,14 +26,14 @@ export const getSupabase = (): SupabaseClient => {
     return supabaseInstance;
 };
 
-// Export a proxy or just use getSupabase() throughout the app.
-// For compatibility with existing code:
-export const supabase = new Proxy({} as SupabaseClient, {
-    get: (target, prop) => {
-        const instance = getSupabase();
-        return (instance as any)[prop];
-    }
-});
+// Use a getter for the export to ensure it's evaluated late
+export const supabase = {
+    get auth() { return getSupabase().auth; },
+    get from() { return getSupabase().from; },
+    get rpc() { return getSupabase().rpc; },
+    get storage() { return getSupabase().storage; },
+    get functions() { return getSupabase().functions; },
+} as unknown as SupabaseClient;
 
 // Database helper functions
 export const db = {
