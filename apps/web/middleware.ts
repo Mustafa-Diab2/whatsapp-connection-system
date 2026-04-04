@@ -4,16 +4,23 @@ import type { NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
     // Get the path
     const path = request.nextUrl.pathname;
+    const searchParams = request.nextUrl.searchParams.toString();
+
+    // 🕊️ Explicitly Public Files/Paths (Bypass Everything)
+    const publicFiles = ['/sw.js', '/manifest.json', '/favicon.ico', '/offline.html'];
+    const isPublicFile = publicFiles.includes(path) || 
+                         path.startsWith('/icons/') || 
+                         path.startsWith('/_next/') || 
+                         path.startsWith('/api/');
+
+    if (isPublicFile) return NextResponse.next();
 
     const isPublicPath = path === '/login' || path === '/register';
-
-    // Get the token from cookies
     const token = request.cookies.get('token')?.value;
 
-    // If it's a private path and there's no token, redirect to login with callback URL
     if (!isPublicPath && !token) {
         const url = new URL('/login', request.url);
-        url.searchParams.set('callback', path);
+        url.searchParams.set('callback', path + (searchParams ? '?' + searchParams : ''));
         return NextResponse.redirect(url);
     }
 
