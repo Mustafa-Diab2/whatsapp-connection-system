@@ -87,9 +87,22 @@ app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 app.use(cookieParser());
 app.disable('x-powered-by');
 
-// 🚑 Health Check - MUST be before any limiters or logic
-app.get('/health', (req, res) => res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() }));
-app.get('/', (req, res) => res.status(200).send('WhatsApp CRM API is running'));
+// 🚑 ULTIMATE CORS BYPASS (Manual Headers)
+app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS,PATCH");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, x-organization-id, X-Organization-Id, Accept, Origin");
+    res.header("Access-Control-Allow-Credentials", "true");
+    
+    if (req.method === "OPTIONS") {
+        return res.sendStatus(200);
+    }
+    next();
+});
+
+// 🚑 Health Check
+app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
+app.get('/', (req, res) => res.status(200).send('API IS ALIVE'));
 
 const httpServer = http.createServer(app);
 export const io = new Server(httpServer, {
@@ -171,18 +184,23 @@ app.use("/api/reports", reportsRoutes);
 
 app.use(errorHandler);
 
-httpServer.listen(PORT, () => {
-    console.log(`[Server] Running on port ${PORT}`);
-    
-    // Start Services
+// 🛡️ Safe Services Initialization
+const initializeServices = async () => {
     try {
         console.log("[Services] Initializing Automation & Workflows...");
-        const automation = AutomationEngine.getInstance(manager);
-        automation.start();
-        
-        if (process.env.FACEBOOK_APP_ID) TokenRefreshService.start();
-        console.log("[Services] All background workers started.");
-    } catch (e) {
-        console.error("[Services] Failed to start some services:", e);
+        const automationEngine = AutomationEngine.getInstance();
+        const workflowEngine = WorkflowEngine.getInstance();
+
+        await automationEngine.start();
+        console.log("[Services] Background workers started successfully.");
+    } catch (error: any) {
+    console.error("[Services] ERROR during background initialization:", error?.message || error);
+        console.warn("[Services] Server will continue to run, but automation might be limited.");
     }
+};
+
+// Start the server
+httpServer.listen(Number(PORT), "0.0.0.0", () => {
+    console.log(`[Server] WhatsApp CRM API is running on port ${PORT} (0.0.0.0)`);
+    initializeServices();
 });
