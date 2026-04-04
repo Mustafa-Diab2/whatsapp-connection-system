@@ -58,8 +58,7 @@ export default function LoginPage() {
                 throw new Error(data.error || "حدث خطأ");
             }
 
-            // Store token and user data
-            localStorage.setItem("token", data.token);
+            // Store user data in localStorage (non-sensitive)
             localStorage.setItem("user", JSON.stringify(data.user));
             
             // Store organizationId for API calls
@@ -67,8 +66,9 @@ export default function LoginPage() {
                 localStorage.setItem("organizationId", data.user.organization_id);
             }
 
-            // Set cookie for middleware
-            document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; samesite=lax`;
+            // Set cookie for middleware - secure flag in production
+            const isSecure = window.location.protocol === 'https:';
+            document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; samesite=lax${isSecure ? '; secure' : ''}`;
 
             // Redirect to callback or dashboard
             router.push(callback);

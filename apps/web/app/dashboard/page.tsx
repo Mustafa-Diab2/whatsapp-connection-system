@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
+import OnboardingWizard from "../../components/Dashboard/OnboardingWizard";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -14,7 +15,8 @@ export default function DashboardPage() {
     totalSales: 0,
     pendingInvoices: 0,
     lowStockCount: 0,
-    activeTasks: 0
+    activeTasks: 0,
+    totalProducts: 0
   });
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
@@ -44,7 +46,8 @@ export default function DashboardPage() {
         totalSales: orders.reduce((acc: number, o: any) => acc + Number(o.total_amount), 0),
         pendingInvoices: invoices.filter((i: any) => i.status !== 'paid').length,
         lowStockCount: products.filter((p: any) => p.stock_quantity <= p.min_stock_level).length,
-        activeTasks: tasks.filter((t: any) => t.status !== 'completed').length
+        activeTasks: tasks.filter((t: any) => t.status !== 'completed').length,
+        totalProducts: products.length
       });
 
     } catch (error) {
@@ -83,6 +86,7 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-10 pb-20">
+      <OnboardingWizard stats={stats} erpStats={erpStats} />
       {/* Dynamic Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>

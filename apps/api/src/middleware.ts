@@ -16,10 +16,10 @@ export const generalLimiter = rateLimit({
     legacyHeaders: false,
 });
 
-// Strict limiter for sensitive endpoints - 10 requests per 15 minutes
-export const strictLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 10, // 10 requests per window
+// Strict limiter for sensitive endpoints (Auth, etc.) - 200 requests per 15 minutes
+export const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, 
+    max: 200, 
     message: {
         error: "تم تجاوز عدد الطلبات المسموح به لهذا الإجراء، يرجى المحاولة لاحقاً",
     },

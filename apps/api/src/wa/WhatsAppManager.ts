@@ -57,6 +57,7 @@ export default class WhatsAppManager {
   private botConfigs = new Map<string, BotConfig>();
   private keepAliveIntervals = new Map<string, NodeJS.Timeout>(); // Track keep-alive intervals
   private readonly io: Server;
+  private readonly workflowEngine: WorkflowEngine;
   private readonly qrTimeoutMs = 180_000; // 3 minutes for QR scan
   private isShuttingDown = false;
 
@@ -149,6 +150,7 @@ export default class WhatsAppManager {
 
   constructor(io: Server) {
     this.io = io;
+    this.workflowEngine = WorkflowEngine.getInstance(this);
     this.setupGracefulShutdown();
     this.loadConfigs();
   }
@@ -594,6 +596,14 @@ export default class WhatsAppManager {
             author: message.author
           }
         }, { onConflict: 'wa_message_id' });
+
+        // Trigger Workflows (Non-blocking)
+        void this.workflowEngine.trigger(clientId, 'keyword', {}, {
+          chatId: message.from,
+          message: messageData,
+          conversationId: conversation.id,
+          realPhone
+        });
       } catch (e: any) {
         console.error(`[${clientId}] Failed to persist incoming message:`, e.message);
       }
@@ -995,16 +1005,9 @@ export default class WhatsAppManager {
   }
 
 
-  private botActivities: Array<{
-    id: string;
-    timestamp: Date;
-    customerPhone: string;
-    customerMessage: string;
-    sentiment: string;
-    intent: string;
-    botReply: string;
-    responseTimeMs: number;
-  }> = [];
+  // Audit Log persistence (replaces in-memory array)
+  // this.botActivities is removed to save RAM
+  // Data now goes to database table 'audit_logs' with action 'bot_reply'
 
   setBotConfig(clientId: string, config: BotConfig) {
     this.botConfigs.set(clientId, config);
@@ -1015,8 +1018,32 @@ export default class WhatsAppManager {
     return this.botConfigs.get(clientId) || { systemPrompt: "", apiKey: "", enabled: false, botMode: "ai" };
   }
 
-  getBotActivities(limit = 20) {
-    return this.botActivities.slice(-limit).reverse();
+  async getBotActivities(limit = 20, organizationId?: string) {
+    try {
+      let query = supabase
+        .from("audit_logs")
+        .select("*")
+        .eq("action", "bot_reply")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+
+      if (organizationId) {
+        query = query.eq("organization_id", organizationId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      return (data || []).map(log => ({
+        id: log.id,
+        timestamp: log.created_at,
+        organizationId: log.organization_id,
+        ...(log.details || {})
+      }));
+    } catch (err) {
+      console.error("[WhatsAppManager] Failed to fetch bot activities:", err);
+      return [];
+    }
   }
 
   // API Key ONLY from environment variable - never from database
@@ -1297,28 +1324,33 @@ export default class WhatsAppManager {
         const replyMsg = await message.reply(replyText);
         console.log(`[${clientId}] Bot replied to ${message.from}`);
 
-        // Save activity for frontend
+        // Save activity to persistent Audit Log
         const activity = {
-          id: replyMsg.id._serialized,
-          timestamp: new Date(),
           customerPhone: message.from,
           customerMessage: message.body,
-          sentiment: "neutral", // Removed separate sentiment analysis to save API calls
+          sentiment: "neutral",
           intent: "chat",
           botReply: replyText,
           responseTimeMs
         };
-        this.botActivities.push(activity);
 
-        // Keep only last 100 activities
-        if (this.botActivities.length > 100) {
-          this.botActivities = this.botActivities.slice(-100);
-        }
+        void supabase.from("audit_logs").insert({
+          organization_id: orgId || clientId,
+          action: "bot_reply",
+          details: activity
+        }).then(({ error }) => {
+          if (error) console.error("[Audit] Failed to log bot reply:", error.message);
+        });
 
-        // Emit bot activity to frontend
+        // Emit bot activity to frontend (Real-time update)
         this.io.to(clientId).emit("bot:activity", {
           clientId,
-          activity
+          activity: {
+            id: replyMsg.id._serialized,
+            timestamp: new Date(),
+            organizationId: orgId || clientId,
+            ...activity
+          }
         });
 
         // Emit bot reply as message

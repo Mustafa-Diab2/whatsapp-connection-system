@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
 import WhatsAppManager from "../wa/WhatsAppManager";
+import { ai } from "../lib/ai"; 
 
 export class AutomationEngine {
     private static instance: AutomationEngine;
@@ -86,14 +87,66 @@ export class AutomationEngine {
     }
 
     async generateAIInsights() {
-        // This runs periodically to scan database for business opportunities
-        // For now, let's implement a "Negative Sentiment" or "High Demand" detector
+        console.log("[AutomationEngine] Scanning for business insights...");
         try {
-            // Implementation logic:
-            // 1. Fetch recent messages (last 24h)
-            // 2. Group by Org
-            // 3. Summarize with Gemini
-            // 4. Save to ai_insights table
+            // 1. Fetch recent messages (last 24h) and group by organization
+            const { data: messages, error } = await supabase
+                .from("messages")
+                .select("*, customers(id, name)")
+                .eq("is_from_customer", true)
+                .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+
+            if (error) throw error;
+            if (!messages || messages.length === 0) return;
+
+            // 2. Group by organization
+            const orgGroups = messages.reduce((acc: any, msg) => {
+                const orgId = msg.organization_id;
+                if (!acc[orgId]) acc[orgId] = [];
+                acc[orgId].push(msg);
+                return acc;
+            }, {});
+
+            for (const orgId in orgGroups) {
+                const orgMessages = orgGroups[orgId];
+                if (orgMessages.length < 5) continue; // Only analyze if there's enough data
+
+                // Summarize messages for AI context
+                const msgSummary = orgMessages.map((m: any) => 
+                    `[${m.created_at}] Customer: ${m.body}`
+                ).join("\n");
+
+                // 3. Request insight from AI
+                const prompt = `Analyze these recent customer messages for this organization and provide one key business insight:
+                ${msgSummary}
+                
+                Return a JSON object: { "type": "opportunity|alert|summary", "title": "...", "content": "...", "urgency": "low|medium|high" }`;
+
+                const aiOutput = await ai.generateReply(prompt, []);
+                
+                try {
+                    // Extract JSON if AI wrapped it in markdown
+                    const jsonStr = aiOutput.includes("```") 
+                        ? aiOutput.split("```")[1].replace("json", "").trim()
+                        : aiOutput.trim();
+                    
+                    const insight = JSON.parse(jsonStr);
+
+                    // 4. Save to ai_insights table
+                    await supabase.from("ai_insights").insert({
+                        organization_id: orgId,
+                        type: insight.type || 'summary',
+                        title: insight.title || 'AI Insights Update',
+                        content: insight.content || 'No insights generated.',
+                        urgency: insight.urgency || 'low',
+                        metadata: { stats: { message_count: orgMessages.length } }
+                    });
+
+                    console.log(`[AutomationEngine] Generated insight for Org ${orgId}`);
+                } catch (e) {
+                    console.error(`[AutomationEngine] JSON parsing failed for AI output:`, aiOutput);
+                }
+            }
         } catch (err) {
             console.error("[AutomationEngine] Insight generation error:", err);
         }

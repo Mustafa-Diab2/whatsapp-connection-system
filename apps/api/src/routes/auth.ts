@@ -73,7 +73,8 @@ router.post("/register", validate(registerSchema), async (req: Request, res: Res
         const token = jwt.sign({
             userId: user.id,
             email: user.email,
-            organizationId: user.organization_id // Add organizationId to token
+            organizationId: user.organization_id,
+            role: user.role // Include role to avoid extra DB query
         }, JWT_SECRET, {
             expiresIn: JWT_EXPIRES_IN,
         });
@@ -121,7 +122,8 @@ router.post("/login", validate(loginSchema), async (req: Request, res: Response)
         const token = jwt.sign({
             userId: user.id,
             email: user.email,
-            organizationId: user.organization_id // Add organizationId to token
+            organizationId: user.organization_id,
+            role: user.role // Include role to avoid extra DB query
         }, JWT_SECRET, {
             expiresIn: JWT_EXPIRES_IN,
         });
@@ -265,6 +267,12 @@ const verifySuperAdmin = async (req: Request, res: Response, next: Function) => 
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "غير مصرح" });
 
+    // Fast path: check role from JWT payload (no DB query needed)
+    if (user.role === 'super_admin') {
+        return next();
+    }
+
+    // Fallback: check DB for older tokens that don't have role in payload
     const { data: userData } = await supabase.from('users').select('role').eq('id', user.userId).single();
     if (userData?.role !== 'super_admin') {
         return res.status(403).json({ error: "غير مصرح - يتطلب صلاحية سوبر أدمن" });
@@ -621,6 +629,57 @@ router.delete("/team/:memberId", verifyToken, async (req: Request, res: Response
     } catch (error: any) {
         console.error("Delete member error:", error);
         res.status(500).json({ error: error.message || "حدث خطأ في حذف العضو" });
+    }
+});
+// PASSWORD RECOVERYFLOW
+// ==========================================
+
+// Dummy Forgot Password (generates token, logs it - real implementation needs mailer)
+router.post("/forgot-password", async (req: Request, res: Response) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ error: "البريد الإلكتروني مطلوب" });
+
+        const { data: user } = await supabase.from('users').select('id, email, name').eq('email', email).single();
+        if (!user) {
+            // Security: don't reveal if user exists, but here we can be helpful for dev
+            return res.json({ message: "إذا كان الحساب موجوداً، فستصلك رسالة قريباً" });
+        }
+
+        // Generate reset token (valid for 1 hour)
+        const resetToken = jwt.sign({ userId: user.id, action: 'reset_password' }, JWT_SECRET, { expiresIn: '1h' });
+        
+        // Log to Audit (Placeholder for Email)
+        console.log(`[AUTH] Password reset requested for ${email}. Token: ${resetToken}`);
+        db.logAudit(null, user.id, "password_reset_requested", { email }, req.ip);
+
+        // IN PRODUCTION: Send email with resetToken in URL
+        res.json({ message: "تم إرسال تعليمات استعادة كلمة المرور إلى بريدك" });
+    } catch (err: any) {
+        res.status(500).json({ error: "حدث خطأ غير متوقع" });
+    }
+});
+
+// Reset Password
+router.post("/reset-password", async (req: Request, res: Response) => {
+    try {
+        const { token, newPassword } = req.body;
+        if (!token || !newPassword) return res.status(400).json({ error: "التوكن وكلمة المرور الجديدة مطلوبان" });
+
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        if (decoded.action !== 'reset_password') {
+            return res.status(400).json({ error: "توكن غير صالح لهذا الإجراء" });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+        const { error } = await supabase.from('users').update({ password: hashedPassword }).eq('id', decoded.userId);
+
+        if (error) throw error;
+
+        db.logAudit(null, decoded.userId, "password_reset_success", {}, req.ip);
+        res.json({ message: "تمت إعادة تعيين كلمة المرور بنجاح" });
+    } catch (err: any) {
+        res.status(400).json({ error: "التوكن منتهي الصلاحية أو غير صالح" });
     }
 });
 
