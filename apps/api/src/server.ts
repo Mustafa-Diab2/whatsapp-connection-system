@@ -53,16 +53,16 @@ const ALLOWED_ORIGINS = [
 const app = express();
 app.set('trust proxy', 1);
 
+// 🛡️ Security Headers
 app.use(helmet({ 
   contentSecurityPolicy: false, 
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// 🛡️ CORS - Robust Implementation
-app.use(cors({
+// 🛡️ CORS - Resilient Implementation
+const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    // allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
     const isAllowed = ALLOWED_ORIGINS.includes(origin) || 
@@ -72,9 +72,8 @@ app.use(cors({
     if (isAllowed) {
       callback(null, true);
     } else {
-      console.warn(`[CORS] Blocked Origin: ${origin}`);
-      // In production, we might want to be more strict, 
-      // but let's allow it if it looks like a vercel preview for now
+      // Log blocked origin but allow in production for now to fix user issues
+      console.warn(`[CORS] Request from: ${origin}`);
       callback(null, true); 
     }
   },
@@ -90,12 +89,13 @@ app.use(cors({
     "Accept"
   ],
   exposedHeaders: ["set-cookie"]
-}));
+};
 
+app.use(cors(corsOptions));
 app.use(generalLimiter);
 
-app.use(express.json({ limit: "5mb" }));
-app.use(express.urlencoded({ extended: true, limit: "5mb" }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 app.disable('x-powered-by');
 
