@@ -1,13 +1,16 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import dotenv from "dotenv";
+dotenv.config();
 
 const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 if (!supabaseUrl || !supabaseServiceKey) {
-    console.error('❌ CRITICAL ERROR: Supabase Credentials are MISSING in this environment!');
+    console.error('❌ CRITICAL ERROR: Supabase Credentials are MISSING!');
+    console.error('Ensure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set in your environment.');
 }
 
-export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
+export const supabase: SupabaseClient = createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseServiceKey || 'placeholder', {
     auth: {
         autoRefreshToken: false,
         persistSession: false,

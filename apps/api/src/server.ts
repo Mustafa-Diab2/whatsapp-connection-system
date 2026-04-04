@@ -1,7 +1,9 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import http from "http";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -37,8 +39,6 @@ import botRoutes from "./routes/bot";
 import { AutomationEngine } from "./services/AutomationEngine";
 import { WorkflowEngine } from "./services/WorkflowEngine";
 import { generalLimiter, authLimiter, errorHandler } from "./middleware";
-
-dotenv.config();
 
 const PORT = process.env.PORT || 3001;
 const NODE_ENV = process.env.NODE_ENV || "development";
