@@ -26,20 +26,8 @@ export const getSupabase = (): SupabaseClient => {
     return supabaseInstance;
 };
 
-// Use a robust Proxy to ensure all calls are lazy AND bound correctly
-export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
-    get: (target, prop) => {
-        const instance = getSupabase();
-        const value = (instance as any)[prop];
-        
-        // Critically important: bind functions to the instance
-        if (typeof value === 'function') {
-            return value.bind(instance);
-        }
-        
-        return value;
-    }
-});
+// Dynamic getter to replace the problematic constant
+export const getDb = () => getSupabase();
 
 // Database helper functions
 export const db = {
@@ -58,7 +46,7 @@ export const db = {
     // ========== CUSTOMERS ==========
     async getCustomers(organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('customers')
             .select('*')
             .eq('organization_id', organizationId)
@@ -69,7 +57,7 @@ export const db = {
 
     async getCustomerByPhone(phone: string, organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('customers')
             .select('*')
             .eq('phone', phone)
@@ -80,7 +68,7 @@ export const db = {
 
     async getCustomerById(id: string, organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('customers')
             .select('*')
             .eq('id', id)
@@ -98,7 +86,7 @@ export const db = {
         notes?: string;
         organization_id: string;
     }) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('customers')
             .insert(customer)
             .select()
@@ -109,7 +97,7 @@ export const db = {
 
     async updateCustomer(id: string, updates: any, organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('customers')
             .update({ ...updates, last_contact_at: new Date().toISOString() })
             .eq('id', id)
@@ -122,7 +110,7 @@ export const db = {
 
     async deleteCustomer(id: string, organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { error } = await supabase
+        const { error } = await getSupabase()
             .from('customers')
             .delete()
             .eq('id', id)
@@ -133,7 +121,7 @@ export const db = {
     // ========== CONTACTS ==========
     async getContacts(organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('contacts')
             .select('*')
             .eq('organization_id', organizationId)
@@ -149,7 +137,7 @@ export const db = {
         group_name?: string;
         organization_id: string;
     }) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('contacts')
             .insert(contact)
             .select()
@@ -160,7 +148,7 @@ export const db = {
 
     async updateContact(id: string, updates: any, organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('contacts')
             .update(updates)
             .eq('id', id)
@@ -173,7 +161,7 @@ export const db = {
 
     async deleteContact(id: string, organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { error } = await supabase
+        const { error } = await getSupabase()
             .from('contacts')
             .delete()
             .eq('id', id)
@@ -200,7 +188,7 @@ export const db = {
         if (!organizationId) throw new Error("Organization ID required");
 
         // Try to find existing conversation
-        let { data: existing } = await supabase
+        let { data: existing } = await getSupabase()
             .from('conversations')
             .select('*, customer:customers(*)')
             .eq('wa_chat_id', waChatId)
@@ -216,7 +204,7 @@ export const db = {
         const channel = attributionData?.channel || 'whatsapp';
 
         if (!finalCustomerId) {
-            const { data: customer } = await supabase
+            const { data: customer } = await getSupabase()
                 .from('customers')
                 .select('id')
                 .eq('phone', phoneToUse)
@@ -229,7 +217,7 @@ export const db = {
                 // Check for attribution events for this phone (last 30 days)
                 let attribution: any = null;
                 if (!attributionData?.source_type) {
-                    const { data: attrEvent } = await supabase
+                    const { data: attrEvent } = await getSupabase()
                         .from('click_attribution_events')
                         .select('*')
                         .eq('phone', phoneToUse)
@@ -273,7 +261,7 @@ export const db = {
                 }
 
                 // Auto-create customer
-                const { data: newCustomer } = await supabase
+                const { data: newCustomer } = await getSupabase()
                     .from('customers')
                     .insert(customerData)
                     .select()
@@ -282,7 +270,7 @@ export const db = {
 
                 // Mark attribution event as converted
                 if (attribution && finalCustomerId) {
-                    await supabase
+                    await getSupabase()
                         .from('click_attribution_events')
                         .update({
                             status: 'converted',
@@ -294,7 +282,7 @@ export const db = {
                     // Update tracking link conversion count
                     if (attribution.short_code) {
                         try {
-                            await supabase.rpc('increment_conversion_count', {
+                            await getSupabase().rpc('increment_conversion_count', {
                                 p_short_code: attribution.short_code
                             });
                         } catch {
@@ -306,7 +294,7 @@ export const db = {
         }
 
         // Create new conversation
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('conversations')
             .insert({
                 wa_chat_id: waChatId,
@@ -321,7 +309,7 @@ export const db = {
     },
 
     async updateUserInfo(userId: string, updates: { phone?: string; name?: string; avatar?: string }) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('users')
             .update({ ...updates, updated_at: new Date().toISOString() })
             .eq('id', userId)
@@ -347,7 +335,7 @@ export const db = {
         metadata?: any;
         organization_id: string;
     }) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('messages')
             .insert(message)
             .select()
@@ -357,7 +345,7 @@ export const db = {
     },
 
     async updateMessageAnalysis(id: string, analysis: { sentiment?: string; intent?: string }) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('messages')
             .update(analysis)
             .eq('id', id)
@@ -369,7 +357,7 @@ export const db = {
 
     async getMessagesByConversation(conversationId: string, organizationId: string, limit = 50) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('messages')
             .select('*')
             .eq('conversation_id', conversationId)
@@ -383,7 +371,7 @@ export const db = {
     // ========== THREADS ==========
     async getThreads(organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('threads')
             .select('*')
             .eq('organization_id', organizationId)
@@ -399,7 +387,7 @@ export const db = {
         priority?: string;
         organization_id: string;
     }) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('threads')
             .insert(thread)
             .select()
@@ -410,7 +398,7 @@ export const db = {
 
     async updateThread(id: string, updates: any, organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('threads')
             .update(updates)
             .eq('id', id)
@@ -423,7 +411,7 @@ export const db = {
 
     async deleteThread(id: string, organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { error } = await supabase
+        const { error } = await getSupabase()
             .from('threads')
             .delete()
             .eq('id', id)
@@ -435,7 +423,7 @@ export const db = {
     async getSettings(organizationId: string) {
         if (!organizationId) return {};
 
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('settings')
             .select('*')
             .eq('organization_id', organizationId);
@@ -457,7 +445,7 @@ export const db = {
         // Or simpler: add organization_id to the unique constraint in DB
         // For now, we manually check or upsert with filter
 
-        const { error } = await supabase
+        const { error } = await getSupabase()
             .from('settings')
             .upsert({
                 key,
@@ -488,7 +476,7 @@ export const db = {
         bot_mode?: string;
         organization_id: string;
     }) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('bot_config')
             .upsert({
                 client_id: clientId,
@@ -508,20 +496,20 @@ export const db = {
         const today = new Date().toISOString().split('T')[0];
 
         // 1. Total Customers (Real)
-        const { count: totalCustomers } = await supabase
+        const { count: totalCustomers } = await getSupabase()
             .from('customers')
             .select('*', { count: 'exact', head: true })
             .eq('organization_id', organizationId);
 
         // 2. Messages Sent TODAY (Real Activity)
-        const { count: messagesToday } = await supabase
+        const { count: messagesToday } = await getSupabase()
             .from('messages')
             .select('*', { count: 'exact', head: true })
             .eq('organization_id', organizationId)
             .gte('created_at', today);
 
         // 3. Successful Campaign Sends (Total)
-        const { data: campaigns } = await supabase
+        const { data: campaigns } = await getSupabase()
             .from('campaigns')
             .select('successful_sends, status')
             .eq('organization_id', organizationId);
@@ -529,7 +517,7 @@ export const db = {
         const totalSuccessfulSends = campaigns?.reduce((sum, c) => sum + (c.successful_sends || 0), 0) || 0;
 
         // 4. Deals count and value (Real)
-        const { data: deals } = await supabase
+        const { data: deals } = await getSupabase()
             .from('deals')
             .select('value')
             .eq('organization_id', organizationId);
@@ -549,7 +537,7 @@ export const db = {
 
         const today = new Date().toISOString().split('T')[0];
 
-        const { data: existing } = await supabase
+        const { data: existing } = await getSupabase()
             .from('analytics_daily')
             .select('*')
             .eq('date', today)
@@ -557,13 +545,13 @@ export const db = {
             .single();
 
         if (existing) {
-            await supabase
+            await getSupabase()
                 .from('analytics_daily')
                 .update({ [statName]: (existing[statName] || 0) + incrementBy })
                 .eq('date', today)
                 .eq('organization_id', organizationId);
         } else {
-            await supabase
+            await getSupabase()
                 .from('analytics_daily')
                 .insert({
                     date: today,
@@ -583,7 +571,7 @@ export const db = {
             const dateStr = date.toISOString().split('T')[0];
 
             // Count sent messages
-            const { count: sent } = await supabase
+            const { count: sent } = await getSupabase()
                 .from('messages')
                 .select('*', { count: 'exact', head: true })
                 .eq('organization_id', organizationId)
@@ -592,7 +580,7 @@ export const db = {
                 .lte('created_at', `${dateStr}T23:59:59`);
 
             // Count received messages
-            const { count: received } = await supabase
+            const { count: received } = await getSupabase()
                 .from('messages')
                 .select('*', { count: 'exact', head: true })
                 .eq('organization_id', organizationId)
@@ -620,7 +608,7 @@ export const db = {
         response_time_ms?: number;
         organization_id: string;
     }) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('ai_responses')
             .insert(response)
             .select()
@@ -633,7 +621,7 @@ export const db = {
     async getAgents(organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
 
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('ai_agents')
             .select('*')
             .eq('organization_id', organizationId)
@@ -649,7 +637,7 @@ export const db = {
         model?: string;
         organization_id: string;
     }) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('ai_agents')
             .insert(agent)
             .select()
@@ -660,7 +648,7 @@ export const db = {
 
     // ========== LOCAL BOT RULES ==========
     async getBotRules(organizationId: string) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('bot_rules')
             .select('*')
             .eq('organization_id', organizationId)
@@ -671,7 +659,7 @@ export const db = {
     },
 
     async createBotRule(rule: any) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('bot_rules')
             .insert(rule)
             .select()
@@ -681,7 +669,7 @@ export const db = {
     },
 
     async updateBotRule(id: string, updates: any, organizationId: string) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('bot_rules')
             .update(updates)
             .eq('id', id)
@@ -693,7 +681,7 @@ export const db = {
     },
 
     async deleteBotRule(id: string, organizationId: string) {
-        const { error } = await supabase
+        const { error } = await getSupabase()
             .from('bot_rules')
             .delete()
             .eq('id', id)
@@ -704,7 +692,7 @@ export const db = {
 
     // ========== BOT SESSIONS ==========
     async getBotSession(organizationId: string, phone: string) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('bot_sessions')
             .select('*')
             .eq('organization_id', organizationId)
@@ -715,7 +703,7 @@ export const db = {
     },
 
     async updateBotSession(organizationId: string, phone: string, updates: any) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('bot_sessions')
             .upsert({
                 organization_id: organizationId,
@@ -733,7 +721,7 @@ export const db = {
     async searchDocuments(embedding: number[], matchThreshold: number, matchCount: number, organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
 
-        const { data, error } = await supabase.rpc('match_documents', {
+        const { data, error } = await getSupabase().rpc('match_documents', {
             query_embedding: embedding,
             match_threshold: matchThreshold,
             match_count: matchCount,
@@ -750,7 +738,7 @@ export const db = {
         embedding: number[];
         organization_id: string;
     }) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('documents')
             .insert(doc)
             .select()
@@ -761,7 +749,7 @@ export const db = {
 
     async getDocuments(organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('documents')
             .select('id, metadata, created_at')
             .eq('organization_id', organizationId)
@@ -772,7 +760,7 @@ export const db = {
 
     async deleteDocument(id: string, organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { error } = await supabase
+        const { error } = await getSupabase()
             .from('documents')
             .delete()
             .eq('id', id)
@@ -788,7 +776,7 @@ export const db = {
         target_group?: string;
         scheduled_at?: string;
     }) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('campaigns')
             .insert(campaign)
             .select()
@@ -799,7 +787,7 @@ export const db = {
 
     async getCampaigns(organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('campaigns')
             .select('*')
             .eq('organization_id', organizationId)
@@ -813,7 +801,7 @@ export const db = {
         if (stats) {
             Object.assign(updateData, stats);
         }
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('campaigns')
             .update(updateData)
             .eq('id', id)
@@ -830,7 +818,7 @@ export const db = {
         error_message?: string;
         customer_id?: string;
     }) {
-        const { error } = await supabase
+        const { error } = await getSupabase()
             .from('campaign_logs')
             .insert({ ...log, sent_at: new Date().toISOString() });
         if (error) console.error("Failed to log campaign result", error);
@@ -840,7 +828,7 @@ export const db = {
     async getStages(organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
 
-        let { data, error } = await supabase
+        let { data, error } = await getSupabase()
             .from('stages')
             .select('*')
             .eq('organization_id', organizationId)
@@ -857,11 +845,11 @@ export const db = {
             ];
 
             for (const d of defaults) {
-                await supabase.from('stages').insert({ ...d, organization_id: organizationId });
+                await getSupabase().from('stages').insert({ ...d, organization_id: organizationId });
             }
 
             // Re-fetch
-            ({ data, error } = await supabase
+            ({ data, error } = await getSupabase()
                 .from('stages')
                 .select('*')
                 .eq('organization_id', organizationId)
@@ -874,7 +862,7 @@ export const db = {
 
     async getDeals(organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('deals')
             .select('*, customer:customers(name, phone)')
             .eq('organization_id', organizationId)
@@ -884,7 +872,7 @@ export const db = {
     },
 
     async createDeal(deal: any) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('deals')
             .insert(deal)
             .select()
@@ -895,7 +883,7 @@ export const db = {
 
     async updateDealStage(id: string, stageId: string, organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('deals')
             .update({ stage_id: stageId, updated_at: new Date().toISOString() })
             .eq('id', id)
@@ -908,7 +896,7 @@ export const db = {
 
     async deleteDeal(id: string, organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { error } = await supabase
+        const { error } = await getSupabase()
             .from('deals')
             .delete()
             .eq('id', id)
@@ -919,7 +907,7 @@ export const db = {
     // ========== AUTO ASSIGNMENT ==========
     async getOrganizationSettings(organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('organizations')
             .select('auto_assign_enabled, last_assigned_index')
             .eq('id', organizationId)
@@ -930,7 +918,7 @@ export const db = {
 
     async toggleAutoAssign(organizationId: string, enabled: boolean) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('organizations')
             .update({ auto_assign_enabled: enabled })
             .eq('id', organizationId)
@@ -942,7 +930,7 @@ export const db = {
 
     async getTeamMembers(organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('users')
             .select('id, name, email')
             .eq('organization_id', organizationId)
@@ -952,7 +940,7 @@ export const db = {
     },
 
     async updateOrganizationLastIndex(organizationId: string, index: number) {
-        const { error } = await supabase
+        const { error } = await getSupabase()
             .from('organizations')
             .update({ last_assigned_index: index })
             .eq('id', organizationId);
@@ -960,7 +948,7 @@ export const db = {
     },
 
     async assignConversation(conversationId: string, userId: string) {
-        const { error } = await supabase
+        const { error } = await getSupabase()
             .from('conversations')
             .update({ assigned_to: userId })
             .eq('id', conversationId);
@@ -982,7 +970,7 @@ export const db = {
     // ========== QUICK REPLIES ==========
     async getQuickReplies(organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('quick_replies')
             .select('*')
             .eq('organization_id', organizationId)
@@ -997,7 +985,7 @@ export const db = {
         shortcut?: string;
         organization_id: string;
     }) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('quick_replies')
             .insert(reply)
             .select()
@@ -1008,7 +996,7 @@ export const db = {
 
     async updateQuickReply(id: string, updates: any, organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('quick_replies')
             .update(updates)
             .eq('id', id)
@@ -1021,7 +1009,7 @@ export const db = {
 
     async deleteQuickReply(id: string, organizationId: string) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { error } = await supabase
+        const { error } = await getSupabase()
             .from('quick_replies')
             .delete()
             .eq('id', id)
@@ -1031,7 +1019,7 @@ export const db = {
 
     async getActivityLogs(organizationId: string, limit = 10) {
         if (!organizationId) throw new Error("Organization ID required");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('audit_logs')
             .select('*, user:users(name)')
             .eq('organization_id', organizationId)

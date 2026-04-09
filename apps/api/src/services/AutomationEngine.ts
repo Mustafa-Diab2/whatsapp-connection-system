@@ -1,4 +1,4 @@
-import { supabase } from "../lib/supabase";
+import { getSupabase } from "../lib/supabase";
 import WhatsAppManager from "../wa/WhatsAppManager";
 import { ai } from "../lib/ai"; 
 
@@ -39,7 +39,7 @@ export class AutomationEngine {
     async processReminders() {
         try {
             // 1. Fetch pending reminders that are due
-            const { data: reminders, error } = await supabase
+            const { data: reminders, error } = await getSupabase()
                 .from("scheduled_reminders")
                 .select("*, customers(phone)")
                 .eq("status", "pending")
@@ -57,7 +57,7 @@ export class AutomationEngine {
                     const msg = item.message_text;
 
                     if (!phone || !msg) {
-                        await supabase.from("scheduled_reminders").update({ status: 'failed' }).eq("id", item.id);
+                        await getSupabase().from("scheduled_reminders").update({ status: 'failed' }).eq("id", item.id);
                         continue;
                     }
 
@@ -65,7 +65,7 @@ export class AutomationEngine {
                     await this.manager.sendMessage(clientId, `${phone}@c.us`, msg);
 
                     // Update status
-                    await supabase.from("scheduled_reminders")
+                    await getSupabase().from("scheduled_reminders")
                         .update({
                             status: 'sent',
                             executed_at: new Date().toISOString()
@@ -75,7 +75,7 @@ export class AutomationEngine {
                     console.log(`[AutomationEngine] Sent reminder ${item.id} to ${phone}`);
                 } catch (err: any) {
                     console.error(`[AutomationEngine] Failed reminder ${item.id}:`, err.message);
-                    await supabase.from("scheduled_reminders").update({
+                    await getSupabase().from("scheduled_reminders").update({
                         status: 'failed',
                         retry_count: (item.retry_count || 0) + 1
                     }).eq("id", item.id);
@@ -90,7 +90,7 @@ export class AutomationEngine {
         console.log("[AutomationEngine] Scanning for business insights...");
         try {
             // 1. Fetch recent messages (last 24h) and group by organization
-            const { data: messages, error } = await supabase
+            const { data: messages, error } = await getSupabase()
                 .from("messages")
                 .select("*, customers(id, name)")
                 .eq("is_from_customer", true)
@@ -133,7 +133,7 @@ export class AutomationEngine {
                     const insight = JSON.parse(jsonStr);
 
                     // 4. Save to ai_insights table
-                    await supabase.from("ai_insights").insert({
+                    await getSupabase().from("ai_insights").insert({
                         organization_id: orgId,
                         type: insight.type || 'summary',
                         title: insight.title || 'AI Insights Update',
