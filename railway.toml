@@ -1,9 +1,2 @@
-[build]
-builder = "NIXPACKS"
-buildCommand = "npm install && npm run build --workspace=@repo/api"
-
-[deploy]
-startCommand = "npm start --workspace=@repo/api"
-healthcheckPath = "/health"
-healthcheckTimeout = 100
-restartPolicyType = "ON_FAILURE"
+# Railway configuration moved to railway.json
+# This file is kept empty to avoid conflicts

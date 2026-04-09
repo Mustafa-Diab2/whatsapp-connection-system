@@ -42,6 +42,7 @@ import { generalLimiter, authLimiter, errorHandler } from "./middleware";
 
 const PORT = process.env.PORT || 3001;
 const NODE_ENV = process.env.NODE_ENV || "development";
+console.log(`[Server] Configuration: PORT=${PORT}, NODE_ENV=${NODE_ENV}, FRONTEND_URL=${process.env.FRONTEND_URL || 'not-set'}`);
 
 const ALLOWED_ORIGINS = [
   "http://localhost:3000",
@@ -100,9 +101,15 @@ app.use((req, res, next) => {
     next();
 });
 
+// 📝 Request Logger (for debugging)
+app.use((req, res, next) => {
+    console.log(`[Request] ${req.method} ${req.path} from ${req.headers.origin || 'no-origin'}`);
+    next();
+});
+
 // 🚑 Health Check
-app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
-app.get('/', (req, res) => res.status(200).send('API IS ALIVE'));
+app.get('/health', (req, res) => res.status(200).json({ status: 'ok', port: PORT, timestamp: new Date().toISOString() }));
+app.get('/', (req, res) => res.status(200).json({ status: 'alive', port: PORT }));
 
 const httpServer = http.createServer(app);
 export const io = new Server(httpServer, {
