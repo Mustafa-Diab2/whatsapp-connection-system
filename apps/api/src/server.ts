@@ -10,7 +10,7 @@ import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import { Server } from "socket.io";
 import WhatsAppManager from "./wa/WhatsAppManager";
-import { db, supabase } from "./lib/supabase";
+import { db, getSupabase } from "./lib/supabase";
 import authRoutes, { verifyToken } from "./routes/auth";
 import documentsRoutes from "./routes/documents";
 import campaignsRoutes from "./routes/campaigns";

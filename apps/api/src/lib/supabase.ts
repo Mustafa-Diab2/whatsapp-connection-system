@@ -26,6 +26,19 @@ export const getSupabase = (): SupabaseClient => {
     return supabaseInstance;
 };
 
+// Named export: a live reference that always delegates to getSupabase()
+// This is used by 20+ files that do `import { supabase } from "../lib/supabase"`
+export const supabase = new Proxy({} as SupabaseClient, {
+    get(_target, prop) {
+        const instance = getSupabase();
+        const value = (instance as any)[prop];
+        if (typeof value === 'function') {
+            return value.bind(instance);
+        }
+        return value;
+    }
+});
+
 // Dynamic getter to replace the problematic constant
 export const getDb = () => getSupabase();
 
@@ -459,7 +472,7 @@ export const db = {
 
     // ========== BOT CONFIG ==========
     async getBotConfig(clientId = 'default', organizationId?: string) {
-        let query = supabase.from('bot_config').select('*').eq('client_id', clientId);
+        let query = getSupabase().from('bot_config').select('*').eq('client_id', clientId);
 
         if (organizationId) {
             query = query.eq('organization_id', organizationId);
@@ -956,7 +969,7 @@ export const db = {
     },
 
     async logAudit(orgId: string, userId: string | null, action: string, details: any, ip?: string) {
-        supabase.from("audit_logs").insert({
+        getSupabase().from("audit_logs").insert({
             organization_id: orgId,
             user_id: userId,
             action,
@@ -1030,4 +1043,4 @@ export const db = {
     },
 };
 
-export default supabase;
+export default supabase;

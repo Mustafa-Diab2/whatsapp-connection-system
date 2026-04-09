@@ -2,6 +2,13 @@ import { getSupabase } from "../lib/supabase";
 import WhatsAppManager from "../wa/WhatsAppManager";
 import { ai } from "../lib/ai"; 
 
+// Check if Supabase is properly configured (not using placeholder)
+function isSupabaseReady(): boolean {
+    const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    return !!(url && key);
+}
+
 export class AutomationEngine {
     private static instance: AutomationEngine;
     private manager: WhatsAppManager;
@@ -37,6 +44,7 @@ export class AutomationEngine {
     }
 
     async processReminders() {
+        if (!isSupabaseReady()) return;
         try {
             // 1. Fetch pending reminders that are due
             const { data: reminders, error } = await getSupabase()
@@ -87,6 +95,7 @@ export class AutomationEngine {
     }
 
     async generateAIInsights() {
+        if (!isSupabaseReady()) return;
         console.log("[AutomationEngine] Scanning for business insights...");
         try {
             // 1. Fetch recent messages (last 24h) and group by organization
