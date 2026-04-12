@@ -1,4 +1,4 @@
-import { supabase } from "../lib/supabase";
+import { getSupabase } from "../lib/supabase";
 import WhatsAppManager from "../wa/WhatsAppManager";
 
 export class WorkflowEngine {
@@ -19,7 +19,7 @@ export class WorkflowEngine {
     async trigger(clientId: string, type: string, config: any, context: any) {
         try {
             // Find active workflows for this trigger
-            const { data: workflows, error } = await supabase
+            const { data: workflows, error = null } = await getSupabase()
                 .from("workflows")
                 .select("*, workflow_steps(*)")
                 .eq("organization_id", clientId)
