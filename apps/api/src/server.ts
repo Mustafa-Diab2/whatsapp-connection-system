@@ -52,17 +52,22 @@ const ALLOWED_ORIGINS = [
 
 const app = express();
 
-// 🚑 ULTIMATE CORS BYPASS (Manual Headers) - MUST BE FIRST
+// 🚑 ULTIMATE CORS BYPASS (Dynamic Echo) - MUST BE FIRST
 app.use((req, res, next) => {
     const origin = req.headers.origin;
-    res.header("Access-Control-Allow-Origin", origin || "*");
-    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS,PATCH");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, x-organization-id, X-Organization-Id, Accept, Origin");
-    res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Max-Age", "86400"); // 24 hours
+    if (origin) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+    } else {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+    }
+    
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, x-organization-id, X-Organization-Id, Accept, Origin");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Max-Age", "86400"); // 24 hours
     
     if (req.method === "OPTIONS") {
-        return res.sendStatus(200);
+        return res.status(200).end();
     }
     next();
 });

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { supabase, db } from "../lib/supabase";
+import { getgetSupabase() } from "../lib/getSupabase()";
 
 const router = Router();
 import { validate } from "../middleware/validate";
@@ -32,11 +32,16 @@ router.post("/register", validate(registerSchema), async (req: Request, res: Res
         }
 
         // Check if user exists
-        const { data: existingUser } = await supabase
+        const { data: existingUser, error: checkError } = await getgetSupabase()()
             .from("users")
             .select("id")
             .eq("email", email)
-            .single();
+            .maybeSingle();
+
+        if (checkError) {
+            console.error("User check error:", checkError);
+            return res.status(500).json({ error: "خطأ في التحقق من البيانات" });
+        }
 
         if (existingUser) {
             return res.status(400).json({ error: "هذا البريد الإلكتروني مسجل بالفعل" });
@@ -46,7 +51,7 @@ router.post("/register", validate(registerSchema), async (req: Request, res: Res
         const hashedPassword = await bcrypt.hash(password, 12);
 
         // 1. Create Organization
-        const { data: org, error: orgError } = await supabase
+        const { data: org, error: orgError } = await getgetSupabase()()
             .from("organizations")
             .insert({ name: `${name || email.split("@")[0]}'s Organization` })
             .select()
@@ -55,7 +60,7 @@ router.post("/register", validate(registerSchema), async (req: Request, res: Res
         if (orgError) throw orgError;
 
         // 2. Create User linked to Organization
-        const { data: user, error } = await supabase
+        const { data: user, error } = await getgetSupabase()()
             .from("users")
             .insert({
                 email,
@@ -102,7 +107,7 @@ router.post("/login", validate(loginSchema), async (req: Request, res: Response)
         }
 
         // Find user
-        const { data: user, error } = await supabase
+        const { data: user, error } = await getgetSupabase()()
             .from("users")
             .select("*")
             .eq("email", email)
@@ -133,15 +138,16 @@ router.post("/login", validate(loginSchema), async (req: Request, res: Response)
 
         // Check organization status (if not super_admin)
         if (user.role !== 'super_admin' && user.organization_id) {
-            const { data: org } = await supabase.from('organizations').select('status').eq('id', user.organization_id).single();
+            const { data: org } = await getgetSupabase()().from('organizations').select('status').eq('id', user.organization_id).single();
             if (org?.status === 'suspended') {
                 return res.status(403).json({ error: "هذا الحساب موقوف حالياً، يرجى التواصل مع الدعم" });
             }
         }
 
         setAuthCookie(res, token);
-
-        db.logAudit(user.organization_id, user.id, "login_success", { email }, req.ip);
+        
+        // Log basic info (removed broken logAudit)
+        console.log(`[Auth] User logged in: ${email}`);
 
         res.json({
             message: "تم تسجيل الدخول بنجاح",
@@ -181,7 +187,7 @@ router.get("/profile", verifyToken, async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user.userId;
 
-        const { data: user, error } = await supabase
+        const { data: user, error } = await getgetSupabase()()
             .from("users")
             .select("id, email, name, phone, avatar, role, allowed_pages, created_at")
             .eq("id", userId)
@@ -204,7 +210,7 @@ router.put("/profile", verifyToken, async (req: Request, res: Response) => {
         const userId = (req as any).user.userId;
         const { name, phone } = req.body;
 
-        const { data: user, error } = await supabase
+        const { data: user, error } = await getgetSupabase()()
             .from("users")
             .update({ name, phone, updated_at: new Date().toISOString() })
             .eq("id", userId)
@@ -227,7 +233,7 @@ router.put("/change-password", verifyToken, async (req: Request, res: Response) 
         const { currentPassword, newPassword } = req.body;
 
         // Get current user
-        const { data: user } = await supabase
+        const { data: user } = await getgetSupabase()()
             .from("users")
             .select("password")
             .eq("id", userId)
@@ -247,7 +253,7 @@ router.put("/change-password", verifyToken, async (req: Request, res: Response) 
         const hashedPassword = await bcrypt.hash(newPassword, 12);
 
         // Update password
-        await supabase
+        await getgetSupabase()()
             .from("users")
             .update({ password: hashedPassword, updated_at: new Date().toISOString() })
             .eq("id", userId);
@@ -273,7 +279,7 @@ const verifySuperAdmin = async (req: Request, res: Response, next: Function) => 
     }
 
     // Fallback: check DB for older tokens that don't have role in payload
-    const { data: userData } = await supabase.from('users').select('role').eq('id', user.userId).single();
+    const { data: userData } = await getgetSupabase()().from('users').select('role').eq('id', user.userId).single();
     if (userData?.role !== 'super_admin') {
         return res.status(403).json({ error: "غير مصرح - يتطلب صلاحية سوبر أدمن" });
     }
@@ -283,7 +289,7 @@ const verifySuperAdmin = async (req: Request, res: Response, next: Function) => 
 // 1. Get all organizations (Super Admin only)
 router.get("/super/organizations", verifyToken, verifySuperAdmin, async (req: Request, res: Response) => {
     try {
-        const { data: orgs, error } = await supabase
+        const { data: orgs, error } = await getgetSupabase()()
             .from("organizations")
             .select(`
                 *,
@@ -295,7 +301,7 @@ router.get("/super/organizations", verifyToken, verifySuperAdmin, async (req: Re
 
         // Count members for each org
         const orgsWithCounts = await Promise.all(orgs.map(async (org) => {
-            const { count } = await supabase
+            const { count } = await getSupabase()
                 .from('users')
                 .select('*', { count: 'exact', head: true })
                 .eq('organization_id', org.id);
@@ -320,7 +326,7 @@ router.post("/super/organizations", verifyToken, verifySuperAdmin, async (req: R
         const { name, adminEmail, adminPassword, adminName, member_limit, status, allowed_pages } = req.body;
 
         // 1. Create Org
-        const { data: org, error: orgError } = await supabase
+        const { data: org, error: orgError } = await getgetSupabase()()
             .from("organizations")
             .insert({ name, member_limit: member_limit || 10, status: status || 'active' })
             .select()
@@ -330,7 +336,7 @@ router.post("/super/organizations", verifyToken, verifySuperAdmin, async (req: R
 
         // 2. Create Admin
         const hashedPassword = await bcrypt.hash(adminPassword, 12);
-        const { data: user, error: userError } = await supabase
+        const { data: user, error: userError } = await getgetSupabase()()
             .from("users")
             .insert({
                 email: adminEmail,
@@ -357,7 +363,7 @@ router.put("/super/organizations/:orgId", verifyToken, verifySuperAdmin, async (
         const { orgId } = req.params;
         const { name, status, member_limit } = req.body;
 
-        const { data: org, error } = await supabase
+        const { data: org, error } = await getgetSupabase()()
             .from("organizations")
             .update({ name, status, member_limit, updated_at: new Date().toISOString() })
             .eq("id", orgId)
@@ -394,7 +400,7 @@ router.delete("/super/organizations/:orgId", verifyToken, verifySuperAdmin, asyn
         ];
 
         for (const table of tablesToDelete) {
-            const { error: deleteError } = await supabase
+            const { error: deleteError } = await getSupabase()
                 .from(table)
                 .delete()
                 .eq("organization_id", orgId);
@@ -406,7 +412,7 @@ router.delete("/super/organizations/:orgId", verifyToken, verifySuperAdmin, asyn
         }
 
         // 2. Finally, delete the organization
-        const { error: orgError } = await supabase
+        const { error: orgError } = await getgetSupabase()()
             .from("organizations")
             .delete()
             .eq("id", orgId);
@@ -426,7 +432,7 @@ router.put("/super/users/:userId", verifyToken, verifySuperAdmin, async (req: Re
         const { userId } = req.params;
         const { name, role, allowed_pages } = req.body;
 
-        const { data: user, error } = await supabase
+        const { data: user, error } = await getgetSupabase()()
             .from("users")
             .update({ name, role, allowed_pages, updated_at: new Date().toISOString() })
             .eq("id", userId)
@@ -453,21 +459,21 @@ router.post("/team/invite", verifyToken, async (req: Request, res: Response) => 
         }
 
         // Check requester role and member limit
-        const { data: requester } = await supabase.from('users').select('role, organization_id').eq('id', requesterId).single();
+        const { data: requester } = await getgetSupabase()().from('users').select('role, organization_id').eq('id', requesterId).single();
         if (requester?.role !== 'admin' && requester?.role !== 'super_admin') {
             return res.status(403).json({ error: "غير مصرح - فقط الأدمن يمكنه إضافة أعضاء" });
         }
 
         // Check member limit for this organization
-        const { data: org } = await supabase.from('organizations').select('member_limit').eq('id', requesterOrgId).single();
-        const { count } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('organization_id', requesterOrgId);
+        const { data: org } = await getgetSupabase()().from('organizations').select('member_limit').eq('id', requesterOrgId).single();
+        const { count } = await getgetSupabase()().from('users').select('*', { count: 'exact', head: true }).eq('organization_id', requesterOrgId);
 
         if (org && count !== null && count >= org.member_limit) {
             return res.status(400).json({ error: `لقد وصلت للحد الأقصى للأعضاء (${org.member_limit})` });
         }
 
         // Check if user exists
-        const { data: existingUser } = await supabase
+        const { data: existingUser } = await getgetSupabase()()
             .from("users")
             .select("id")
             .eq("email", email)
@@ -481,7 +487,7 @@ router.post("/team/invite", verifyToken, async (req: Request, res: Response) => 
         const hashedPassword = await bcrypt.hash(password, 12);
 
         // Create user in SAME organization
-        const { data: user, error } = await supabase
+        const { data: user, error } = await getgetSupabase()()
             .from("users")
             .insert({
                 email,
@@ -511,7 +517,7 @@ router.get("/team", verifyToken, async (req: Request, res: Response) => {
     try {
         const orgId = (req as any).user.organizationId;
 
-        const { data: members, error } = await supabase
+        const { data: members, error } = await getgetSupabase()()
             .from("users")
             .select("id, name, email, role, allowed_pages, created_at, avatar")
             .eq("organization_id", orgId)
@@ -535,7 +541,7 @@ router.put("/team/:memberId", verifyToken, async (req: Request, res: Response) =
         const { name, role, allowed_pages } = req.body;
 
         // Check if requester is admin
-        const { data: requester } = await supabase
+        const { data: requester } = await getgetSupabase()()
             .from("users")
             .select("role")
             .eq("id", requesterId)
@@ -546,7 +552,7 @@ router.put("/team/:memberId", verifyToken, async (req: Request, res: Response) =
         }
 
         // Verify member belongs to same organization
-        const { data: member } = await supabase
+        const { data: member } = await getgetSupabase()()
             .from("users")
             .select("id, organization_id")
             .eq("id", memberId)
@@ -558,7 +564,7 @@ router.put("/team/:memberId", verifyToken, async (req: Request, res: Response) =
         }
 
         // Update member
-        const { data: updatedMember, error } = await supabase
+        const { data: updatedMember, error } = await getgetSupabase()()
             .from("users")
             .update({
                 name,
@@ -595,7 +601,7 @@ router.delete("/team/:memberId", verifyToken, async (req: Request, res: Response
         }
 
         // Check if requester is admin
-        const { data: requester } = await supabase
+        const { data: requester } = await getgetSupabase()()
             .from("users")
             .select("role")
             .eq("id", requesterId)
@@ -606,7 +612,7 @@ router.delete("/team/:memberId", verifyToken, async (req: Request, res: Response
         }
 
         // Verify member belongs to same organization
-        const { data: member } = await supabase
+        const { data: member } = await getgetSupabase()()
             .from("users")
             .select("id, organization_id, role")
             .eq("id", memberId)
@@ -618,7 +624,7 @@ router.delete("/team/:memberId", verifyToken, async (req: Request, res: Response
         }
 
         // Delete member
-        const { error } = await supabase
+        const { error } = await getgetSupabase()()
             .from("users")
             .delete()
             .eq("id", memberId);
@@ -640,7 +646,7 @@ router.post("/forgot-password", async (req: Request, res: Response) => {
         const { email } = req.body;
         if (!email) return res.status(400).json({ error: "البريد الإلكتروني مطلوب" });
 
-        const { data: user } = await supabase.from('users').select('id, email, name').eq('email', email).single();
+        const { data: user } = await getgetSupabase()().from('users').select('id, email, name').eq('email', email).single();
         if (!user) {
             // Security: don't reveal if user exists, but here we can be helpful for dev
             return res.json({ message: "إذا كان الحساب موجوداً، فستصلك رسالة قريباً" });
@@ -651,7 +657,8 @@ router.post("/forgot-password", async (req: Request, res: Response) => {
         
         // Log to Audit (Placeholder for Email)
         console.log(`[AUTH] Password reset requested for ${email}. Token: ${resetToken}`);
-        db.logAudit(null, user.id, "password_reset_requested", { email }, req.ip);
+        // Removed broken logAudit
+        console.log(`[Auth] User updated phone: ${user.id}`);
 
         // IN PRODUCTION: Send email with resetToken in URL
         res.json({ message: "تم إرسال تعليمات استعادة كلمة المرور إلى بريدك" });
@@ -672,11 +679,11 @@ router.post("/reset-password", async (req: Request, res: Response) => {
         }
 
         const hashedPassword = await bcrypt.hash(newPassword, 12);
-        const { error } = await supabase.from('users').update({ password: hashedPassword }).eq('id', decoded.userId);
+        const { error } = await getgetSupabase()().from('users').update({ password: hashedPassword }).eq('id', decoded.userId);
 
         if (error) throw error;
 
-        db.logAudit(null, decoded.userId, "password_reset_success", {}, req.ip);
+        getgetSupabase()().logAudit(null, decoded.userId, "password_reset_success", {}, req.ip);
         res.json({ message: "تمت إعادة تعيين كلمة المرور بنجاح" });
     } catch (err: any) {
         res.status(400).json({ error: "التوكن منتهي الصلاحية أو غير صالح" });
