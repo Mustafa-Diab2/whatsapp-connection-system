@@ -72,7 +72,7 @@ app.use((req, res, next) => {
     next();
 });
 
-// 1. 🛡️ Security Headers
+// 1. 🛡️ Security Headers (Optimized for Cross-Origin)
 app.set('trust proxy', 1);
 app.use(helmet({ 
   contentSecurityPolicy: false, 
@@ -80,24 +80,6 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   crossOriginOpenerPolicy: { policy: "unsafe-none" }
 }));
-
-const corsOptions: cors.CorsOptions = {
-  origin: true,
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-  allowedHeaders: [
-    "Content-Type", 
-    "Authorization", 
-    "X-Requested-With", 
-    "x-organization-id", 
-    "X-Organization-Id", 
-    "Accept",
-    "Origin"
-  ],
-  exposedHeaders: ["Set-Cookie"]
-};
-
-app.use(cors(corsOptions));
 
 app.use(generalLimiter);
 app.use(express.json({ limit: "15mb" }));
